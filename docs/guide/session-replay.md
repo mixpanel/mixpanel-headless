@@ -149,7 +149,7 @@ The analyzer reads these recordings too. The same `fetch_replay`, `replays_for_u
 `Replay.capture` tells you which kind of recording you have:
 
 - `"screenshot"` — the stream has at least one `mp_wireframe` event, or it has Meta events and none of them carries a page URL (`href`). Every mobile and Flutter SDK sends Meta events without `href`.
-- `"dom"` — every other replay, including a replay with no Meta event. Web replays give the same output as before.
+- `"dom"` — every other replay, including a replay that has neither a Meta event nor an `mp_wireframe` event. Web replays give the same output as before.
 
 The analyzer decides the recording type once, before it reads the events. So a touch that comes before the first wireframe (common on iOS) is still read as a mobile tap.
 
@@ -307,7 +307,7 @@ print(bundle.compare(converters))   # action | self_count | other_count | delta
 
 ## Correlating Mixpanel Events
 
-`mixpanel_df` is populated when you fetch with `include_mixpanel_events=True` (the default for `replays_for_user`), or lazily via `join_mixpanel_events()`. It holds the tracked Mixpanel events that fired during each replay's time window — the analytics layer alongside the action layer:
+`mixpanel_df` is populated only when the fetch passes `include_mixpanel_events=True`. That is the default for `replays_for_user`; `fetch_replay` and `fetch_replays` default to `False`. `join_mixpanel_events()` does not query Mixpanel: it returns a new bundle that exposes the events the fetch already attached, so on a bundle fetched without the flag, `mixpanel_df` stays empty. When populated, `mixpanel_df` holds the tracked Mixpanel events that fired during each replay's time window — the analytics layer alongside the action layer:
 
 ```python
 bundle = ws.replays_for_user(

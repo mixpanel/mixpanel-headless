@@ -9,8 +9,8 @@ serialization, retry counting, pagination, and parsing all surface as diffs
 ## Running
 
 ```bash
-# pytest harness — one test per vector, id = vector id (part of `just check`
-# via the `conformance` recipe):
+# pytest harness — one test per vector, id = vector id (part of
+# `just conformance` and the Conformance workflow):
 uv run pytest conformance/runner -o addopts="" -q
 
 # pytest-free CLI (worktree smoke runs, design D9.2):

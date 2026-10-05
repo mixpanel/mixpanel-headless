@@ -91,6 +91,7 @@ plugins:
           - guide/session-replay.md
           - guide/report-links.md
           - guide/entity-management.md
+          - guide/saved-metrics.md
           - guide/data-governance.md
           - guide/business-context.md
           - guide/built-in-help.md
@@ -150,6 +151,7 @@ plugins:
           - guide/session-replay.md: "Discover, fetch, and analyze rrweb session recordings"
           - guide/report-links.md: "Share a query as a Mixpanel report URL; resolve a report URL, slug, or shortlink back into runnable params"
           - guide/entity-management.md: "Create, update, delete dashboards, reports, and cohorts"
+          - guide/saved-metrics.md: "List, read, create, update, and delete saved metrics (behavior metrics, formulas, warehouse metrics) and saved behaviors"
           - guide/data-governance.md: "Manage Lexicon definitions, drop filters, custom properties, custom events, lookup tables, schema registry, enforcement, auditing, anomalies, and event deletion requests"
           - guide/business-context.md: "Read and write the markdown business context that grounds AI assistants (org and project scopes, 50,000-char cap)"
           - guide/built-in-help.md: "Offline API reference from Python (mp.help, mp.reference) and the CLI (mp help): query grammar, text/markdown/json formats, --domain filter, agent tips"
@@ -200,6 +202,7 @@ nav:
       - Session Replay: guide/session-replay.md
       - Report Links: guide/report-links.md
       - Entity Management: guide/entity-management.md
+      - Saved Metrics and Behaviors: guide/saved-metrics.md
       - Data Governance: guide/data-governance.md
       - Business Context: guide/business-context.md
       - Built-in Help: guide/built-in-help.md

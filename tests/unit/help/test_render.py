@@ -1717,3 +1717,51 @@ def test_markdown_module_with_groups_renders_group_tables() -> None:
         in out
     )
     assert "## Members" not in out
+
+
+def test_markdown_code_lang_defaults_to_python(method_entry: HelpEntry) -> None:
+    """Every fence the markdown renderer adds is tagged ``python`` by default."""
+    rendered = render_markdown(method_entry)
+    assert "```python" in rendered
+    assert render(method_entry, "markdown") == rendered
+
+
+def test_markdown_code_lang_retags_every_added_fence(method_entry: HelpEntry) -> None:
+    """``code_lang`` changes only the tag of the fences the renderer adds.
+
+    The fixture's signature fence is renderer-added and its example fence
+    is written in the docstring, so exactly the first tag changes; the tag
+    does not leak into a later default call.
+    """
+    default = render_markdown(method_entry)
+    retagged = render_markdown(method_entry, code_lang="ts")
+    assert retagged == default.replace("```python", "```ts", 1)
+    assert retagged.count("```python") == 1
+    assert render(method_entry, "markdown", code_lang="ts") == retagged
+    assert render_markdown(method_entry) == default
+
+
+def test_markdown_code_lang_keeps_fences_written_in_examples() -> None:
+    """A fence already present in a docstring example keeps its own tag."""
+    entry = HelpEntry(
+        kind="function",
+        name="f",
+        qualname="f",
+        summary="S.",
+        doc=DocSections(summary="S.", example="```python\nf()\n```"),
+        signature=SignatureDoc("f"),
+    )
+    rendered = render_markdown(entry, code_lang="ts")
+    assert "```ts" in rendered
+    assert "```python\nf()\n```" in rendered
+
+
+def test_code_lang_is_ignored_by_text_json_and_search(
+    method_entry: HelpEntry, search_result: SearchResult
+) -> None:
+    """Only the markdown rendering of an entry reads ``code_lang``."""
+    assert render(method_entry, "text", code_lang="ts") == render_text(method_entry)
+    assert render(method_entry, "json", code_lang="ts") == render_json(method_entry)
+    assert render(search_result, "markdown", code_lang="ts") == (
+        render_search_markdown(search_result)
+    )

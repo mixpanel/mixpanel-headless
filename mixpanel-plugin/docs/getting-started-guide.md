@@ -15,7 +15,6 @@ This guide is for anyone who wants to explore their Mixpanel data programmatical
 - [Part 4: Run Analytics Queries](#part-4-run-analytics-queries)
 - [Part 5: Use the Python API](#part-5-use-the-python-api)
 - [Part 6: Set Up the Claude Code Plugin](#part-6-set-up-the-claude-code-plugin)
-- [Part 7: Set Up Claude Cowork](#part-7-set-up-claude-cowork)
 - [Quick Reference](#quick-reference)
 - [Troubleshooting](#troubleshooting)
 - [Next Steps](#next-steps)
@@ -39,7 +38,7 @@ For service accounts, you'll also need your **Mixpanel Project ID**, which you c
 
 ## Part 1: Install the Package
 
-The `mixpanel_headless` package installs both the Python library and the `mp` command-line tool.
+The `mixpanel_headless` package installs both the Python library and the `mp` command-line tool. The Claude plugin does not use this installation: its setup skill installs version 0.3.0 or later into a private environment of its own (see Part 6). Install the package here to use the library and CLI yourself.
 
 ### Option A: Install with pip
 
@@ -57,9 +56,10 @@ uv pip install mixpanel-headless
 
 ```bash
 mp --version
+mp help Workspace.query
 ```
 
-You should see a version number printed. If you get "command not found," make sure your Python scripts directory is on your `PATH`. You can also run the CLI with:
+You should see a version number, then the signature of `Workspace.query`. If you get "command not found," make sure your Python scripts directory is on your `PATH`. You can also run the CLI with:
 
 ```bash
 python3 -m mixpanel_headless --version
@@ -355,7 +355,7 @@ In your Claude Code session, run:
 
 ### Run the Setup Skill
 
-After installing, run the setup skill to install dependencies and verify authentication:
+After installing, run the setup skill to create the plugin's Python environment and verify authentication:
 
 ```
 /mixpanel-headless:setup
@@ -363,20 +363,23 @@ After installing, run the setup skill to install dependencies and verify authent
 
 This will:
 
-1. Check that Python 3.10+ is available
-2. Install the `mixpanel_headless` package and its dependencies (pandas, numpy, matplotlib, networkx, etc.)
-3. Verify that your Mixpanel credentials are configured
-4. Report the status of your connection
+1. Create a private environment at `~/.claude/plugins/data/mixpanel-headless-<source>/venv`, or reuse it if it exists. Setup uses `uv venv` when uv is installed (uv can supply a Python 3.10+), and `python3 -m venv` with your Python 3.10+ otherwise
+2. Confirm that the environment runs Python 3.10 or later
+3. Install `mixpanel_headless` 0.3.0 or later and its dependencies (pandas, numpy, matplotlib, networkx, etc.) into that environment only, never into your system or user Python
+4. Verify that your Mixpanel credentials are configured
+5. Print the environment path and report the status of your connection
+
+The skills run that environment's `python` and `mp`. The environment survives plugin updates, and setup upgrades it when you run it again. To run your own scripts with the same library, use `<venv>/bin/python your_script.py`, where `<venv>` is the printed path, or install `mixpanel-headless` in your own project. If `mp` is not on your `PATH`, run the plugin's copy as `<venv>/bin/mp`.
 
 ### Configure Credentials (If Not Already Done)
 
-If the setup skill reports that no credentials are found, use the `/mixpanel-headless:auth` command:
+If the setup skill reports that no credentials are found, use the `/mixpanel-headless:auth` skill:
 
 ```
 /mixpanel-headless:auth account add my-project
 ```
 
-Claude will guide you through entering your service account username, project ID, and region. You'll be prompted to run a shell command that securely collects your secret. For OAuth, the simplest path is `! mp login` — it opens the browser, derives the account name, and pins a project. The browser path defaults to the `us` region; EU and India users should pass `--region eu` or `--region in`. Use `/mixpanel-headless:auth account add personal --type oauth_browser --region us` followed by `/mixpanel-headless:auth account login personal` if you need explicit control over the account name at registration time.
+Claude will guide you through entering your service account username, project ID, and region. You'll be prompted to run a shell command that securely collects your secret. For OAuth, the simplest path is `! <venv>/bin/mp login` (`<venv>` is the environment path that setup prints) — it opens the browser, derives the account name, and pins a project. The browser path defaults to the `us` region; EU and India users should pass `--region eu` or `--region in`. Use `/mixpanel-headless:auth account add personal --type oauth_browser --region us` followed by `/mixpanel-headless:auth account login personal` if you need explicit control over the account name at registration time.
 
 ### Ask Analytics Questions
 
@@ -398,77 +401,17 @@ Claude will choose the right query engine (Insights, Funnels, Retention, Flows, 
 
 ### What's in the Plugin
 
-The plugin ships three skills that Claude loads automatically when relevant:
+The plugin ships five skills:
 
 | Skill | Trigger | What It Does |
 |-------|---------|--------------|
-| **setup** | `/mixpanel-headless:setup` (manual) | Installs `mixpanel_headless` + analytics dependencies and verifies credentials. |
-| **mixpanelyst** | Auto-loads on analytics questions | Distilled `Workspace` API reference, discovery workflow, exploratory analysis playbook, and live `help.py` lookup for method signatures, types, and enums. |
+| **mixpanelyst** | Auto-loads on analytics questions | Analysis workflow, query-engine choice, gotchas, and a live `mp help` lookup for method signatures, types, and allowed values. |
+| **session-replay** | Auto-loads on session replay questions | Finds, fetches, and analyzes session recordings for web and mobile (rage clicks, rage taps, dead clicks, errors, action timelines). |
 | **dashboard-expert** | Auto-loads on dashboard questions | Four-mode workflow (Analyze, Build, Modify, Explain) for Mixpanel dashboards, with 9 design templates, chart-type selection, and layout reference. |
+| **auth** | `/mixpanel-headless:auth` | Guided wrapper around `mp account / project / workspace / target / session` for managing credentials without leaving the conversation. |
+| **setup** | `/mixpanel-headless:setup` (manual only) | Creates or upgrades the plugin's private Python environment with `mixpanel_headless` (0.3.0 or later) and the analysis dependencies, verifies it, and checks for credentials. |
 
-The `/mixpanel-headless:auth` slash command provides a guided wrapper around `mp account / project / workspace / target / session / bridge` for managing credentials without leaving the conversation.
-
----
-
-## Part 7: Set Up Claude Cowork
-
-[Claude Cowork](https://docs.anthropic.com/en/docs/claude-code/cowork) lets multiple Claude agents collaborate on tasks in sandboxed virtual machines. To use `mixpanel_headless` in Cowork, you need to export your credentials from your local machine so the Cowork VM can access them.
-
-### Step 1: Set Up the Credential Bridge (On Your Local Machine)
-
-On your **local machine** (not inside Cowork), export the active account into a v2 bridge file at the default Cowork-readable path:
-
-```bash
-mp account export-bridge --to ~/.claude/mixpanel/auth.json
-```
-
-This writes a v2 `auth.json` bridge file embedding your full `Account` record (and any `oauth_browser` tokens) so the Cowork session can read your credentials at startup. The default search path inside Cowork is `~/.claude/mixpanel/auth.json` — override with `MP_AUTH_FILE` if you need a custom location.
-
-**Options:**
-
-```bash
-# Export a specific named account (defaults to the active account)
-mp account export-bridge --to ~/.claude/mixpanel/auth.json --account production
-
-# Pin a project ID into the bridge (overrides the account's default_project)
-mp account export-bridge --to ~/.claude/mixpanel/auth.json --project 12345
-
-# Pin a workspace ID into the bridge (needed for dashboard/entity management)
-mp account export-bridge --to ~/.claude/mixpanel/auth.json --workspace 3448413
-```
-
-### Step 2: Verify the Bridge (Anywhere)
-
-Check that the bridge resolves correctly:
-
-```bash
-mp session --bridge
-```
-
-This shows the resolved account, project, workspace, and any pinned headers from the bridge file.
-
-### Step 3: Use mixpanel_headless in Cowork
-
-Inside a Cowork session, run the setup skill:
-
-```
-/mixpanel-headless:setup
-```
-
-The setup script automatically detects the Cowork environment and reads credentials from the bridge file. No additional configuration is needed.
-
-### Step 4: Clean Up (When Done)
-
-When you no longer need Cowork access, remove the bridge file:
-
-```bash
-mp account remove-bridge          # removes the default ~/.claude/mixpanel/auth.json
-mp account remove-bridge --at /custom/path/auth.json
-```
-
-### OAuth Token Refresh
-
-If you authenticated with OAuth, the bridge file embeds your refresh token. The library automatically refreshes expired access tokens inside Cowork — no browser interaction needed. If the refresh token itself is rejected (e.g., revoked at the IdP), you'll need to re-authenticate on your local machine (`mp login --name <name>` or the legacy `mp account login <name>`) and re-run `mp account export-bridge --to ~/.claude/mixpanel/auth.json` to pick up the fresh tokens.
+The skills do not copy the API. Claude looks up each name with `mp help` (for example `mp help Workspace.query_funnel`), so the answer always matches the installed library.
 
 ---
 
@@ -489,14 +432,13 @@ If you authenticated with OAuth, the bridge file embeds your refresh token. The 
 | `mp workspace list` / `mp workspace use <id>` | List workspaces / pin one to the active session |
 | `mp target add <name> --account A --project P [--workspace W]` | Save a named (account, project, workspace?) cursor |
 | `mp target use <name>` | Apply a saved target atomically |
-| `mp account export-bridge --to PATH` | Write a v2 Cowork bridge file |
-| `mp account remove-bridge [--at PATH]` | Remove the bridge file |
 | `mp inspect events` | List all tracked events |
 | `mp inspect properties --event <name>` | List properties for an event |
 | `mp query segmentation --event <name> --from <date> --to <date>` | Run a segmentation query |
 | `mp query funnel <id> --from <date> --to <date>` | Query a saved funnel |
 | `mp --help` | Show all available commands |
 | `mp <command> --help` | Show help for a specific command |
+| `mp help <query>` | Look up a Python API name: `mp help Workspace.query`, `mp help Filter`, `mp help search cohort` |
 
 ### Python API at a Glance
 
@@ -527,7 +469,6 @@ ws.stream_events(from_date="...", to_date="...")  # Stream events
 | `MP_WORKSPACE_ID` | Workspace ID (for dashboard and entity management) |
 | `MP_ACCOUNT` | Override the active account name |
 | `MP_TARGET` | Apply a saved target (mutually exclusive with `MP_ACCOUNT`/`MP_PROJECT_ID`/`MP_WORKSPACE_ID`) |
-| `MP_AUTH_FILE` | Override path to the v2 Cowork bridge file |
 | `MP_CONFIG_PATH` | Override config file location |
 | `MP_API_BASE_URL` | Route every API family at one alternate host (`{base}/api/query`, `{base}/api/2.0`, `{base}/api/query/engage`, `{base}/api/app`); plain `http://` allowed for local / headless deployments; `MP_REGION` still required |
 | `MP_APP_BASE_URL` | Optional: re-home only the App API family (`{app_base}/api/app`) |
@@ -599,15 +540,9 @@ mp login --name <name>            # or `mp account login <name>` (legacy)
 ### Plugin Not Working in Claude Code
 
 1. Make sure plugins are enabled in your Claude Code settings
-2. Run `/mixpanel-headless:setup` to install dependencies
+2. Run `/mixpanel-headless:setup` to create or repair the plugin's Python environment
 3. Check auth with `/mixpanel-headless:auth session`
 4. If the plugin doesn't appear, try restarting Claude Code
-
-### Cowork VM Can't Find Credentials
-
-1. On your **local machine**, run: `mp account export-bridge --to ~/.claude/mixpanel/auth.json`
-2. Verify with: `mp session --bridge`
-3. Inside the Cowork session, run: `/mixpanel-headless:setup`
 
 ---
 

@@ -82,6 +82,24 @@ _USER_BUILDERS_MODULE = "mixpanel_headless._internal.query.user_builders"
 _USER_VALIDATORS_MODULE = "mixpanel_headless._internal.query.user_validators"
 _PYCOMPAT_MODULE = "conformance.record.pycompat_ref"
 _ADAPTERS_MODULE = "conformance.record.adapters"
+_HELP_ADAPTERS_MODULE = "conformance.record.help_adapters"
+
+HELP_ADAPTER_APIS: tuple[str, ...] = (
+    "parse_query",
+    "tokens",
+    "hints_for",
+    "match_domain",
+    "suggestions",
+    "child_suggestions",
+    "search",
+    "render",
+    "render_search",
+    "render_miss",
+    "search_usage",
+    "lookup_error",
+    "domain_error",
+)
+"""Adapter function names in ``help_adapters``; each registers as ``help.<name>``."""
 
 _CLIENT_STATE_NAMES = frozenset({"close", "set_workspace_id", "use", "with_project"})
 """MixpanelAPIClient methods that mutate state / return siblings (D1.2).
@@ -172,6 +190,28 @@ def _facade_entries() -> tuple[RegistryEntry, ...]:
             capability=capability,
         )
         for name, capability in sorted(_WORKSPACE_BUILDER_CAPABILITIES.items())
+    )
+
+
+def _help_entries() -> tuple[RegistryEntry, ...]:
+    """Build the ``help.*`` builder entries for the built-in help's pure layer.
+
+    Each targets a JSON-in / JSON-out adapter in
+    ``conformance.record.help_adapters``; the authored help vectors
+    (``gen_help_vectors.py``) call them.
+
+    Returns:
+        One builder entry per :data:`HELP_ADAPTER_APIS` name, capability
+        ``help``.
+    """
+    return tuple(
+        RegistryEntry(
+            api=f"help.{name}",
+            target=f"{_HELP_ADAPTERS_MODULE}:{name}",
+            kind=KIND_BUILDER,
+            capability="help",
+        )
+        for name in HELP_ADAPTER_APIS
     )
 
 
@@ -654,6 +694,7 @@ def build_registry() -> tuple[RegistryEntry, ...]:
     return (
         _facade_entries()
         + _module_builder_entries()
+        + _help_entries()
         + _coded_guard_entries()
         + _validator_entries()
         + _gate_entries()

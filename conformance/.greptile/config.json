@@ -1,0 +1,11 @@
+{
+  "instructions": "The conformance corpus pins the behavior of mixpanel_headless for other language ports. Recorded vectors (conformance/vectors/), golden JSON files (conformance/goldens/), and differential JSON files are generated and excluded from review. Review the hand-written tooling (runner, record, contract, referee_bookmark_parser, smoke, tests, oracle_py, differential harness, and goldens/rrweb/generate.py) as normal code. CI runs conformance/record/check_stamps.py, which verifies that every source_commit stamp is a commit that main can reach and that corpus content does not change without the stamp changing, so do not try to verify stamp SHAs by hand.",
+  "rules": [
+    {
+      "id": "stamp-main-reachable",
+      "rule": "A source_commit stamp in the corpus must be a commit that main can reach (the squash-merge SHA), not a feature-branch commit, and conformance/record/check_stamps.py enforces this in CI. Flag a change to check_stamps.py or its tests that weakens either check: reachability from main, or the rule that corpus content cannot change without the stamp changing. Flag a new entry in its legacy authored-stamp allowlist.",
+      "scope": ["record/**", "tests/**"],
+      "severity": "high"
+    }
+  ]
+}

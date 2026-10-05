@@ -183,7 +183,7 @@ These tasks belong to US3 conceptually but ship in PR 1 because they depend only
 
 **Purpose**: Documentation, plugin help integration, post-PR housekeeping. Run after each PR; this phase consolidates the cross-PR tasks.
 
-- [x] T087 [P] ~~Update `mixpanel-plugin/help.py` so `python help.py Replay`, `python help.py ReplayBundle`, etc. return the documented signature + docstring + related types.~~ SUPERSEDED by the built-in help feature (see `context/help-integration-plan.md`): the script is replaced by the library's built-in `mp help` / `mp.help()`, which covers `Replay`, `ReplayBundle`, and every other export from the `__all__` inventory.
+- [x] T087 [P] ~~Update `mixpanel-plugin/help.py` so `python help.py Replay`, `python help.py ReplayBundle`, etc. return the documented signature + docstring + related types.~~ Superseded by the library's built-in help: the plugin script was removed, and `mp help Replay` / `mp.help("ReplayBundle")` now return the signature, docstring, and related types for every public export.
 - [ ] T088 [P] Update `mixpanel-plugin/.claude/skills/mixpanelyst/SKILL.md` to add a "Session Replay" section with example queries. (DEFERRED — same reason.)
 - [X] T089 [P] Added `CHANGELOG.md` with entries for PRs 1 and 2 under an `Unreleased — Session Replay (044, PRs 1–2)` heading. Documents every new public method, type, exception, CLI command, and security invariant.
 - [ ] T090 [P] Add a versioning bump per PR. (DEFERRED — release decision, not implementation. Each PR's bump happens at merge time.)

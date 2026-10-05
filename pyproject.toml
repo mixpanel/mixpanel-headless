@@ -77,6 +77,8 @@ Repository = "https://github.com/mixpanel/mixpanel-headless"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mixpanel_headless"]
+# Greptile code-review config folders are repo tooling, not package data.
+exclude = ["**/.greptile"]
 
 [tool.hatch.build.targets.wheel.shared-data]
 "man" = "share/man/man1"
@@ -176,7 +178,7 @@ ignore-module = false
 ignore-nested-functions = false
 ignore-nested-classes = false
 ignore-setters = false
-fail-under = 99
+fail-under = 100
 exclude = ["build", "dist", ".venv"]
 verbose = 1
 quiet = false

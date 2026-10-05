@@ -17,7 +17,7 @@ import os
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from enum import IntEnum
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, overload
 
 import jq  # type: ignore[import-not-found]
 import pydantic
@@ -25,6 +25,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape as rich_escape
 
+from mixpanel_headless._internal.api_client import is_schema_refusal
 from mixpanel_headless.exceptions import (
     AccountExistsError,
     AccountNotFoundError,
@@ -64,8 +65,21 @@ if TYPE_CHECKING:
 class ResultWithTableAndDict(Protocol):
     """Protocol for result objects that support both table and dict output."""
 
-    def to_table_dict(self) -> list[dict[str, Any]]: ...
-    def to_dict(self) -> dict[str, Any]: ...
+    def to_table_dict(self) -> list[dict[str, Any]]:
+        """Return the result as rows for table output.
+
+        Returns:
+            One dict per table row.
+        """
+        ...
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the result as a JSON-serializable dict.
+
+        Returns:
+            The full result payload.
+        """
+        ...
 
 
 # Console instances for stdout/stderr separation
@@ -96,11 +110,34 @@ class ExitCode(IntEnum):
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def handle_errors(func: F) -> F:
+@overload
+def handle_errors(func: F, /) -> F:
+    """Wrap a command with the default error output (``@handle_errors``)."""
+
+
+@overload
+def handle_errors(*, redact_request: bool = False) -> Callable[[F], F]:
+    """Return a decorator with options (``@handle_errors(redact_request=True)``)."""
+
+
+def handle_errors(
+    func: F | None = None, /, *, redact_request: bool = False
+) -> F | Callable[[F], F]:
     """Decorator to convert library exceptions to CLI exit codes.
 
     Maps MixpanelHeadlessError subclasses to appropriate exit codes and
     displays formatted error messages to stderr.
+
+    Args:
+        func: The command, when the decorator is used without arguments.
+        redact_request: Never print the request params or body of a
+            ``QueryError``. Commands that send a saved definition set it,
+            because the body holds the definition (for a warehouse metric,
+            its SQL). The exception keeps the full request for Python
+            callers.
+
+    Returns:
+        The wrapped command, or a decorator when called with arguments only.
 
     Usage:
         @handle_errors
@@ -108,10 +145,41 @@ def handle_errors(func: F) -> F:
             workspace = get_workspace(ctx)
             result = workspace.some_method()
             output_result(ctx, result.to_dict())
+
+        @handle_errors(redact_request=True)
+        def create_metric(ctx: typer.Context): ...
+    """
+    if func is None:
+        return functools.partial(_wrap_errors, redact_request=redact_request)
+    return _wrap_errors(func, redact_request=redact_request)
+
+
+def _wrap_errors(func: F, *, redact_request: bool) -> F:
+    """Wrap a command so that library errors become CLI exit codes.
+
+    Args:
+        func: The command to wrap.
+        redact_request: Never print the request params or body of a
+            ``QueryError``.
+
+    Returns:
+        The wrapped command.
     """
 
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        """Run the wrapped command and map library errors to exit codes.
+
+        Args:
+            *args: Positional arguments for the wrapped command.
+            **kwargs: Keyword arguments for the wrapped command.
+
+        Returns:
+            The wrapped command's return value.
+
+        Raises:
+            typer.Exit: With the mapped exit code when the command raises.
+        """
         try:
             return func(*args, **kwargs)
         except AuthenticationError as e:
@@ -203,8 +271,11 @@ def handle_errors(func: F) -> F:
             raise typer.Exit(ExitCode.INVALID_ARGS) from None
         except QueryError as e:
             err_console.print(f"[red]Query error:[/red] {rich_escape(e.message)}")
-            # Show response body - often contains the actual API error message
-            if e.response_body:
+            schema_refusal = e.status_code == 400 and is_schema_refusal(e.response_body)
+            # Show response body - often contains the actual API error message.
+            # A schema refusal's error text holds the whole request (for a
+            # warehouse metric, its SQL); the message already names the failure.
+            if e.response_body and not schema_refusal:
                 if isinstance(e.response_body, dict):
                     api_error = e.response_body.get("error", "")
                     if (
@@ -226,8 +297,10 @@ def handle_errors(func: F) -> F:
                     err_console.print(
                         f"  [dim]Response:[/dim] {rich_escape(body_preview)}"
                     )
-            # Show non-sensitive request context for debugging
-            if e.request_params:
+            # Show non-sensitive request context for debugging. Commands that
+            # send a saved definition redact it: it can hold warehouse SQL.
+            redact = redact_request or schema_refusal
+            if e.request_params and not redact:
                 for key, value in e.request_params.items():
                     if key not in ("project_id",):
                         err_console.print(
@@ -235,7 +308,7 @@ def handle_errors(func: F) -> F:
                             f"{rich_escape(str(value))}"
                         )
             # Show request body if present (e.g., for POST requests)
-            if e.request_body:
+            if e.request_body and not redact:
                 for key, value in e.request_body.items():
                     val_str = str(value)
                     if len(val_str) > 100:

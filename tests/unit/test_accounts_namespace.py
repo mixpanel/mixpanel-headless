@@ -918,7 +918,7 @@ class TestPublicSurface:
         """``login`` and ``test`` belong to ``__all__`` per ``contracts/python-api.md §5``.
 
         Both are documented public API and called by
-        ``mixpanel-plugin/skills/mixpanelyst/scripts/auth_manager.py``.
+        ``mixpanel-plugin/skills/auth/scripts/auth_manager.py``.
         Omitting them from ``__all__`` hides them from ``help()``,
         tab-completion, and ``from mixpanel_headless.accounts import *``.
         """

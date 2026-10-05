@@ -1,1187 +1,175 @@
 ---
 name: mixpanelyst
-description: This skill should be used when the user asks about Mixpanel product analytics, event data, funnel analysis, retention curves, cohort analysis, segmentation queries, user behavior, conversion rates, churn, DAU/MAU, ARPU, revenue metrics, feature adoption, A/B test results, user paths, flow analysis, session replay or session recordings (what a specific user did on screen, click-by-click — rage clicks, dead clicks, rage taps on mobile, error sessions, action timelines), or any request to query, explore, visualize, or analyze Mixpanel data using Python. Also use when the user asks to read, write, or manage Mixpanel "business context" — the markdown documentation that grounds AI assistants in an organization's structure and goals.
-allowed-tools: Bash Read Write WebFetch
+description: Analyzes Mixpanel data with Python, the mixpanel_headless library, and pandas. Use when the user asks about their Mixpanel data, such as event trends, DAU/WAU/MAU, funnels, retention and churn, user paths, user profiles, cohorts, a user's tracked event history (activity feed), segment comparisons, revenue, feature adoption, or experiment results. Also use to explore a project's events and properties, build a custom property or cohort, share a query as a report link, read or write business context, or manage entities such as cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, and other governance objects, or when code runs mixpanel_headless queries or `mp query` / `mp inspect`. Do not use for adding tracking to an app's source code, for what a specific user did on screen (use session-replay), for building or editing dashboards (use dashboard-expert), for logging in, credentials, or switching accounts (use auth), or for installing the library (run /mixpanel-headless:setup).
+allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/mp *) Bash(mp --version) Bash(mp help) Bash(mp help *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
 ---
 
-# mixpanel_headless API Reference
+# Mixpanel analysis with mixpanel_headless
 
-Analyze Mixpanel data by writing and executing Python code using the `mixpanel_headless` library and `pandas`.
+Answer questions about Mixpanel data. Write and run Python that uses the `mixpanel_headless` library and pandas. This skill teaches judgment: which query answers the question, which defaults mislead, and how to check a result. The library itself is the API reference.
 
-```python
-import mixpanel_headless as mp
-ws = mp.Workspace()
-result = ws.query("Login", last=30)
-print(result.df.head())
-```
+Installed in the plugin environment: !`${CLAUDE_PLUGIN_DATA}/venv/bin/python -m mixpanel_headless --version 2>&1 || echo "plugin environment not set up; run /mixpanel-headless:setup"`
 
-## Query Engines
+!`${CLAUDE_PLUGIN_DATA}/venv/bin/mp help 2>/dev/null | grep -A 30 "^Workspace domains" || echo "Domain list unavailable (needs mixpanel_headless 0.3.0 or later); run /mixpanel-headless:setup"`
 
-| Question | Method | Returns |
-|----------|--------|---------|
-| How much? How many? Trends? | `ws.query()` | `QueryResult` |
-| Do users convert through a sequence? | `ws.query_funnel()` | `FunnelQueryResult` |
-| Do users come back? | `ws.query_retention()` | `RetentionQueryResult` |
-| What paths do users take? | `ws.query_flow()` | `FlowQueryResult` |
-| Who are they? What do they look like? | `ws.query_user()` | `UserQueryResult` |
+## Run code in the plugin environment
 
-All result types have a `.df` property returning a pandas DataFrame and a `.params` dict containing the bookmark JSON.
-`FlowQueryResult` also has `.graph` (NetworkX DiGraph) and `.anytree` (list of tree roots).
+The plugin keeps its own Python environment. The "Installed" line above already tells you whether it exists, so do not check again with `ls`, `which`, or shell variables. In every command, write the full literal path that this skill shows, not a shell variable, because only the literal path is pre-approved. A denial of some other command does not mean Bash is blocked. The commands that this skill shows are pre-approved, including the bare `mp --version` and `mp help <query>` fallback commands below.
 
-**Quick lookups** use `python3 -c "..."` one-liners. **Multi-step analysis** writes `.py` files.
+Run Python with `${CLAUDE_PLUGIN_DATA}/venv/bin/python`: add `-c "..."` for a quick look, or a script path for multi-step work. When the plugin environment exists, `mp` in this skill means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`. Run it with that full path. The examples keep the short form `mp help <query>`.
 
-## Discovery — ALWAYS Do Both Steps Before Querying
+If the "Installed" line says that the environment is not set up, or shows a version older than 0.3.0:
 
-Guessing event names causes silent empty results. Guessing API parameters causes TypeErrors and invalid queries. **Discover both the data schema AND the API surface before writing any query.**
+1. Run the bare command `mp --version` on its own (the `mp` on `PATH`, not the plugin path).
+2. If it shows 0.3.0 or later, use the bare `mp help <query>` for look-ups. The look-up loop below still works.
+3. Ask the user to run `/mixpanel-headless:setup` before you run any analysis code. Do not run analysis code with a Python found on `PATH`, because its library version is unknown.
 
-### Step 1: Discover the data schema
+When the user's own project already has mixpanel_headless (for example, a uv project), `uv run python` also works.
 
-```python
-import mixpanel_headless as mp
-from mixpanel_headless import Filter, GroupBy, Metric
-ws = mp.Workspace()
+## Mental model
 
-# 0. (Best first move) Map the WHOLE schema in one call — which properties are on
-#    which events, plus per-property coverage. Ground yourself here so you never
-#    filter or group by a property an event doesn't actually have.
-schema = ws.schema_graph(include_density=True)
-print(schema.properties_for_event("Login"))   # exact property names on this event
-print(schema.relationships_df.head())           # event | property | density_local
+`ws = mp.Workspace()` is the one entry point. It holds the session: account, project, and workspace. It resolves credentials from the environment and `~/.mp/config.toml`. Five query engines answer five kinds of question:
 
-# 1. Find real event names
-events = ws.events()
-top = ws.top_events(limit=10)
-print("Events:", events[:20])
-print("Top:", [(e.event, e.count) for e in top])
+| Question | Method |
+| --- | --- |
+| How much, how many, what trend? | `ws.query()` |
+| Do users complete a sequence of steps? | `ws.query_funnel()` |
+| Do users come back? | `ws.query_retention()` |
+| What paths do users take? | `ws.query_flow()` |
+| Who are the users, and how many match? | `ws.query_user()` |
 
-# 2. Find real property names for the event you'll query
-props = ws.properties("Login")  # use an actual event name from step 1
-print("Properties:", props)
+Every result has `.df` (a pandas DataFrame) and `.params` (the report definition that Mixpanel ran). A flow result also has `.graph` (a networkx graph). Each engine has a `build_*_params` twin that returns params without a network call, and a `run_*_params` twin that runs edited params. Beyond queries, `ws` also covers discovery, streaming, entity management (dashboards, reports, cohorts, flags, experiments, Lexicon, and more), business context, and session replay. The domain list above names every area.
 
-# 3. (Optional) Check property values to validate filter inputs
-vals = ws.property_values("platform", event="Login")
-print("Platforms:", vals)
-```
+## Workflow
 
-### Step 2: Discover the API surface with `help.py`
+1. **Ground in the schema.** Confirm that each event carries each property that you plan to filter or break down. Reason: a filter on a property that the event does not carry returns zeros, not an error. When the question names one or two known events, use `ws.properties("<event>")`. For an unfamiliar project, run `ws.schema_graph(include_density=True)` once, then `schema.properties_for_event("<event>")`. Use `ws.events()` and `ws.property_values("<property>", event="<event>")` to confirm exact names and values.
+2. **Look up the API.** Use the look-up loop below for each method or type that you did not look up in this session.
+3. **Write and run.** Use `-c "..."` with the plugin interpreter for one quick look. Write a `.py` file for multi-step work and run it with the same interpreter, so that you can edit and run it again.
+4. **Check before you present.** Look at the row count and the date range. Treat an empty or all-zero result as a question, not an answer. Compare the magnitude with a simple total (`ws.query("<event>", mode="total")`). Look for gaps in a time series.
+5. **Share when asked.** When the user wants to share or open the result in Mixpanel, pass the result to `ws.create_report_link(result, name="...")` and give them `link.url`. Each call stores a new record on the server, so do not create links that nobody asked for.
 
-**`help.py` is the source of truth for method signatures, parameter names, type constructors, and enum values.** The method signatures later in this document are summaries — always verify with `help.py` before using a method or type you haven't looked up.
+## The look-up loop: check the API before you write code
 
-**Never guess parameter names.** If you're unsure whether a parameter is called `property` or `math_property`, or what arguments `GroupBy()` accepts, run `help.py` first. Wrong parameter names cause TypeErrors that waste tool calls.
+The installed library documents itself. Its answers match the installed version, so trust them over memory and over any example in this skill. Do not guess API names: a wrong parameter name costs a failed run, and a look-up costs one call of about one second, with no credentials and no network.
 
-```bash
-# Look up a query method BEFORE writing the query
-python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Workspace.query
-python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Workspace.query_funnel
+1. Find the name: `mp help search <term>` (for example `mp help search retention`).
+2. Read the signature: `mp help Workspace.query_funnel`.
+3. For the allowed values of a parameter, run `mp help Workspace.<method>.<param>` first, for example `mp help Workspace.query_funnel.math`. Do this before you read a reference file or fetch a guide, because it lists every value for the installed version.
+4. Read a type before you build it. `mp help Filter` lists its constructors. `mp help MathType` lists its values.
+5. List a whole area: `mp help Workspace --domain "feature flags"`. `mp help` alone prints the domains.
+6. Write the code and run it. If it fails, read the error. The error text often names the fix.
 
-# Look up types BEFORE constructing them
-python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Filter          # → classmethods: .equals(), .less_than(), etc.
-python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Metric          # → property=, NOT math_property=
-python3 ${CLAUDE_SKILL_DIR}/scripts/help.py GroupBy          # → property, property_type only
-python3 ${CLAUDE_SKILL_DIR}/scripts/help.py MathType         # → enum values
+Look up each name once per session and reuse the answer. Add `-f json` only when you want to extract fields, for example `mp help Filter -f json --jq '.construction[].name'`. Inside Python, `mp.help("Workspace.query")` prints the same text. When code must act on the reference, not for a quick look-up, `mp.reference.describe("Workspace.query")` returns the same entry as a structured object (for example `.signature.params`), and `mp.reference.search("cohort")` returns structured hits (`.hits`). `mp help types` and `mp help exceptions` list all public types and exceptions.
 
-# Look up result types to know what columns .df returns
-python3 ${CLAUDE_SKILL_DIR}/scripts/help.py QueryResult
-python3 ${CLAUDE_SKILL_DIR}/scripts/help.py FlowQueryResult
+A "Tip" line at the end of `mp help` output points to a hosted guide. Fetch it with WebFetch when you need a tutorial rather than a signature.
 
-# Search when you're not sure of the exact name
-python3 ${CLAUDE_SKILL_DIR}/scripts/help.py search cohort   # → CohortBreakdown, CohortMetric, CohortDefinition, ...
-python3 ${CLAUDE_SKILL_DIR}/scripts/help.py search retention # → query_retention, RetentionEvent, RetentionMathType, ...
+If `mp help` reports `No such command`, the library in the plugin environment is older than 0.3.0, so ask the user to run `/mixpanel-headless:setup`.
 
-# List everything
-python3 ${CLAUDE_SKILL_DIR}/scripts/help.py types            # all public types
-python3 ${CLAUDE_SKILL_DIR}/scripts/help.py exceptions        # all exceptions
-```
+## Choose the parameters on purpose
 
-For tutorials and guides: `WebFetch(url="https://mixpanel.github.io/mixpanel-headless/llms.txt")`
+Each engine has a "master dial": one setting that changes every number downstream. Choose it to match the product's natural usage cadence. Do not accept the default without a reason. When you are not sure, run two or three values and compare. A result that holds across values is a signal. A result that flips is an artifact of the setting.
 
-### Discovery method signatures
+- **Insights:** `math` (with `math_property` and `per_user`) decides what you count: people, events, or a property value.
+- **Funnels:** `conversion_window` and `conversion_window_unit` decide who converts. Also choose `order` on purpose.
+- **Retention:** `retention_unit` and `bucket_sizes` decide what "came back" means.
+- **Flows:** `forward`, `reverse`, and `count_type` decide the shape of the paths.
+- **Users:** `mode` decides between a count and profile rows.
 
-```python
-def events(self) -> list[str]: ...
-    # List all event names (cached).
+Prefer a median to a mean for money and other property values, because one outlier moves a mean. If the mean and the median differ a lot, the distribution is skewed, so report the median.
 
-def properties(self, event: str) -> list[str]: ...
-    # List all property names for an event (cached).
+## Gotchas
 
-def property_values(self, property_name: str, *, event: str | None = None, limit: int = 100) -> list[str]: ...
-    # Get sample values for a property.
+Each of these returns a plausible but wrong answer, or fails in a way that looks like a data problem.
 
-def top_events(self, *, type: Literal['general', 'average', 'unique'] = 'general', limit: int | None = None) -> list[TopEvent]: ...
-    # Get today's most active events. TopEvent has .event (str), .count (int), .percent_change (float).
+- **`last=` is always days, on every engine.** `last=4, unit="week"` covers 4 days, not 4 weeks. `unit` sets the bucket size only. Use `last=28` or `from_date`/`to_date`.
+- **`math` decides what `math_property` means.** Count math such as `"unique"` or `"dau"` with a `math_property` raises a validation error. There is no `"sum"` value: to sum a property, use `math="total"` with `math_property`.
+- **`per_user` needs `math_property`.** Without it, or with count math, the query raises a validation error. Per-user math aggregates a property value per user first.
+- **`mode="total"` returns one value for the whole range.** A change to `unit` does not change a plain count in this mode. Use `mode="timeseries"` for a trend.
+- **`rolling` reduces the number of points.** A 30-day rolling window over 59 days gives about 30 points, not 59, because the early periods have no full window.
+- **A `FrequencyFilter` counts per `unit` bucket, not over the whole range.** With the default `unit="day"`, "at least 3 times" means 3 times in one day. An empty series can be the correct answer. Choose the `unit` that matches the period that the user means.
+- **A missing property gives zeros, not an error.** A filter or breakdown on a property that the event does not carry returns an empty or zero result. Check the schema first (workflow step 1).
+- **In event queries, a filter on a user profile property needs `resource_type="people"`.** The default is `"events"`, which looks for an event property of the same name and usually matches nothing. `ws.query_user()` filters are profile filters already.
+- **`ws.query_user()` returns a count by default.** Its default `mode` is `"aggregate"` and its default `limit` is 1. For profile rows, pass `mode="profiles"` and a `limit`.
+- **`ws.top_events()` shows today only.** It is not a ranking over a period. For volume over a period, run `ws.query()` in `mode="total"`.
+- **Funnel `math="median"` is not time to convert.** Property math on a funnel aggregates the numeric `math_property`. Funnel times come only as means (`avg_time`, `avg_time_from_start`, in seconds), so say that they are means.
+- **Entity methods act on one workspace.** The library picks a workspace automatically on the first App API call, and raises `WorkspaceScopeError` if it cannot. When the project has several workspaces and the user means a specific one, list them with `ws.workspaces()` and pin one with `ws.use(workspace=<id>)`.
+- **A report link from another project or region raises `ReportLinkScopeMismatchError`.** The check runs before the record fetch. The message names the `ws.use(...)` call that fixes it.
+- **A shortlink (`/s/<code>`) can fail with `AuthenticationError`.** The shortlink can redirect to the login page, so the API cannot expand it. Ask the user for the full URL from the browser address bar.
+- **Demo and test projects can have old data.** When a result is empty, widen the date range with `from_date` before you conclude that nothing happened.
+- **`ws.schema_graph()` can take minutes on a very large project.** Its cache lasts only inside one Python process. Separate `-c` runs fetch it again, so do multi-step work in one `.py` file, or save the schema to a file.
+- **Sweeps multiply queries and can hit the rate limit.** Cap each loop at a few values, and run the queries one after another, not in parallel. On `RateLimitError`, wait `e.retry_after` seconds (when it is set) before you retry.
 
-def funnels(self) -> list[FunnelInfo]: ...
-    # List saved funnels.
+## Reading guide
 
-def cohorts(self) -> list[SavedCohort]: ...
-    # List saved cohorts.
+Read a reference file only when its condition applies. Each file holds judgment and examples that this file leaves out. For a signature or the allowed values of a parameter, use the look-up loop, not a reference file.
 
-def list_bookmarks(self, bookmark_type: BookmarkType | None = None) -> list[BookmarkInfo]: ...
-    # List all saved reports (bookmarks).
+| Read | When |
+| --- | --- |
+| [insights.md](references/insights.md) | Before you write a `ws.query()` that uses non-default math, `per_user`, a property sum, formulas, or rolling windows |
+| [funnels.md](references/funnels.md) | Before you write a funnel query |
+| [retention.md](references/retention.md) | Before you write a retention query |
+| [flows.md](references/flows.md) | Before you write a flow query |
+| [users.md](references/users.md) | Before you write a user profile query or a cohort count |
+| [exploration.md](references/exploration.md) | When the user asks for insights, a "look around", or works in an unfamiliar project |
+| [segmentation.md](references/segmentation.md) | When a breakdown needs derived values, a behavioral population (inline cohort), or a frequency threshold |
+| [custom-property-formulas.md](references/custom-property-formulas.md) | Before you write any formula for a custom property (inline or saved) |
+| [business-context.md](references/business-context.md) | When the user asks to read, write, audit, or seed business context |
+| [entities.md](references/entities.md) | Before you create, update, or delete a Mixpanel entity (reports, cohorts, flags, experiments, alerts, Lexicon, and so on; for dashboards, use the `dashboard-expert` skill) |
+| The `session-replay` skill | When the user asks what a specific user did on screen, or about rage clicks, dead clicks, or recordings |
+| The `dashboard-expert` skill | When the user asks to build, change, or explain a dashboard |
+| The `auth` skill | When `mp.Workspace()` raises `ConfigError` or `AuthenticationError`, or reports no account or no project |
+| `/mixpanel-headless:setup` | When the plugin interpreter is missing, the import fails, or `mp help` does not exist |
 
-def lexicon_schemas(self, *, entity_type: EntityType | None = None) -> list[LexiconSchema]: ...
-    # List Lexicon schemas (event/property definitions).
+## Output
 
-def schema_graph(self, *, include_density: bool = False, include_user_properties: bool = True, force_refresh: bool = False) -> SchemaGraphResult: ...
-    # Whole-project Lexicon + event<->property graph in one call. SchemaGraphResult has
-    # .relationships_df (event|property|density_local), .properties_for_event(e),
-    # .events_for_property(p), .orphan_properties(), .to_graph() (networkx DiGraph).
+- Lead with the answer in one or two sentences. Then show the numbers, the date range, and the filters that you used.
+- State each assumption that changes the number, for example the conversion window or the counting method.
+- For a chart, call `matplotlib.use("Agg")` before you import `pyplot`, and save the chart to a file. Reason: the shell has no display. Tell the user the file path.
+- When the user asks to share, send, or open a result in Mixpanel, give them `link.url` from `ws.create_report_link(...)`.
 
-def clear_discovery_cache(self) -> None: ...
-    # Clear cached discovery results.
-# User Guide: WebFetch(url="https://mixpanel.github.io/mixpanel-headless/guide/discovery/index.md")
-```
+## Worked example
 
-## Exploratory Analysis Workflow
-
-When exploring an unfamiliar dataset or asked to "find insights," follow this systematic approach. Do NOT skip to querying — explore first.
-
-### Step 1: Orient — Map the Event Schema
-
-Start with `schema_graph()`. One call returns the whole event↔property map plus
-per-property coverage (`density_local`), so you learn which properties actually
-travel with which events — and how well-populated each is — before querying. This
-is the single most useful grounding step: it stops you filtering or grouping by a
-property an event doesn't carry.
+Question: "What share of iOS users who sign up go on to purchase within a day? Send me a link to the report."
 
 ```python
 import mixpanel_headless as mp
+from mixpanel_headless import Filter
+
 ws = mp.Workspace()
 
-schema = ws.schema_graph(include_density=True)
-print("events:", schema.meta["event_count"],
-      "| event properties:", schema.meta["event_property_count"])
+# 1. Ground in the schema: confirm that each step event carries "platform".
+for event in ["Sign Up", "Purchase"]:
+    print(event, "platform" in ws.properties(event))
+print(ws.property_values("platform", event="Sign Up"))  # exact value, e.g. "iOS"
 
-# Headline view: one row per (event, property), with coverage.
-print(schema.relationships_df.head(20))   # event | property | density_local
+# 2. Look-ups done before this code:
+#    mp help Workspace.query_funnel
+#    mp help Filter.equals
 
-# Exact properties on each top event — use these names verbatim in queries.
-for event_name in list(schema.event_to_properties)[:5]:
-    print(f"\n{event_name}: {schema.properties_for_event(event_name)}")
-
-# Properties attached to no events — usually noise; skip them.
-print("\nOrphans:", schema.orphan_properties()[:20])
-
-top = ws.top_events(limit=15)
-print("\nTop by volume:", [(e.event, e.count) for e in top])
-```
-
-Then sample values for the properties you'll actually group or filter by:
-
-```python
-for p in schema.properties_for_event("Purchase")[:15]:
-    print(p, ws.property_values(p, event="Purchase", limit=10))
-```
-
-### Step 2: Classify Properties
-
-Infer property types from sampled values to decide how to use each:
-
-- **Boolean**: values are `['true', 'false']` — segment with `group_by`, often pre-computed behavioral flags
-- **Low-cardinality categorical** (<10 values): `platform`, `tier`, `category` — use for `group_by`
-- **Numeric**: values parse as int/float: `price`, `total`, `count` — use for `math='average'` or `math='sum'` with `math_property=`
-- **High-cardinality** (>100 values): IDs, names — skip for `group_by`, may need custom property cleanup
-- **Temporal**: ISO dates or epoch values — use for time-based analysis
-
-Property naming patterns that signal analytical value:
-- `is_*`, `has_*`, `was_*`, `post_*` → boolean flags, often pre-computed behavioral segments worth investigating
-- `*_total`, `*_count`, `*_value`, `*_amount` → numeric, aggregate with avg/sum/median
-- `*_name`, `*_type`, `*_category`, `*_tier` → categorical, use for breakdowns
-- `*_id`, `*_uuid` → identifiers, skip for breakdowns
-
-### Step 3: Scan for Significant Segments
-
-For each boolean and low-cardinality categorical property on key events, run a quick breakdown against a numeric metric:
-
-```python
-# Example: scan all interesting properties on a purchase event
-numeric_prop = 'order_total'  # or whatever the key metric is
-interesting_props = [p for p in props if not p.endswith('_id')]
-
-for prop in interesting_props:
-    vals = ws.property_values(prop, event=event, limit=10)
-    if len(set(vals)) <= 10:  # low cardinality — worth a breakdown
-        result = ws.query(event, math='average', math_property=numeric_prop,
-                           group_by=prop, last=90, mode='total')
-        print(f"\n{numeric_prop} by {prop}:")
-        print(result.df.to_string(index=False))
-        # Flag segments where metric differs >15% from overall
-```
-
-### Step 4: Deep Dive on Significant Findings
-
-When a breakdown reveals a notable difference (>15% between segments):
-1. **Quantify**: calculate the exact ratio between segments
-2. **Cross-reference**: does this segment differ on other metrics too?
-3. **Investigate causally**: run funnels or retention filtered by the segment
-4. **Control for confounds**: add a second `group_by` dimension to check if the effect holds
-
-### Step 5: Analyze Messy String Properties
-
-When string properties have complex/unreadable values (e.g., campaign names from tools like Braze):
-1. Sample 15-20 values to identify the naming convention
-2. Look for structural patterns: date codes, targeting prefixes, channel suffixes, audience tags
-3. Design regex cleanup rules, one layer per structural element
-4. Create a custom property with `ws.create_custom_property(CreateCustomPropertyParams(...))`
-5. Verify by querying with the custom property as `group_by`
-
-### Custom Property Formula Reference
-
-Formulas use a SQL-like expression language. Variables (A, B, _A, etc.) map to properties via `composedProperties`.
-
-**Variable binding:** `LET(name, expression, body)` — define intermediate results:
-```
-LET(raw, A, REGEX_REPLACE(raw, "pattern", "replacement"))
-LET(x, A * B, IFS(x < 50, "low", x < 200, "mid", TRUE, "high"))
-```
-
-**Conditionals:** `IF(cond, then, else)`, `IFS(cond1, val1, cond2, val2, ..., TRUE, default)`
-
-**String functions:** `UPPER(s)`, `LOWER(s)`, `LEN(s)`, `LEFT(s, n)`, `RIGHT(s, n)`, `MID(s, start, count)`, `SPLIT(s, delim, n)`, `HAS_PREFIX(s, p)`, `HAS_SUFFIX(s, p)`, `PARSE_URL(s, "domain")`
-
-**Regex functions (PCRE2 engine):**
-- `REGEX_MATCH(haystack, pattern)` — returns true/false
-- `REGEX_EXTRACT(haystack, pattern, capture_group)` — returns match or capture group
-- `REGEX_REPLACE(haystack, pattern, replacement)` — replaces all matches
-
-**Regex engine quirks (Mixpanel-specific):**
-- **Case-insensitive by default** — use `(?-i)` to switch to case-sensitive matching within a pattern
-- **Backreferences work** — `$1`, `$2` capture groups and `$0` whole-match all work in `REGEX_REPLACE` replacements
-- **`{n,m}` quantifiers conflict with formula syntax** — curly braces are parsed as formula constructs. Use repeated character classes instead (e.g., `[0-9][0-9][0-9][0-9]` instead of `[0-9]{4}`)
-- **`\d`, `\w` shorthand classes don't work** — use `[0-9]`, `[A-Za-z0-9_]` explicitly
-- **Escape backslashes carefully** — in formula strings, `\\\\` may be needed for a literal `\` depending on how the formula is constructed (Python string → JSON → regex engine)
-
-**CamelCase splitting** — insert space between lowercase→uppercase boundaries:
-```
-REGEX_REPLACE(text, "(?-i)([a-z])([A-Z])", "$1 $2")
-// ChickenSundaysApril → Chicken Sundays April
-```
-
-**Practical multi-step cleanup example** (campaign names from Braze):
-```
-LET(s1, REGEX_REPLACE(A, "^[0-9][0-9][0-9][0-9][0-9]*_", ""),
-LET(s2, REGEX_REPLACE(s1, "^(NW|TARGETED|REGIONAL|NTL)_", ""),
-LET(s3, REGEX_REPLACE(s2, "_(Push|Email|NotificationCenter|ModalInAppMessage)_.*$", ""),
-LET(s4, REGEX_REPLACE(s3, "_", " "),
-  REGEX_REPLACE(s4, " +", " ")
-))))
-```
-
-**Type functions:** `STRING(x)`, `NUMBER(x)`, `BOOLEAN(x)`, `DEFINED(x)`
-
-**Math:** `+`, `-`, `*`, `/`, `%`, `MIN(a,b)`, `MAX(a,b)`, `FLOOR(n)`, `CEIL(n)`, `ROUND(n)`
-
-**Date:** `DATEDIF(start, end, unit)` — units: D, M, Y, MD, YM, YD. `TODAY()` for current date.
-
-**List:** `SUM(list)`, `ANY(x, list, expr)`, `ALL(x, list, expr)`, `FILTER(x, list, expr)`, `MAP(x, list, expr)`
-
-**Comparison:** `==`, `!=`, `<`, `>`, `<=`, `>=` (case-insensitive for strings), `IN` for list membership
-
-**Logical:** `AND`, `OR`, `NOT(x)`
-
-**Constants:** `TRUE`, `FALSE`, `UNDEFINED`
-
-**Creating a custom property via the API:**
-```python
-from mixpanel_headless import CreateCustomPropertyParams, ComposedPropertyValue
-
-params = CreateCustomPropertyParams(
-    name="Clean Campaign Name",
-    resource_type="events",
-    display_formula='LET(raw, A, REGEX_REPLACE(REGEX_REPLACE(raw, "^[0-9]+_", ""), "_", " "))',
-    composed_properties={
-        "A": ComposedPropertyValue(
-            resource_type="event", type="string", value="campaign_name",
-            label="Campaign Name", property_default_type="string",
-        )
-    }
+# 3. Run the funnel. A one-day window matches "within a day".
+result = ws.query_funnel(
+    ["Sign Up", "Purchase"],
+    conversion_window=1,
+    conversion_window_unit="day",
+    where=Filter.equals("platform", "iOS"),
+    last=90,
 )
-prop = ws.create_custom_property(params)
-ref = CustomPropertyRef(prop.custom_property_id)
-result = ws.query(event, group_by=GroupBy(ref), last=30, mode='total')
-```
-
-## Workspace
-
-```python
-class Workspace:
-    """Unified entry point for Mixpanel data operations (042 redesign)."""
-
-    def __init__(
-        self,
-        *,
-        account: str | None = None,
-        project: str | None = None,
-        workspace: int | None = None,
-        target: str | None = None,
-        session: Session | None = None,
-    ) -> None:
-        """Create a new Workspace. Resolution per axis is independent
-        (env > param > target > bridge > config); see
-        ``mixpanel_headless.auth_types`` and the resolver.
-
-        With ``session=`` supplied, all other axis kwargs are ignored
-        (full bypass).
-        """
-        ...
-
-    # --- Properties (read-only) ---
-    account: Account            # Resolved Account (discriminated union)
-    project: Project            # Resolved Project
-    workspace: WorkspaceRef | None  # Resolved workspace, or None for lazy-resolve
-    session: Session            # The (account, project, workspace) tuple
-    api: MixpanelAPIClient      # Direct API client access (escape hatch)
-
-    def use(
-        self,
-        *,
-        account: str | None = None,
-        project: str | None = None,
-        workspace: int | None = None,
-        target: str | None = None,
-        persist: bool = False,
-    ) -> Self:
-        """Switch any axis in-session. Returns self for chaining.
-        Preserves the underlying httpx.Client. With persist=True, also
-        writes to ~/.mp/config.toml [active]. ``target=`` is mutex
-        with the per-axis kwargs.
-        """
-        ...
-```
-
-Supports context manager: `with mp.Workspace() as ws: ...`
-
-### Project & Workspace Management
-
-```python
-def me(self, *, force_refresh: bool = False) -> Any: ...
-    # Get /me response for current credentials (cached 24h).
-
-def projects(self) -> list[Project]: ...
-    # List accessible projects (v3; returns Project records — id, name,
-    # organization_id, timezone). Replaces deprecated discover_projects().
-
-def workspaces(self, *, project_id: str | None = None) -> list[WorkspaceRef]: ...
-    # List workspaces in a project (v3; returns WorkspaceRef records —
-    # id, name, is_default). Replaces deprecated discover_workspaces().
-
-def list_workspaces(self) -> list[PublicWorkspace]: ...
-    # List all public workspaces for the current project (App API).
-
-def resolve_workspace_id(self) -> int: ...
-    # Auto-discover and resolve workspace ID (lazy-resolve helper).
-
-def close(self) -> None: ...
-    # Close all resources (HTTP client). Idempotent.
-```
-
-> **Removed (042 redesign — FR-038):** `Workspace.workspace_id` property,
-> `set_workspace_id()`, `switch_project()`, `switch_workspace()`,
-> `discover_projects()`, `discover_workspaces()`, `current_project`,
-> `current_credential`, `test_credentials()`. Use `ws.session.workspace_id`,
-> `ws.use(workspace=N)`, `ws.use(project=P)`, `ws.projects()`,
-> `ws.workspaces()`, `ws.project`, `ws.account`, and `mp.accounts.test(NAME)`
-> respectively.
-
-### Insights Query
-
-Run `python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Workspace.query` for the full signature.
-
-```python
-def query(
-    self,
-    events: str | Metric | CohortMetric | Formula | Sequence[...],
-    *,
-    from_date: str | None = None,        # YYYY-MM-DD, overrides last
-    to_date: str | None = None,          # YYYY-MM-DD, requires from_date
-    last: int = 30,                      # relative days (ignored if from_date set)
-    unit: QueryTimeUnit = 'day',
-    math: MathType = 'total',            # aggregation: total, unique, dau, average, sum, ...
-    math_property: str | None = None,    # top-level shorthand; Metric() uses property= instead
-    per_user: PerUserAggregation | None = None,
-    percentile_value: int | float | None = None,
-    group_by: str | GroupBy | CohortBreakdown | FrequencyBreakdown | list[...] | None = None,
-    where: Filter | FrequencyFilter | list[...] | None = None,
-    formula: str | None = None,          # e.g. "(B / A) * 100", requires 2+ events
-    formula_label: str | None = None,
-    rolling: int | None = None,
-    cumulative: bool = False,
-    mode: Literal['timeseries', 'total', 'table'] = 'timeseries',
-    time_comparison: TimeComparison | None = None,
-    data_group_id: int | None = None,
-) -> QueryResult:
-    # .df columns: timeseries → [date, event, count]
-    #              total → [event, count]
-    #              with group_by → adds segment column
-    ...
-```
-
-### Funnel Query
-
-Run `python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Workspace.query_funnel` for the full signature.
-
-```python
-def query_funnel(
-    self,
-    steps: list[str | FunnelStep],      # at least 2 steps required
-    *,
-    conversion_window: int = 14,
-    conversion_window_unit: Literal['second', 'minute', 'hour', 'day', 'week', 'month', 'session'] = 'day',
-    order: Literal['loose', 'any'] = 'loose',
-    from_date: str | None = None, to_date: str | None = None, last: int = 30,
-    unit: QueryTimeUnit = 'day',
-    math: FunnelMathType = 'conversion_rate_unique',
-    math_property: str | None = None,
-    group_by: str | GroupBy | CohortBreakdown | list[...] | None = None,
-    where: Filter | list[Filter] | None = None,
-    exclusions: list[str | Exclusion] | None = None,
-    holding_constant: str | HoldingConstant | list[...] | None = None,
-    mode: Literal['steps', 'trends', 'table'] = 'steps',
-    reentry_mode: FunnelReentryMode | None = None,
-    time_comparison: TimeComparison | None = None,
-    data_group_id: int | None = None,
-) -> FunnelQueryResult:
-    # .df columns: [step, event, count, step_conv_ratio, avg_time]
-    # .overall_conversion_rate: float
-    ...
-```
-
-### Retention Query
-
-Run `python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Workspace.query_retention` for the full signature.
-
-```python
-def query_retention(
-    self,
-    born_event: str | RetentionEvent,
-    return_event: str | RetentionEvent,
-    *,
-    retention_unit: TimeUnit = 'week',
-    alignment: RetentionAlignment = 'birth',
-    bucket_sizes: list[int] | None = None,
-    from_date: str | None = None, to_date: str | None = None, last: int = 30,
-    unit: QueryTimeUnit = 'day',
-    math: RetentionMathType = 'retention_rate',
-    group_by: str | GroupBy | CohortBreakdown | list[...] | None = None,
-    where: Filter | list[Filter] | None = None,
-    mode: RetentionMode = 'curve',
-    unbounded_mode: RetentionUnboundedMode | None = None,
-    retention_cumulative: bool = False,
-    time_comparison: TimeComparison | None = None,
-    data_group_id: int | None = None,
-) -> RetentionQueryResult:
-    # .df columns: [cohort_date, bucket, count, rate]  (+ segment with group_by)
-    # .average: synthetic average across cohorts
-    ...
-```
-
-### Flow Query
-
-Run `python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Workspace.query_flow` for the full signature.
-
-```python
-def query_flow(
-    self,
-    event: str | FlowStep | Sequence[str | FlowStep],
-    *,
-    forward: int = 3, reverse: int = 0,
-    from_date: str | None = None, to_date: str | None = None, last: int = 30,
-    conversion_window: int = 7,
-    conversion_window_unit: Literal['day', 'week', 'month', 'session'] = 'day',
-    count_type: Literal['unique', 'total', 'session'] = 'unique',
-    cardinality: int = 3,
-    collapse_repeated: bool = False,
-    hidden_events: list[str] | None = None,
-    mode: Literal['sankey', 'paths', 'tree'] = 'sankey',
-    where: Filter | list[Filter] | None = None,
-    segments: str | GroupBy | CohortBreakdown | FrequencyBreakdown | list[...] | None = None,
-    exclusions: list[str] | None = None,
-    data_group_id: int | None = None,
-) -> FlowQueryResult:
-    # .df, .graph (NetworkX DiGraph), .anytree (tree mode)
-    # .top_transitions(n), .drop_off_summary()
-    ...
-```
-
-### User Profile Query
-
-Run `python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Workspace.query_user` for the full signature.
-
-```python
-def query_user(
-    self,
-    *,
-    where: Filter | list[Filter] | str | None = None,
-    cohort: int | CohortDefinition | None = None,
-    properties: list[str] | None = None,
-    sort_by: str | None = None,
-    sort_order: Literal['ascending', 'descending'] = 'descending',
-    limit: int | None = 1,              # None = fetch all matching
-    search: str | None = None,
-    distinct_id: str | None = None,     # single user lookup
-    distinct_ids: list[str] | None = None,  # batch lookup
-    group_id: str | None = None,        # query group profiles
-    as_of: str | int | None = None,     # point-in-time
-    mode: Literal['profiles', 'aggregate'] = 'aggregate',
-    aggregate: Literal['count', 'extremes', 'percentile', 'numeric_summary'] = 'count',
-    aggregate_property: str | None = None,
-    percentile: float | None = None,
-    segment_by: list[int] | None = None,
-    parallel: bool = False, workers: int = 5,
-    include_all_users: bool = False,
-) -> UserQueryResult:
-    # .df, .total, .profiles
-    ...
-```
-
-### Build Params (without executing)
-
-Same parameters as the corresponding query methods, but return `dict[str, Any]` bookmark params without making an API call. Useful for creating saved reports (bookmarks).
-
-```python
-def build_params(self, events, **kwargs) -> dict[str, Any]: ...
-def build_funnel_params(self, steps, **kwargs) -> dict[str, Any]: ...
-def build_retention_params(self, born_event, return_event, **kwargs) -> dict[str, Any]: ...
-def build_flow_params(self, event, **kwargs) -> dict[str, Any]: ...
-def build_user_params(self, **kwargs) -> dict[str, Any]: ...
-```
-
-### Run Built Params
-
-Execute what `build_*_params()` produced, after optional edits. Same result types as the matching `query_*()` methods. `limit=` on the first three is the segment cap (1 to 50000, default 3000); on `run_user_params` it is the profile cap, as on `query_user()`.
-
-```python
-def run_params(self, params, *, limit=None, workspace_id=None) -> QueryResult: ...
-def run_funnel_params(self, params, *, limit=None, workspace_id=None) -> FunnelQueryResult: ...
-def run_retention_params(self, params, *, limit=None, workspace_id=None) -> RetentionQueryResult: ...
-def run_flow_params(self, params, *, mode=None, workspace_id=None) -> FlowQueryResult: ...
-def run_user_params(self, params, *, limit=1, parallel=False, workers=5) -> UserQueryResult: ...
-```
-
-### Share a Query as a Link
-
-Turn any query into a Mixpanel URL the user can open in the browser. One App API POST (plus a workspace lookup when none is pinned); the report type is inferred from the result.
-
-```python
-result = ws.query(mp.Metric.total("Login"), last=7)
-link = ws.create_report_link(result, name="Logins, last 7 days")
-print(link.url)      # https://mixpanel.com/project/<pid>/view/<wid>/app/insights#<slug>
-
-# The other direction: a URL / slug / shortlink someone shared → runnable params
-r = ws.resolve_report_link("https://mixpanel.com/s/AbC123")
-df = ws.query_report_link(r).df
-```
-
-Always give the user `link.url` when they ask to "share", "send", or "open in Mixpanel". Project and region mismatches raise `ReportLinkScopeMismatchError` before any network call — the message names the `ws.use(project=...)` fix.
-
-### Multi-Step Analysis Patterns
-
-Every query engine has parameters that look like simple settings but are actually analytical choices with outsized influence on results. Before running any query, apply these principles:
-
-- [ ] **Find the master dial.** Each engine has one parameter (or small set) that reshapes all downstream metrics. Changing it changes the story. Know which parameter it is and choose deliberately — don't accept defaults blindly.
-- [ ] **Match parameters to the domain.** There are no universal "correct" values. A social app needs daily retention; a B2B SaaS needs monthly. A food-ordering funnel needs a 1-hour window; an onboarding funnel needs 14 days. The product's natural usage cadence dictates the setting.
-- [ ] **Distrust averages.** Averages include outliers — one extreme value distorts the whole metric. Use medians (`math='median'`, `percentile=50`) to see what's typical. If the mean and median diverge, the distribution is skewed and the mean is misleading.
-- [ ] **Counting methodology is a modeling choice.** "Unique users," "total events," and "sessions" aren't just modes — they answer fundamentally different questions. "How many people?" vs "How much activity?" vs "How many engagement moments?" Choose the counting method that matches the business question.
-- [ ] **Know the silent defaults.** Parameters are sometimes silently ignored (e.g., `math_property` with `math='unique'`), silently constraining (e.g., no funnel re-entry by default), or silently inflating (e.g., `unbounded_mode='carry_forward'` in retention). If results look surprising, check whether a default is shaping them.
-- [ ] **Sweep, don't guess.** When unsure which parameter value to use, try several and observe how metrics shift. Where the metric stabilizes or diverges reveals the true signal. The code examples below demonstrate this for each engine.
-
-#### Comparing Segments Across Multiple Dimensions
-
-When a single breakdown shows a difference, verify it holds across dimensions:
-
-```python
-# Step 1: Find the interesting segment
-result = ws.query(event, math='average', math_property='order_total',
-                   group_by='deal_sweet_spot', last=90, mode='total')
-# Found: deal_sweet_spot=true has 37% higher AOV
-
-# Step 2: Check if it holds across another dimension
-result = ws.query(event, math='average', math_property='order_total',
-                   group_by=['deal_sweet_spot', 'platform'], last=90, mode='total')
-# Does the sweet spot hold for both iOS and Android?
-
-# Step 3: Check segment rates across a third dimension
-result = ws.query(event, math='unique',
-                   group_by=['loyalty_tier', 'deal_sweet_spot'], last=90, mode='total')
-# Which tier is most likely to achieve the sweet spot?
-```
-
-#### Insights Analysis: MathType, Per-User, and the Unit of Analysis
-
-**MathType is the most critical Insights parameter.** It defines what you're counting — `total` (event volume), `unique` (user reach), `dau/wau/mau` (time-bounded engagement), `average/median/percentile` (property distributions), `sum` (revenue totals). Choosing the wrong MathType answers the wrong question silently. Match MathType to the business question: engagement → `dau` or `wau`; revenue → `sum` or `average` with `math_property`; adoption → `unique`; intensity → `total`.
-
-**Per-user aggregation is a two-stage process** that fundamentally changes the unit of analysis. `per_user='average'` with `math='average'` first computes each user's average, then averages across users. This is NOT the same as a global average — a power user with 1000 events and a casual user with 2 events contribute equally. This is often the right choice (prevents power users from dominating) but it changes the story dramatically:
-
-```python
-# Sweep MathTypes to understand an event from multiple angles
-event = 'Purchase'  # use a real event name
-prop = 'order_total'  # use a real numeric property
-
-for mt in ['total', 'unique', 'dau', 'average', 'median', 'sum']:
-    kwargs = {'math': mt, 'last': 30, 'mode': 'total'}
-    if mt in ('average', 'median', 'sum'):
-        kwargs['math_property'] = prop
-    result = ws.query(event, **kwargs)
-    print(f"{mt:>10}: {result.df['count'].iloc[0]:>12,.2f}")
-# total = event volume, unique = user reach, dau = daily engagement,
-# average/median = typical transaction, sum = total revenue
-
-# Per-user aggregation: compare global average vs per-user average
-global_avg = ws.query(event, math='average', math_property=prop, last=30, mode='total')
-per_user_avg = ws.query(event, math='average', math_property=prop,
-                         per_user='average', last=30, mode='total')
-print(f"Global avg: {global_avg.df['count'].iloc[0]:.2f}")
-print(f"Per-user avg: {per_user_avg.df['count'].iloc[0]:.2f}")
-# If these differ significantly, power users are skewing the global average
-```
-
-**Prefer medians over averages for property distributions** — same principle as funnel time-to-convert. Use `math='median'` instead of `math='average'`, or `math='percentile'` with `percentile_value=50`. Averages include outliers; medians reveal what's typical.
-
-**Silent traps:** `math_property` is silently ignored with non-property MathType (e.g., `math='unique'` discards `math_property`). `rolling` reduces data point count without warning (a 30-day rolling window over 59 days produces ~29 points, not 59). `unit` is silently ignored in `mode='total'`.
-
-#### Funnel Analysis: Windows, Modes, and Time
-
-Funnel queries return time data in step metadata columns (`avg_time`, `avg_time_from_start`) alongside conversion rates.
-
-**Conversion window is the most critical funnel parameter.** It defines the maximum time a user has to complete the funnel from their first step. It affects every other metric — conversion rate, time-to-convert, and segment comparisons all shift dramatically with window size.
-
-**Choosing a window:** Match it to the user journey being measured. Short funnels (ordering food, adding to cart) need tight windows — hours, not days. Long funnels (onboarding, subscription purchase) need wider windows — days or weeks. When unsure, experiment:
-
-```python
-# Try progressively tighter windows to find where signal emerges
-for window, unit in [(14, 'day'), (7, 'day'), (1, 'day'), (12, 'hour'), (6, 'hour')]:
-    result = ws.query_funnel(steps, last=90,
-        conversion_window=window, conversion_window_unit=unit)
-    final = result.df[result.df['step'] == result.df['step'].max()].iloc[0]
-    print(f"{window}{unit}: conv={final['overall_conv_ratio']:.3f} "
-          f"time={final['avg_time_from_start']/3600:.1f}h")
-# Look for: conversion stabilizing, time differences appearing at tighter windows
-```
-
-**Conversion counting modes** change what "conversion" means:
-- `conversion_rate_unique` (default): unique users who completed. No re-entry — first attempt in the window or out.
-- `conversion_rate_total`: total completions. One user can count multiple times.
-- Combine with `reentry_mode='basic'` or `reentry_mode='optimized'` for multiple attempts. Optimized re-entry picks the best completion path.
-
-**Time-to-convert: prefer medians over averages.** Average time includes outliers — one slow user inflates the average; one fast user pulls it down. Use median or percentiles for true speed trends:
-
-```python
-# Median time via funnel math
-result = ws.query_funnel(steps, last=90, math='median')
-
-# Compare segments with filtered funnels + tight window
-ios = ws.query_funnel(steps, where=Filter.equals('platform', 'iOS'),
-    last=90, conversion_window=6, conversion_window_unit='hour')
-android = ws.query_funnel(steps, where=Filter.equals('platform', 'Android'),
-    last=90, conversion_window=6, conversion_window_unit='hour')
-# Compare avg_time_from_start on matching steps
-```
-
-**When comparing segments across funnels:** always try at least 2-3 conversion windows. A difference invisible at 14 days may be stark at 6 hours. This is especially true for speed comparisons — tighter windows filter out noise and reveal which segment completes faster.
-
-**`order` changes what "conversion" means.** `'loose'` (default) requires steps in sequence but allows other events between them. `'any'` requires all steps in any order — a user who does C→B→A counts as converting. The difference is dramatic: loose funnels measure sequential workflows; any-order funnels measure feature adoption breadth. When unsure, run both and compare:
-
-```python
-# order='loose' vs 'any' — same steps, fundamentally different questions
-for ord in ['loose', 'any']:
-    result = ws.query_funnel(steps, last=90, order=ord)
-    print(f"order={ord}: {result.overall_conversion_rate:.3f}")
-# If 'any' >> 'loose', users are completing all steps but not in the expected order
-# This often reveals UX issues — users accomplish the goal but not via the designed path
-```
-
-**`holding_constant` isolates cross-step consistency.** Hold a property like `'platform'` or `'device_id'` constant and users who change values between steps (e.g., sign up on iOS, purchase on Android) are excluded. This reveals single-device vs cross-device conversion and is essential for understanding journeys that span platforms. Maximum 3 properties.
-
-**Exclusions disqualify tainted journeys.** `exclusions=["Logout"]` removes users who logged out between funnel steps — unlike flow `hidden_events`, exclusions completely remove users from the funnel. Use for support escalation events, churn signals, or any action that taints the conversion path. Control which steps the exclusion applies to with `Exclusion("Logout", from_step=0, to_step=2)` (0-indexed).
-
-**Per-step filters narrow individual steps without affecting others.** `FunnelStep("Purchase", filters=[Filter.greater_than("amount", 50)])` restricts which Purchase events count, but doesn't filter Signup events. Global `where` filters ALL steps. This distinction is subtle but powerful: filter the population with `where`, filter the definition of a step with per-step filters.
-
-**Session windows are a distinct paradigm.** `conversion_window_unit='session'` constrains the entire funnel to a single engagement session — no multi-session hops. This reveals true in-session conversion behavior, separate from users who spread a journey across days. The third counting mode, `math='conversion_rate_session'`, counts sessions rather than users or events (requires `conversion_window_unit='session'`).
-
-#### Retention Analysis: The Cohort Bucketing Triple
-
-**`retention_unit` + `alignment` + `bucket_sizes` define your entire retention model** — retention's equivalent of the funnel conversion window. `retention_unit` groups users into cohorts (day/week/month). `alignment` anchors cohorts (`birth` = each user's clock starts from their event; `interval_start` = snap to calendar boundaries). `bucket_sizes` sets measurement points. Changing any one reshapes all downstream metrics.
-
-**Match `retention_unit` to your product's natural usage cadence.** Daily products (social, messaging) need `retention_unit='day'`. Weekly products (task management, fitness) need `'week'`. Monthly products (subscriptions, B2B SaaS) need `'month'`. When unsure, experiment:
-
-```python
-# Sweep retention_unit to find natural product cadence
-born, ret = 'Signup', 'Login'  # use real event names
-for ru in ['day', 'week', 'month']:
-    result = ws.query_retention(born, ret, retention_unit=ru, last=90)
-    avg = result.average
-    if avg is not None and len(avg) > 1:
-        bucket_1_rate = avg.iloc[1]['rate'] if 'rate' in avg.columns else None
-        print(f"{ru:>6} retention: bucket 1 = {bucket_1_rate}")
-# The unit where bucket-1 retention is highest reveals natural usage cadence
-
-# Custom buckets for milestone-based retention (days 1, 3, 7, 14, 30)
-result = ws.query_retention(born, ret, retention_unit='week',
-    bucket_sizes=[1, 3, 7, 14, 30], unit='day', last=90)
-print(result.df[result.df['cohort_date'] == '$overall'])
-# Day 1 = activation, Day 7 = habit formation, Day 30 = long-term retention
-
-# Compare alignment modes — can shift results dramatically
-for align in ['birth', 'interval_start']:
-    result = ws.query_retention(born, ret, retention_unit='week',
-        alignment=align, last=90)
-    print(f"\nalignment={align}:")
-    print(result.average.head() if result.average is not None else "No data")
-```
-
-**Be wary of unbounded modes — they inflate retention.** `unbounded_mode='carry_forward'` credits future returns to past buckets — a user who returns only on day 30 gets counted as retained in all buckets from 30 onward. `carry_back` inflates early buckets instead. Useful for "did they ever engage?" analysis but distorts standard retention curves.
-
-**`retention_cumulative=True` masks re-engagement gaps.** Cumulative retention creates monotonically increasing curves where each bucket includes all prior buckets. This hides whether users who returned in week 1 ALSO returned in week 2. Standard (non-cumulative) retention reveals re-engagement patterns and true habit formation.
-
-**Counting methodology:** `math='retention_rate'` (% who returned — the default), `math='unique'` (count who returned), `math='total'` (how many times they returned — events, not users). `total` reveals engagement intensity; a user logging in 5 times in bucket 1 counts as 5, not 1. Like funnels, the counting choice changes the question.
-
-#### Flow Analysis: Windows, Cardinality, and Signal-to-Noise
-
-**Cardinality controls signal-to-noise** — the most important flow-specific parameter. Low cardinality (2-3) reveals dominant paths — the main story. High cardinality (10+) reveals edge cases and niche journeys. Start low to find the narrative, then increase to find exceptions.
-
-**`conversion_window` matters for flows too** — identical concept to funnels. Session-based windows (`conversion_window_unit='session'`) reveal in-app behavior within a single engagement. Calendar windows reveal multi-day journeys. A tight window isolates intentional workflows; a wide window captures exploratory meandering:
-
-```python
-# Sweep cardinality to find signal-to-noise sweet spot
-event = 'Login'  # use a real anchor event
-for card in [2, 3, 5, 10]:
-    result = ws.query_flow(event, forward=3, cardinality=card, last=30)
-    transitions = result.top_transitions(5)
-    print(f"\ncardinality={card}: {len(transitions)} top transitions")
-    for src, dst, count in transitions[:3]:
-        print(f"  {src} → {dst}: {count}")
-# Low cardinality = clear narrative; high cardinality = exhaustive but noisy
-
-# Compare count types (same principle as funnels)
-for ct in ['unique', 'total', 'session']:
-    result = ws.query_flow(event, forward=3, count_type=ct, last=30)
-    dropoff = result.drop_off_summary()
-    print(f"\n{ct}: step 0 dropoff = {dropoff}")
-# unique = how many people; total = how much activity; session = how many sessions
-
-# Compare collapse_repeated to separate intent from noise
-for collapse in [False, True]:
-    result = ws.query_flow(event, forward=3, collapse_repeated=collapse,
-                            cardinality=5, last=30)
-    print(f"\ncollapse_repeated={collapse}:")
-    for src, dst, count in result.top_transitions(3):
-        print(f"  {src} → {dst}: {count}")
-```
-
-**`collapse_repeated` changes what "a path" means.** With `False` (default), A→A→A→B is a distinct path from A→B — repetitive clicks look like distinct journeys. With `True`, consecutive duplicates merge, revealing intent over noise. Toggle this to see both the raw behavior and the simplified user intent.
-
-**`hidden_events` vs `exclusions` — hiding vs disqualifying.** `hidden_events` removes events from display but they still affect path structure and counts. `exclusions` disqualifies users who performed those events entirely — a much stronger operation. Use `hidden_events` for decluttering (e.g., ubiquitous page views); use `exclusions` for removing tainted journeys (e.g., users who churned mid-flow).
-
-**Three modes reveal different stories.** `sankey` shows aggregate flow structure and bottlenecks (where do most users go?). `paths` shows exact user journeys in sequence (what are the top 5 complete paths?). `tree` shows branching decision points (where do users diverge?). Use all three on the same data to build a complete picture.
-
-#### User Profile Analysis: Modes, Aggregates, and Distribution Shape
-
-**`mode` is the most critical user query parameter.** `'profiles'` returns individual user records (one row per user). `'aggregate'` returns a single statistic. These are fundamentally different operations — profiles is a data extraction, aggregate is a calculation. Aggregate is also dramatically faster (single API call vs paginated fetching).
-
-**Sweep aggregate functions to understand distribution shape** before building expensive profile queries. `count` tells you "how many." `extremes` reveals range (min/max). `percentile` at 50 gives median. `numeric_summary` gives mean, variance, and sum-of-squares:
-
-```python
-# Sweep aggregate functions to understand a property's distribution
-prop = 'lifetime_value'  # use a real numeric profile property
-for agg in ['count', 'extremes', 'percentile', 'numeric_summary']:
-    kwargs = {'mode': 'aggregate', 'aggregate': agg}
-    if agg != 'count':
-        kwargs['aggregate_property'] = prop
-    if agg == 'percentile':
-        kwargs['percentile'] = 50  # median
-    result = ws.query_user(**kwargs)
-    print(f"{agg:>16}: {result.aggregate_data}")
-# count = population size, extremes = range, percentile@50 = median,
-# numeric_summary = full distribution stats
-# If mean (from numeric_summary) >> median (from percentile), distribution is right-skewed
-
-# Point-in-time comparison with as_of
-today_count = ws.query_user(mode='aggregate', aggregate='count',
-    where=Filter.equals('plan', 'premium'))
-past_count = ws.query_user(mode='aggregate', aggregate='count',
-    where=Filter.equals('plan', 'premium'), as_of='2025-01-01')
-print(f"Premium users: {past_count.value} (Jan 1) → {today_count.value} (today)")
-```
-
-**Prefer medians over averages** — same principle as funnels and Insights. `aggregate='percentile', percentile=50` gives median; `numeric_summary` gives mean. If they diverge significantly, the distribution is skewed and the mean is misleading.
-
-**`as_of` enables temporal analysis** — query profiles as they existed at a past date. Compare population states over time: "how many premium users existed on Jan 1 vs today?" Without `as_of`, you always see current state, making growth and churn invisible.
-
-**Inline `CohortDefinition` vs saved cohorts.** Inline cohorts (`cohort=CohortDefinition.all_of(...)`) let you define complex behavioral segments on-the-fly without roundtripping to save/delete in Mixpanel. Much faster iteration for exploratory analysis. Use saved cohorts for production dashboards and monitoring.
-
-#### Analytical Building Blocks: Custom Properties, Cohorts, and Frequency
-
-Raw data is rarely analysis-ready. These three tools transform raw events and properties into analytically useful dimensions, populations, and segments. Recognize when to reach for each — they compose with every query engine.
-
-**Inline Custom Properties — transform data at query time.** When property values are messy, need bucketing, or you need to derive new dimensions, create an `InlineCustomProperty` rather than querying raw values. Key patterns:
-
-- **Bucketing continuous values** for breakdowns (revenue → Low/Medium/High)
-- **Cleaning messy strings** with IFS/REGEX_EXTRACT (campaign names, UTM parameters)
-- **Deriving new dimensions** from arithmetic or date functions (profit margin, days since signup)
-- **Fallback chains** across multiple properties (display_name → username → "unknown")
-
-```python
-from mixpanel_headless import InlineCustomProperty, PropertyInput, GroupBy, Filter, Metric
-
-# Bucket revenue into tiers for breakdown
-revenue_tier = InlineCustomProperty(
-    formula='IFS(A < 50, "Low", A < 200, "Medium", TRUE, "High")',
-    inputs={"A": PropertyInput("revenue", type="number")},
-    property_type="string",
+print(result.df)
+print(f"Overall conversion: {result.overall_conversion_rate:.1%}")
+
+# 4. Check: compare with a wider window before you present.
+wide = ws.query_funnel(
+    ["Sign Up", "Purchase"],
+    conversion_window=7,
+    conversion_window_unit="day",
+    where=Filter.equals("platform", "iOS"),
+    last=90,
 )
-result = ws.query("Purchase", group_by=GroupBy(property=revenue_tier), last=30, mode='total')
+print(f"7-day window: {wide.overall_conversion_rate:.1%}")
 
-# Derive profit margin for aggregation
-margin = InlineCustomProperty.numeric("(A - B) / A * 100", A="revenue", B="cost")
-result = ws.query(Metric("Purchase", math="average", property=margin), last=30)
-
-# Clean messy strings for segmentation
-domain = InlineCustomProperty(
-    formula='REGEX_EXTRACT(A, "@(.+)$")',
-    inputs={"A": PropertyInput("email", type="string")},
-    property_type="string",
-)
-result = ws.query("Signup", group_by=GroupBy(property=domain), last=30, mode='total')
+# 5. The user asked for a link, so share the query as a report link.
+link = ws.create_report_link(result, name="iOS signup to purchase, 1-day window")
+print(link.url)
 ```
 
-Use `InlineCustomProperty` for ad-hoc exploration. When a formula proves valuable, persist it with `ws.create_custom_property()` and reference it via `CustomPropertyRef(id)` across reports.
-
-**Inline Cohorts — define complex populations on-the-fly.** Every analytical question starts with "among WHICH users?" Simple property filters (`where=Filter.equals(...)`) answer "users with attribute X." Inline cohorts answer harder questions: "users who did X at least N times in the last D days AND did NOT do Y AND have property Z." Compose criteria with AND/OR logic:
-
-```python
-from mixpanel_headless import CohortDefinition, CohortCriteria, CohortBreakdown, CohortMetric
-
-# "Power users": purchased 5+ times in 30 days, never contacted support
-power_users = CohortDefinition.all_of(
-    CohortCriteria.did_event("Purchase", at_least=5, within_days=30),
-    CohortCriteria.did_not_do_event("Support Ticket", within_days=90),
-)
-
-# Use inline cohort as a breakdown — no need to save first
-result = ws.query("Login", group_by=CohortBreakdown(power_users, "Power Users"), last=30)
-
-# Use inline cohort as a filter in user queries
-result = ws.query_user(cohort=power_users, mode='aggregate', aggregate='count')
-
-# Track saved cohort size over time alongside event metrics
-result = ws.query(
-    [Metric("Login", math="unique"), CohortMetric(saved_cohort_id, "Power Users")],
-    formula="(B / A) * 100", formula_label="% Power Users Active", last=90,
-)
-```
-
-**Frequency Breakdown/Filter — segment by behavioral intensity.** `FrequencyBreakdown` answers "how do users who did X once differ from users who did X ten times?" `FrequencyFilter` restricts queries to users meeting a frequency threshold. These bridge "what users did" with "who users are":
-
-```python
-from mixpanel_headless import FrequencyBreakdown, FrequencyFilter
-
-# Break down login behavior by purchase frequency
-result = ws.query("Login", math='unique',
-    group_by=FrequencyBreakdown("Purchase", bucket_size=3, bucket_min=0, bucket_max=15),
-    last=30, mode='total')
-# Reveals: do frequent purchasers also log in more?
-
-# Logins in March by users who purchased 3+ times that month.
-# The threshold is counted per `unit` bucket, so pick the unit that matches
-# the period you mean. `last=` is always days, so pin a month with dates.
-result = ws.query("Login", math='unique',
-    where=FrequencyFilter("Purchase", value=3),
-    from_date="2026-03-01", to_date="2026-03-31", unit='month')
-# Reveals: how many repeat purchasers were active in March?
-```
-
-**FrequencyFilter counts per bucket, not per date range.** The engine evaluates the threshold inside each `unit` bucket. With the default `unit="day"`, `FrequencyFilter("Login", value=5)` keeps only users with 5+ logins *on the same day*, and returns an EMPTY series when nobody does, even if thousands of users logged in 5+ times across the month. An empty result is the expected outcome for a threshold nobody reaches within one bucket; do not report it as "no such users". Choose the `unit` that matches the period you mean (`"day"` for "N times in a day", `"month"` for "N times in a month"); `unit="month"` over a multi-month range still yields one threshold per month, and "over the whole period" needs a date range that fits inside one bucket. `last=` is always a day count, so pin a month with `from_date` / `to_date`. `date_range_value` / `date_range_unit` had no observable effect on inline filters in a 2026-09-11 probe and are unverified; do not rely on them to widen the window. `FrequencyFilter` is accepted by `query()` / `build_params()` only, not by `query_flow()`.
-
-Measured on a seeded gaming dataset (10,000 users, March 2026), `FrequencyFilter("enter dungeon", value=5)`, 2026-03-01 to 2026-03-31:
-
-| Query | Result |
-|---|---|
-| `unit="day"` (default), default `math="total"` | empty series (no user entered the dungeon 5+ times on one day) |
-| `unit="month"`, `math="unique"` | 2,571 of 8,281 active users (5+ entries anywhere in March; ground truth. Default `math="total"` would report their events instead) |
-
-**When to reach for each:**
-- Property values are messy or need derivation → **Custom Property**
-- Population requires behavioral criteria (did X, didn't do Y, frequency thresholds) → **Inline Cohort**
-- You need to segment by event frequency (how often, not just whether) → **FrequencyBreakdown/Filter** (pick `unit` to match the threshold period)
-- You need to compare in-cohort vs out-of-cohort behavior → **CohortBreakdown** with `include_negated=True`
-- You need to track a segment's size as a time series → **CohortMetric** (saved cohorts only)
-
-### Legacy Queries & Counts
-
-These use older APIs. Prefer the typed query methods above when possible.
-
-```python
-def segmentation(self, event: str, *, from_date: str, to_date: str, on: str | None = None, unit: Literal['day', 'week', 'month'] = 'day', where: str | None = None) -> SegmentationResult: ...
-def funnel(self, funnel_id: int, *, from_date: str, to_date: str, unit: str | None = None, on: str | None = None) -> FunnelResult: ...
-def retention(self, *, born_event: str, return_event: str, from_date: str, to_date: str, born_where: str | None = None, return_where: str | None = None, interval: int = 1, interval_count: int = 10, unit: Literal['day', 'week', 'month'] = 'day') -> RetentionResult: ...
-def event_counts(self, events: list[str], *, from_date: str, to_date: str, type: Literal['general', 'unique', 'average'] = 'general', unit: Literal['day', 'week', 'month'] = 'day') -> EventCountsResult: ...
-def property_counts(self, event: str, property_name: str, *, from_date: str, to_date: str, type: Literal['general', 'unique', 'average'] = 'general', unit: Literal['day', 'week', 'month'] = 'day', values: list[str] | None = None, limit: int | None = None) -> PropertyCountsResult: ...
-def frequency(self, *, from_date: str, to_date: str, unit: Literal['day', 'week', 'month'] = 'day', addiction_unit: Literal['hour', 'day'] = 'hour', event: str | None = None, where: str | None = None) -> FrequencyResult: ...
-def activity_feed(self, distinct_ids: list[str], *, from_date: str | None = None, to_date: str | None = None, limit: int | None = None, include_events: list[str] | None = None, exclude_events: list[str] | None = None, sentinel_event: dict[str, Any] | None = None, paging_window: int | None = None, search: str | None = None, search_properties: list[dict[str, Any]] | None = None, use_custom_events: bool = False) -> ActivityFeedResult: ...
-def query_saved_report(self, bookmark_id: int, *, bookmark_type: Literal['insights', 'funnels', 'retention', 'flows'] = 'insights', from_date: str | None = None, to_date: str | None = None) -> SavedReportResult: ...
-def query_saved_flows(self, bookmark_id: int) -> FlowsResult: ...
-def segmentation_numeric(self, event: str, *, from_date: str, to_date: str, on: str, unit: Literal['hour', 'day'] = 'day', where: str | None = None, type: Literal['general', 'unique', 'average'] = 'general') -> NumericBucketResult: ...
-def segmentation_sum(self, event: str, *, from_date: str, to_date: str, on: str, unit: Literal['hour', 'day'] = 'day', where: str | None = None) -> NumericSumResult: ...
-def segmentation_average(self, event: str, *, from_date: str, to_date: str, on: str, unit: Literal['hour', 'day'] = 'day', where: str | None = None) -> NumericAverageResult: ...
-```
-
-### Entity CRUD (App API)
-
-All entity methods require a workspace ID. Use `python3 ${CLAUDE_SKILL_DIR}/scripts/help.py Workspace.<method>` for full signatures and parameter types.
-User Guide: `WebFetch(url="https://mixpanel.github.io/mixpanel-headless/guide/entity-management/index.md")`
-
-#### Dashboard (→ `Dashboard`)
-
-`list_dashboards`, `create_dashboard`, `get_dashboard`, `update_dashboard`, `delete_dashboard`, `bulk_delete_dashboards`, `favorite_dashboard`, `unfavorite_dashboard`, `pin_dashboard`, `unpin_dashboard`, `add_report_to_dashboard`, `remove_report_from_dashboard`, `update_text_card`, `update_report_link`
-
-**Blueprints:** `list_blueprint_templates` → `list[BlueprintTemplate]`, `create_blueprint`, `get_blueprint_config`, `update_blueprint_cohorts`, `finalize_blueprint`, `create_rca_dashboard`
-
-**Helpers:** `get_bookmark_dashboard_ids` → `list[int]`, `get_dashboard_erf` → `dict`
-
-#### Bookmark / Report (→ `Bookmark`)
-
-`list_bookmarks_v2`, `create_bookmark`, `get_bookmark`, `update_bookmark`, `delete_bookmark`, `bulk_delete_bookmarks`, `bulk_update_bookmarks`, `bookmark_linked_dashboard_ids` → `list[int]`, `get_bookmark_history` → `BookmarkHistoryResponse`
-
-#### Cohort (→ `Cohort`)
-
-`list_cohorts_full`, `get_cohort`, `create_cohort`, `update_cohort`, `delete_cohort`, `bulk_delete_cohorts`, `bulk_update_cohorts`
-
-#### Feature Flag (→ `FeatureFlag`)
-
-`list_feature_flags`, `create_feature_flag`, `get_feature_flag`, `update_feature_flag`, `delete_feature_flag`, `archive_feature_flag`, `restore_feature_flag`, `duplicate_feature_flag`, `set_flag_test_users`, `get_flag_history` → `FlagHistoryResponse`, `get_flag_limits` → `FlagLimitsResponse`
-
-#### Experiment (→ `Experiment`)
-
-`list_experiments`, `create_experiment`, `get_experiment`, `update_experiment`, `delete_experiment`, `launch_experiment`, `conclude_experiment`, `decide_experiment`, `archive_experiment`, `restore_experiment`, `duplicate_experiment`, `list_erf_experiments` → `list[dict]`
-
-#### Alert (→ `CustomAlert`)
-
-`list_alerts`, `create_alert`, `get_alert`, `update_alert`, `delete_alert`, `bulk_delete_alerts`, `get_alert_count` → `AlertCount`, `get_alert_history` → `AlertHistoryResponse`, `test_alert`, `get_alert_screenshot_url`, `validate_alerts_for_bookmark`
-
-#### Annotation (→ `Annotation`)
-
-`list_annotations`, `create_annotation`, `get_annotation`, `update_annotation`, `delete_annotation`, `list_annotation_tags` → `list[AnnotationTag]`, `create_annotation_tag`
-
-#### Webhook (→ `ProjectWebhook`)
-
-`list_webhooks`, `create_webhook`, `update_webhook`, `delete_webhook`, `test_webhook`
-
-#### Lexicon & Data Governance
-
-**Event/Property Definitions:** `get_event_definitions`, `update_event_definition`, `delete_event_definition`, `bulk_update_event_definitions`, `get_property_definitions`, `update_property_definition`, `bulk_update_property_definitions`, `export_lexicon`, `get_event_history`, `get_property_history`
-
-**Tags:** `list_lexicon_tags`, `create_lexicon_tag`, `update_lexicon_tag`, `delete_lexicon_tag`
-
-**Drop Filters:** `list_drop_filters`, `create_drop_filter`, `update_drop_filter`, `delete_drop_filter`, `get_drop_filter_limits`
-
-**Custom Properties:** `list_custom_properties`, `create_custom_property`, `get_custom_property`, `update_custom_property`, `delete_custom_property`, `validate_custom_property`
-
-**Custom Events:** `list_custom_events`, `update_custom_event`, `delete_custom_event`
-
-**Lookup Tables:** `list_lookup_tables`, `upload_lookup_table`, `download_lookup_table`, `update_lookup_table`, `delete_lookup_tables`
-
-**Schema Registry:** `list_schema_registry`, `create_schema`, `update_schema`, `create_schemas_bulk`, `update_schemas_bulk`, `delete_schemas`
-
-**Schema Enforcement:** `get_schema_enforcement`, `init_schema_enforcement`, `update_schema_enforcement`, `replace_schema_enforcement`, `delete_schema_enforcement`
-
-**Audit & Monitoring:** `run_audit`, `run_audit_events_only`, `list_data_volume_anomalies`, `update_anomaly`, `bulk_update_anomalies`
-
-**Data Deletion:** `list_deletion_requests`, `create_deletion_request`, `cancel_deletion_request`, `preview_deletion_filters`
-
-**Other:** `get_tracking_metadata`
-
-### Business Context
-
-Read and write the markdown documentation that grounds AI assistants in your organization's structure and goals, exposed as a typed Python API.
-
-Two scopes — `level="organization"` (shared across the whole org) and `level="project"` (per-project). 50,000-character cap enforced **client-side before any HTTP call** so oversize input fails fast. Org-level operations auto-resolve `organization_id` from the cached `/me` response; pass `organization_id=N` to override.
-
-Run `python3 ${CLAUDE_SKILL_DIR}/scripts/help.py search business_context` to see all four methods, two types, and one exception.
-
-```python
-from mixpanel_headless import BUSINESS_CONTEXT_MAX_CHARS  # 50_000
-
-# Read
-project_ctx = ws.get_business_context(level="project")
-org_ctx = ws.get_business_context(level="organization")  # auto-resolves org_id
-explicit = ws.get_business_context(level="organization", organization_id=42)
-
-# Read both at once (single round-trip via /business-context/chain)
-chain = ws.get_business_context_chain()
-print(chain.organization.content)
-print(chain.project.content)
-
-# Write (full-replace; pass "" to clear, or use clear_business_context())
-ws.set_business_context("# About Acme\n…", level="project")
-ws.set_business_context("# Org-wide standards", level="organization")
-ws.clear_business_context(level="project")
-
-# All return BusinessContext with: level, content, organization_id, project_id
-# Plus convenience .is_empty and .character_count properties (Python only)
-print(f"{project_ctx.character_count}/{BUSINESS_CONTEXT_MAX_CHARS} chars; "
-      f"empty={project_ctx.is_empty}")
-```
-
-**When to reach for this:**
-
-- User asks "what's the business context for this project/org?" → `get_business_context_chain()`
-- User wants to version-control project context as a `.md` file → `ws.set_business_context(Path("ctx.md").read_text(), level="project")` in CI
-- User asks to "audit which projects have AI context configured" → iterate `ws.projects()` + `ws.use(project=...)` + `ws.get_business_context(level="project")` and check `.is_empty`
-- User asks to seed a new project from the org default → `chain = ws.get_business_context_chain(); ws.set_business_context(chain.organization.content, level="project")`
-
-**Permissions:** project-scope reads need any project access; project-scope writes need `edit_project_info` on the project. Org-scope writes need `edit_project_info` at the org level (typically OAuth, not service account). The `BusinessContextValidationError` exception is raised client-side BEFORE any HTTP call when content exceeds 50,000 chars, so use it to detect oversize input without burning a round-trip.
-
-User Guide: `WebFetch(url="https://mixpanel.github.io/mixpanel-headless/guide/business-context/index.md")`
-
-## Session Replay
-
-Answers "what did this user actually *do*?" — the click-by-click story behind an analytics number. Fetches rrweb session recordings, runs a vendored analyzer, and projects sessions into DataFrames + an LLM-friendly action timeline.
-
-**When to reach for this:** the user names a specific `distinct_id` and asks what they did, wants clicks / rage-clicks / error sessions across a cohort of sessions, or wants to correlate a tracked event with on-screen behavior.
-
-```python
-import mixpanel_headless as mp
-ws = mp.Workspace()
-
-# Discover + fetch + Mixpanel-event join in one call → a ReplayBundle.
-# Each replay is byte-heavy, so limit defaults to 20 — raise it deliberately.
-bundle = ws.replays_for_user("user-42", from_date="2025-01-01", to_date="2025-01-31")
-
-bundle.sessions_df                     # one row per session: duration_s, n_clicks, n_errors, entry/exit_url
-bundle.replays[0].summary_markdown     # action timeline: "Clicked …", "Scrolled (×3)"
-bundle.top_clicks(10)                  # most-clicked elements (focus interactions excluded)
-bundle.rage_clicks()                   # rapid repeated clicks on one target
-bundle.error_sessions()                # a NEW bundle of only the replays with console errors
-```
-
-`ReplayBundle` projections: `sessions_df`, `actions_df` (includes a `description` column — the full phrase), `events_df` (raw rrweb), `mixpanel_df` (tracked events in the window), `elements_df` (per-element click counts, URL-normalized). Filters return new bundles: `.where(distinct_id=, contains_url=, has_event=, min_duration_s=)`, `.filter(predicate)`, `.find_pattern([...])`, `.head(n)`, `.sample(n, seed)`, `.compare(other)`.
-
-Single replay + raw stream for the rrweb JS player:
-
-```python
-replay = ws.fetch_replay("0190ebde-d50d-71b1-804c-ec1b4a533ef9")
-replay.to_rrweb_player_json()          # timestamp-sorted rrweb events
-```
-
-**Signed CDN URLs are bearer credentials** — `SignedReplay` masks them and the library never logs them. A `SESSION_RECORDING_SENSITIVE_DATA` 403 raises `SessionReplayAccessError`.
-
-### Mobile and screenshot replays
-
-iOS, Android, React Native, and Flutter (mobile, web, and desktop) record screenshots, not a DOM. `replay.capture == "screenshot"` for these; `replay.has_wireframes` says whether screen element lists exist (the SDK can turn them off). There are no URLs: `page_path()` is empty, so use `screen_path()`.
-
-```python
-bundle.rage_taps()        # FIRST: replay_id, t_start, t_end, target_desc, x, y, count, kind ("rage" | "dead")
-replay.screen_path()      # screen headings in order: ["Home", "Settings"]
-bundle.screens_df         # replay_id, t, heading, fingerprint, element_count, description
-bundle.screens_df.groupby("fingerprint").size()   # most-visited screen: count by fingerprint, label by heading
-taps = bundle.actions_df.query("action == 'touch_start'")   # mobile taps; top_clicks() counts clicks only
-```
-
-Read `rage_taps()` first, then the timeline. It counts real finger-downs with real timestamps; the timeline does not. Timeline lines:
-
-- `Wireframe: Home [16,38,54,27] | button:Save [98,155,215,48] | text [363,27,48,48] | …` — one screen. A bare label is text; `role:label` is any other role (`button`, `input`, `image`, `switch`); a role with no label is unlabeled (often an icon, or masked text). `[x,y,w,h]` is the rect in logical px from the top-left.
-- Screens are **keyframes** sampled around gestures (the screen before, up to two after), not a continuous record. Diff consecutive screens: a mostly new element set = navigation; new items under an input = search; one label changing = a toggle.
-- `Tapped at (x, y)` = a tap (action `touch_start`). `Scrolled` = a swipe or scroll, not a tap. `Clicked at (x, y)` = a mouse click in Flutter web or desktop (action `click`).
-- `Tapped at (257, 638) (×7)` = seven consecutive identical lines, collapsed. The line shows the first timestamp only, so it hides the span of the burst — take timing from `rage_taps()` or `actions_df`.
-
-What a tap hit: read the action's `target_desc` (`button:Save`, a bare label, or `role [x,y,w,h]` for an icon) and `metadata["hit"]` (`role`, `text`, `bounds`). `metadata["attribution"]` is `"bounds"` (inside the rect) or `"bounds_slop"` (within 8 px). Rects overlap, so a hit is an inference. A target of `"(x, y)"` means no element was near. A tap on a translucent tab bar or toolbar can resolve to the content that scrolls below it.
-
-Screens have no names. The heading (`target_desc` of a `screen` action) is the top-most text label: approximate, and `"(screen)"` when masked. It can be a back-button label or scrolled content. Identify a screen by `metadata["fingerprint"]`, name it only with text that appears on it, and never invent a screen name.
-
-Each burst is judged per interval (the gaps between finger-downs, plus a grace window after the last one). `kind="dead"`: no interval has a screen change. A burst where every gap has a change (a quantity stepper, a carousel) is intentional and is not reported. `kind="rage"`: anything else, for example a navigation that arrives only after the burst. A live clock or animation counts as a change, so it can hide a dead control. Report each burst with its control, tap count, and time span. **A clean, successful flow is a valid finding — do not invent friction.**
-
-Look up the surface: `help.py Workspace.replays_for_user`, `help.py ReplayBundle`, `help.py Replay`.
-User Guide: `WebFetch(url="https://mixpanel.github.io/mixpanel-headless/guide/session-replay/index.md")`
-
-## Key Types
-
-Run `python3 ${CLAUDE_SKILL_DIR}/scripts/help.py types` for the full list of all types. Use `help.py <TypeName>` for fields, constructors, and enum values.
-Full reference: `WebFetch(url="https://mixpanel.github.io/mixpanel-headless/api/types/index.md")`
-
-| Type | Purpose |
-|------|---------|
-| `Filter` | Property filter conditions (`.equals()`, `.contains()`, `.in_cohort()`, etc.) |
-| `GroupBy` | Property breakdown with optional bucketing |
-| `Formula` | Calculated metric expression referencing events by position (A, B, C...) |
-| `Metric` | Event with per-event math/aggregation settings |
-| `CohortMetric` | Track cohort size over time as an event metric |
-| `FunnelStep` | Funnel step with per-step filters, labels, ordering |
-| `Exclusion` | Event to exclude between funnel steps |
-| `HoldingConstant` | Property to hold constant across funnel steps |
-| `RetentionEvent` | Retention event with per-event filters |
-| `FlowStep` | Flow anchor event with per-step forward/reverse configuration |
-| `TimeComparison` | Period-over-period comparison (`.relative("month")`, `.absolute_start(...)`) |
-| `FrequencyBreakdown` | Break down by how often users performed an event |
-| `FrequencyFilter` | Filter by how often users performed an event (counted per `unit` bucket; pick the `unit` that matches the threshold period) |
-| `CohortBreakdown` | Break down results by cohort membership |
-| `CohortDefinition` | Inline cohort definition for user queries |
-| `CohortCriteria` | Atomic condition for cohort membership |
-| `CustomPropertyRef` | Reference to a persisted custom property by ID |
-| `InlineCustomProperty` | Ephemeral computed property defined by formula |
-| `ReplayBundle` / `Replay` | Session replay — DataFrame projections + `summary_markdown` |
-| `ReplaySummary` | Lightweight replay discovery handle from `list_replays` |
-
-**Aggregation enums** (use `help.py <EnumName>` to see all values):
-
-| Enum | Used by | Common values |
-|------|---------|---------------|
-| `MathType` | `query()` | total, unique, dau, average, sum, min, max, percentile, sessions |
-| `FunnelMathType` | `query_funnel()` | conversion_rate_unique, conversion_rate_total, average, median |
-| `RetentionMathType` | `query_retention()` | retention_rate, retention_count |
-
-## Statistical Analysis — numpy, scipy
-
-All query results produce pandas DataFrames, which integrate directly with numpy and scipy:
-
-```python
-import numpy as np
-from scipy import stats
-
-# Compare two segments
-a = result.df[result.df["platform"] == "iOS"]["count"]
-b = result.df[result.df["platform"] == "Android"]["count"]
-t_stat, p_value = stats.ttest_ind(a, b)
-cohens_d = (a.mean() - b.mean()) / np.sqrt((a.std()**2 + b.std()**2) / 2)
-
-# Useful scipy.stats tests: ttest_ind, mannwhitneyu, chi2_contingency, pearsonr, spearmanr
-# Useful numpy: np.percentile, np.corrcoef, np.polyfit (trend lines)
-```
-
-## Visualization — matplotlib, seaborn
-
-Save charts to files for the user. Always use a non-interactive backend:
-
-```python
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-fig, ax = plt.subplots(figsize=(10, 5))
-result.df.plot(x="date", y="count", ax=ax)
-ax.set_title("Daily Logins")
-fig.savefig("chart.png", dpi=150, bbox_inches="tight")
-plt.close(fig)
-
-# seaborn: sns.lineplot, sns.barplot, sns.heatmap (for retention matrices)
-# Multi-panel: fig, axes = plt.subplots(2, 2) for dashboard-style layouts
-```
-
-## Exceptions
-
-Full reference: `WebFetch(url="https://mixpanel.github.io/mixpanel-headless/api/exceptions/index.md")`
-
-| Exception | When |
-|-----------|------|
-| `MixpanelHeadlessError` | Base for all errors |
-| `ConfigError` | No credentials resolved |
-| `AccountNotFoundError` | Named account doesn't exist |
-| `AuthenticationError` | Invalid credentials (401) |
-| `QueryError` | Invalid query parameters (400) |
-| `BookmarkValidationError` | Params failed validation |
-| `RateLimitError` | Rate limit exceeded (429) |
-| `ServerError` | Mixpanel server error (5xx) |
-| `WorkspaceScopeError` | Workspace resolution error (also raised when org_id can't be auto-resolved for `level="organization"` business-context calls) |
-| `DateRangeTooLargeError` | Date range exceeds API maximum |
-| `OAuthError` | OAuth flow error |
-| `BusinessContextValidationError` | Business context content exceeds 50,000 chars (client-side, before HTTP) |
+Report the one-day rate as the answer. Mention the 7-day rate as context, and give the user the link.

@@ -1,0 +1,357 @@
+{
+  "results": {
+    "162521": {
+      "allow_staff_override": false,
+      "can_share": true,
+      "can_update_basic": true,
+      "can_view": true,
+      "contacts": [
+        "user@example.com"
+      ],
+      "created": "2026-09-30T08:30:37.511",
+      "created_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "definition": {
+        "behavior": {
+          "filters": [],
+          "filtersDeterminer": "all",
+          "name": "document created",
+          "resourceType": "events",
+          "type": "event"
+        },
+        "measurement": {
+          "math": "total"
+        }
+      },
+      "description": "Scratch metric of an automated API probe.",
+      "id": 162521,
+      "is_locked": false,
+      "is_superadmin": true,
+      "is_visible": true,
+      "modified": "2026-09-30T08:31:08.179",
+      "name": "zz-probe-event-total",
+      "owned_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "type": "metric"
+    },
+    "162522": {
+      "allow_staff_override": false,
+      "can_share": true,
+      "can_update_basic": true,
+      "can_view": true,
+      "contacts": [],
+      "created": "2026-09-30T08:30:40.222",
+      "created_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "definition": {
+        "behavior": {
+          "behaviors": [
+            {
+              "filters": [],
+              "filtersDeterminer": "all",
+              "name": "document created",
+              "type": "event"
+            },
+            {
+              "filters": [],
+              "filtersDeterminer": "all",
+              "name": "document shared",
+              "type": "event"
+            }
+          ],
+          "name": null,
+          "resourceType": "events",
+          "type": "simple"
+        },
+        "measurement": {
+          "math": "unique"
+        }
+      },
+      "description": "",
+      "id": 162522,
+      "is_locked": false,
+      "is_superadmin": true,
+      "is_visible": true,
+      "modified": "2026-09-30T08:30:40.233",
+      "name": "zz-probe-simple-two-events",
+      "type": "metric"
+    },
+    "162523": {
+      "allow_staff_override": false,
+      "can_share": true,
+      "can_update_basic": true,
+      "can_view": true,
+      "contacts": [],
+      "created": "2026-09-30T08:30:42.039",
+      "created_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "definition": {
+        "behavior": {
+          "aggregateBy": [],
+          "behaviors": [
+            {
+              "filters": [],
+              "filtersDeterminer": "all",
+              "name": "document created",
+              "type": "event"
+            },
+            {
+              "filters": [],
+              "filtersDeterminer": "all",
+              "name": "document shared",
+              "type": "event"
+            }
+          ],
+          "conversionWindowDuration": 7,
+          "conversionWindowUnit": "day",
+          "exclusions": [],
+          "funnelOrder": "loose",
+          "name": null,
+          "resourceType": "events",
+          "type": "funnel"
+        },
+        "measurement": {
+          "cumulative": false,
+          "math": "conversion_rate_unique",
+          "perUserAggregation": null,
+          "property": null,
+          "segmentMethod": null,
+          "stepIndex": null
+        }
+      },
+      "description": "",
+      "id": 162523,
+      "is_locked": false,
+      "is_superadmin": true,
+      "is_visible": true,
+      "modified": "2026-09-30T08:30:42.048",
+      "name": "zz-probe-funnel",
+      "type": "metric"
+    },
+    "162524": {
+      "allow_staff_override": false,
+      "can_share": true,
+      "can_update_basic": true,
+      "can_view": true,
+      "contacts": [],
+      "created": "2026-09-30T08:30:43.701",
+      "created_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "definition": {
+        "behavior": {
+          "behaviors": [
+            {
+              "filters": [],
+              "filtersDeterminer": "all",
+              "name": "document created",
+              "type": "event"
+            },
+            {
+              "filters": [],
+              "filtersDeterminer": "all",
+              "name": "document opened",
+              "type": "event"
+            }
+          ],
+          "name": null,
+          "resourceType": "events",
+          "retentionAlignmentType": "birth",
+          "retentionCustomBucketSizes": [],
+          "retentionType": "birth",
+          "retentionUnboundedMode": "none",
+          "retentionUnit": "day",
+          "type": "retention"
+        },
+        "measurement": {
+          "math": "retention_rate",
+          "property": null,
+          "retentionBucketIndex": 1
+        }
+      },
+      "description": "",
+      "id": 162524,
+      "is_locked": false,
+      "is_superadmin": true,
+      "is_visible": true,
+      "modified": "2026-09-30T08:30:43.709",
+      "name": "zz-probe-retention",
+      "type": "metric"
+    },
+    "162525": {
+      "allow_staff_override": false,
+      "can_share": true,
+      "can_update_basic": true,
+      "can_view": true,
+      "contacts": [],
+      "created": "2026-09-30T08:30:46.114",
+      "created_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "definition": {
+        "behavior": {
+          "dataGroupId": null,
+          "dataset": "$mixpanel",
+          "filters": [],
+          "filtersDeterminer": "all",
+          "id": 6078409,
+          "name": "0526 test",
+          "resourceType": "cohorts",
+          "type": "cohort"
+        },
+        "measurement": {
+          "math": "unique",
+          "perUserAggregation": null,
+          "property": null
+        }
+      },
+      "description": "",
+      "id": 162525,
+      "is_locked": false,
+      "is_superadmin": true,
+      "is_visible": true,
+      "modified": "2026-09-30T08:30:46.124",
+      "name": "zz-probe-cohort",
+      "type": "metric"
+    },
+    "162526": {
+      "allow_staff_override": false,
+      "can_share": true,
+      "can_update_basic": true,
+      "can_view": true,
+      "contacts": [],
+      "created": "2026-09-30T08:30:48.217",
+      "created_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "definition": {
+        "formula": {
+          "definition": "A / B",
+          "referencedMetrics": [
+            {
+              "behavior": {
+                "filters": [],
+                "filtersDeterminer": "all",
+                "name": "document created",
+                "resourceType": "events",
+                "type": "event"
+              },
+              "measurement": {
+                "math": "total"
+              },
+              "type": "metric"
+            },
+            {
+              "behavior": {
+                "filters": [],
+                "filtersDeterminer": "all",
+                "name": "document shared",
+                "resourceType": "events",
+                "type": "event"
+              },
+              "measurement": {
+                "math": "unique"
+              },
+              "type": "metric"
+            }
+          ]
+        }
+      },
+      "description": "",
+      "id": 162526,
+      "is_locked": false,
+      "is_superadmin": true,
+      "is_visible": true,
+      "modified": "2026-09-30T08:30:48.225",
+      "name": "zz-probe-formula-inline",
+      "type": "formula"
+    },
+    "162527": {
+      "allow_staff_override": false,
+      "can_share": true,
+      "can_update_basic": true,
+      "can_view": true,
+      "contacts": [],
+      "created": "2026-09-30T08:30:49.910",
+      "created_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "definition": {
+        "formula": {
+          "definition": "A / B",
+          "referencedMetrics": [
+            {
+              "id": 162521,
+              "metric_id": "162521",
+              "type": "metric"
+            },
+            {
+              "id": 162522,
+              "metric_id": "162522",
+              "type": "metric"
+            }
+          ]
+        }
+      },
+      "description": "",
+      "id": 162527,
+      "is_locked": false,
+      "is_superadmin": true,
+      "is_visible": true,
+      "modified": "2026-09-30T08:30:49.919",
+      "name": "zz-probe-formula-id-operands",
+      "type": "formula"
+    },
+    "162528": {
+      "allow_staff_override": false,
+      "can_share": true,
+      "can_update_basic": true,
+      "can_view": true,
+      "contacts": [],
+      "created": "2026-09-30T08:30:59.694",
+      "created_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "definition": {
+        "behavior": {
+          "id": 58856,
+          "type": "funnel"
+        },
+        "measurement": {
+          "math": "conversion_rate_unique"
+        }
+      },
+      "description": "",
+      "id": 162528,
+      "is_locked": false,
+      "is_superadmin": true,
+      "is_visible": true,
+      "modified": "2026-09-30T08:30:59.703",
+      "name": "zz-probe-funnel-behavior-ref",
+      "type": "metric"
+    }
+  },
+  "status": "ok"
+}

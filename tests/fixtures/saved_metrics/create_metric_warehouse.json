@@ -1,0 +1,32 @@
+{
+  "results": {
+    "162531": {
+      "allow_staff_override": false,
+      "can_share": true,
+      "can_update_basic": true,
+      "can_view": true,
+      "contacts": [],
+      "created": "2026-09-30T08:35:35.580",
+      "created_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "definition": {
+        "metricType": "numeric",
+        "query": "SELECT 1 AS value",
+        "valueColumn": "value"
+      },
+      "description": "",
+      "id": 162531,
+      "is_locked": false,
+      "is_superadmin": true,
+      "is_visible": true,
+      "modified": "2026-09-30T08:35:35.591",
+      "name": "zz-probe-20260930T083530Z-warehouse",
+      "type": "warehouse",
+      "warehouse_source_id": 4672
+    }
+  },
+  "status": "ok"
+}

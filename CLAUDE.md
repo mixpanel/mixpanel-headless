@@ -29,7 +29,7 @@ Infrastructure           → ConfigManager, MixpanelAPIClient
 **Capability areas:**
 - **Discovery**: Explore schema (events, properties, funnels, cohorts, bookmarks, schema graph)
 - **Live queries & streaming**: Call Mixpanel API directly (segmentation, funnels, retention, user profiles), stream events and profiles
-- **Entity CRUD & Data Governance**: Create, read, update, delete dashboards, reports (bookmarks), cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, drop filters, custom properties, custom events, and lookup tables via App API
+- **Entity CRUD & Data Governance**: Create, read, update, delete dashboards, reports (bookmarks), cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, drop filters, custom properties, custom events, and lookup tables via App API; list, read, create, update, and delete saved metrics (behavior metrics, formulas, warehouse metrics) and saved behaviors
 - **Session replay**: Discover, sign, fetch, and analyze rrweb session recordings (`Workspace.replays_for_user` / `fetch_replay`, `Replay` / `ReplayBundle`, `mp replays`)
 
 ## Package Structure
@@ -71,7 +71,8 @@ src/mixpanel_headless/
     │                        # + query, inspect, dashboards, reports, cohorts, flags,
     │                        # experiments, alerts, annotations, webhooks, lexicon,
     │                        # drop-filters, custom-properties, custom-events,
-    │                        # lookup-tables, schemas, business-context, replays
+    │                        # lookup-tables, schemas, business-context, replays,
+    │                        # metrics, behaviors
     ├── formatters.py        # JSON, JSONL, Table, CSV, Plain output
     └── utils.py             # Error handling, console helpers
 ```
@@ -97,21 +98,16 @@ Code must pass `ruff format` and `ruff check`. Run `just check` before committin
 
 ### Documentation (STRICT)
 
-**Every class, method, and function requires a complete docstring. No exceptions.**
+**Every class, method, and function has a docstring — no exceptions.** This covers public API, private/internal helpers (prefixed with `_`), module-level functions, nested functions, test fixtures, and test methods. Presence is enforced by [interrogate](https://interrogate.readthedocs.io/) in CI, `just check`, and the pre-commit hook: every definition in `src/` and `conformance/` (100%; `[tool.interrogate]` in `pyproject.toml` and the `justfile`), and 95% of `tests/`. Reviewers flag a new test or fixture that has no docstring, because the `tests/` gate is an aggregate.
 
-This applies to:
-- Public API methods and classes
-- Private/internal methods (prefixed with `_`)
-- Module-level functions
-- Helper functions
-- Test fixtures and test methods
-
-Required docstring sections:
-- **Summary**: One-line description of what it does
-- **Args**: Every parameter with type and description
-- **Returns**: What the function returns and when
-- **Raises**: All exceptions that may be raised
-- **Example**: Usage example where behavior isn't immediately obvious
+Which sections a docstring needs depends on what the function does (Google style):
+- **Summary**: Always. One line saying what it does.
+- **Args**: When it takes parameters (other than `self` / `cls`). Describe each one; the type lives in the annotation, so don't repeat it.
+- **Returns**: When it returns a non-`None` value. No `Returns: None` section for functions annotated `-> None`.
+- **Raises**: Exceptions the function raises deliberately, including ones it lets propagate from a call as part of its contract. Not every exception that could conceivably occur.
+- **Example**: Where behavior isn't obvious from the signature and summary. Public API methods usually have one; simple helpers don't need one.
+- **Tests and fixtures**: A one-line summary is enough when it states what the test proves or what the fixture provides. Match the convention already used in the test file.
+- **Vendored code** (e.g., `_internal/replays/rrweb_analyzer.py`): Follow the module's existing conventions.
 
 **Example format**: Use markdown fenced code blocks with language hints, not doctest-style `>>>` operators:
 
@@ -133,7 +129,7 @@ Example:
 """
 ```
 
-Undocumented code will not pass code review.
+A missing docstring will not pass code review. A missing section the rules above don't call for is not a defect.
 
 ## Test-Driven Development (STRICT)
 
@@ -234,11 +230,22 @@ CI will pass. The only documented difference is that CI sets
 `HYPOTHESIS_PROFILE=ci` (200 deterministic examples vs the local default 100),
 which doesn't change pass/fail outcomes.
 
+**The conformance corpus is maintainer tooling.** `conformance/` holds the
+recorded library behavior that the TypeScript port replays. It has its own
+workflow (`.github/workflows/conformance.yml`) and recipe (`just conformance`),
+and neither is part of `just check` or the CI workflow. The workflow runs on PRs
+that change `conformance/`, after each merge to `main`, and on each release.
+Library PRs never touch `conformance/vectors/` or `conformance/contract/`.
+Between releases the library drifts from the corpus; the workflow reports that
+drift and fails on it only in a re-pin PR. The corpus is re-pinned once per
+release (`conformance/record/README.md`, "When to re-pin").
+
 | Command | Description |
 |---------|-------------|
 | `just` | List all available commands |
 | `just install-hooks` | One-time: install git pre-commit hook (block ruff/format failures) |
 | `just check` | Run all checks (lint + fmt-check + typecheck + test-cov + build) |
+| `just conformance` | Conformance corpus checks (maintainer tooling; not part of `check`) |
 | `just test` | Run tests (supports args: `just test -k foo`) |
 | `just test-dev` | Run tests with dev Hypothesis profile (fast, 10 examples) |
 | `just test-ci` | Run tests with CI Hypothesis profile (thorough, 200 examples) |
@@ -292,18 +299,18 @@ Suppressing stderr causes silent failures and makes it impossible to diagnose is
 
 ## mixpanel-headless Plugin
 
-This project includes a Claude Code plugin in `mixpanel-plugin/`. The plugin provides the `mixpanel_headless` API surface and a live documentation system (`help.py`) for querying and analyzing Mixpanel data with Python.
+This project includes a Claude Code plugin in `mixpanel-plugin/`. The plugin's skills teach Mixpanel analysis judgment on top of the `mixpanel_headless` library; for API facts (signatures, types, allowed values) they point at the library's built-in reference (`mp help` / `mp.help()`) instead of copying it. The skills need `mixpanel_headless` 0.3.0 or later, and they run it from a plugin-owned venv: setup creates `${CLAUDE_PLUGIN_DATA}/venv` (`~/.claude/plugins/data/mixpanel-headless-<source>/venv`; `uv venv` when uv exists, else `python3 -m venv`) and installs there only, never into the system or user Python. The skills call `${CLAUDE_PLUGIN_DATA}/venv/bin/python` and `.../bin/mp` by full path, and the venv survives plugin updates. `setup.sh` takes the venv path as its required first argument (`bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh ${CLAUDE_PLUGIN_DATA}/venv`); it checks `mp help` and `<venv>/bin/mp`, then prints the venv path. User-run `!` commands use the full CLI path (`${CLAUDE_PLUGIN_DATA}/venv/bin/mp login`), because `mp` is often not on `PATH`.
 
 ### Plugin Components
 
 | Type | Name | Invocation |
 |------|------|------------|
-| **Command** | `mixpanel-headless:auth` | `/mixpanel-headless:auth` — manage credentials, accounts, OAuth |
-| **Skill** | `mixpanel-headless:setup` | `/mixpanel-headless:setup` — install deps, verify auth |
 | **Skill** | `mixpanelyst` | Auto-triggered on analytics questions |
+| **Skill** | `session-replay` | Auto-triggered on session replay questions (web and mobile recordings) |
 | **Skill** | `dashboard-expert` | Auto-triggered on dashboard analysis, creation, modification |
-| **Script** | `help.py` | `python help.py Workspace.query` — live API docs with fuzzy search |
-| **Script** | `auth_manager.py` | `python auth_manager.py status` — auth status JSON |
+| **Skill** | `auth` | `/mixpanel-headless:auth` (also auto-triggered on credential questions) — manage credentials, accounts, OAuth |
+| **Skill** | `setup` | `/mixpanel-headless:setup` — create or upgrade the plugin venv (0.3.0 floor), verify it and credentials (user-invoked only) |
+| **Script** | `auth_manager.py` | `${CLAUDE_PLUGIN_DATA}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py session` — session status JSON (also `account`, `project`, `workspace`, `target`) |
 
 ### Usage
 
@@ -311,11 +318,16 @@ This project includes a Claude Code plugin in `mixpanel-plugin/`. The plugin pro
 # Setup
 /mixpanel-headless:setup
 
-# API lookup
-python help.py Workspace.query        # method signature + docstring + referenced types
-python help.py search cohort           # fuzzy search across names, docstrings, enum members
-python help.py Filter                  # type fields + construction patterns + related methods
+# API lookup (no credentials, no network); the skills run the venv's mp by full path
+mp help Workspace.query               # method signature + docstring + referenced types
+mp help Workspace.query_funnel.math   # one parameter and its allowed values
+mp help search cohort                 # fuzzy search across names, docstrings, enum members
+mp help Filter                        # type fields + construction patterns + related methods
+mp help Workspace --domain "feature flags"   # every method in one domain
+python3 -m mixpanel_headless help types      # fallback when mp is not on PATH
 ```
+
+In Python: `mp.help("Workspace.query")` prints the same text; `mp.reference.search("cohort")` returns structured results.
 
 ## Active Technologies
 - Python 3.10+ (mypy --strict) + httpx (HTTP client), Pydantic v2 (validation), Typer (CLI), Rich (output)

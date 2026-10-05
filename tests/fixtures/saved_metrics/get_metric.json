@@ -1,0 +1,38 @@
+{
+  "results": {
+    "162521": {
+      "allow_staff_override": false,
+      "can_share": true,
+      "can_update_basic": true,
+      "can_view": true,
+      "contacts": [],
+      "created": "2026-09-30T08:30:37.511",
+      "created_by": {
+        "email": "user@example.com",
+        "id": 1000001,
+        "name": "Example User"
+      },
+      "definition": {
+        "behavior": {
+          "filters": [],
+          "filtersDeterminer": "all",
+          "name": "document created",
+          "resourceType": "events",
+          "type": "event"
+        },
+        "measurement": {
+          "math": "total"
+        }
+      },
+      "description": "Scratch metric of an automated API probe.",
+      "id": 162521,
+      "is_locked": false,
+      "is_superadmin": true,
+      "is_visible": true,
+      "modified": "2026-09-30T08:30:37.523",
+      "name": "zz-probe-event-total",
+      "type": "metric"
+    }
+  },
+  "status": "ok"
+}

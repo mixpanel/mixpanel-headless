@@ -1,0 +1,334 @@
+name: Conformance
+
+# Checks the conformance corpus (conformance/vectors/): the recorded library
+# behavior that the TypeScript port replays. The corpus is maintainer
+# tooling. Library PRs never touch it, so this workflow does not run on them.
+#
+# When it runs:
+# - on pull requests that change conformance/ or this file;
+# - on every push to main that can change recorded behavior, so the
+#   maintainer sees which merge moved the library away from the corpus;
+# - on each published release, as the reminder to re-pin the corpus;
+# - on demand (workflow_dispatch).
+#
+# The library is expected to drift from the corpus between releases: the
+# corpus is re-pinned once per release (conformance/record/README.md, "When
+# to re-pin"). So drift is reported, not failed, except on a re-pin PR (one
+# that changes manifest.source_commit). A re-pin claims that the corpus
+# matches the code, so any drift fails it.
+#
+# Drift can show up in three steps: the tooling unit tests (some compare
+# committed files with the live library), the corpus runner (it replays the
+# committed vectors against the live library), and the record-mode drift
+# check. Each step maps exit code 1 to drift (the drift check only when it
+# printed a drift report). On a pull request, a tooling-test or runner
+# failure that the merge-base with main does not have is a regression, not
+# drift, and fails the job. A crash (any other nonzero exit), a type error in
+# conformance/, a failed recording run, and a stamp-provenance finding always
+# fail the job.
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "conformance/**"
+      - ".github/workflows/conformance.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "conformance/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/conformance.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # fetch-depth: 0 — the stamp-provenance guard runs
+      # `git merge-base --is-ancestor <stamp> origin/main`, and the re-pin
+      # check diffs against the stamp, so both need the full history.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+
+      # The drift check byte-compares the re-extracted manifest, whose
+      # tool_versions record the extraction interpreter. So this job must run
+      # the exact Python the committed corpus was recorded with, or
+      # manifest.json drifts on the version string alone (first CI run,
+      # 2026-08-17: the job ran 3.12.13, the corpus recorded 3.14.6). Reading
+      # the pin from the manifest keeps it in step with each re-pin.
+      - name: Pin Python to the corpus extraction interpreter
+        run: |
+          PY=$(jq -r .tool_versions.python conformance/vectors/manifest.json)
+          uv python install "$PY"
+          uv python pin "$PY"
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Fetch main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          mkdir -p /tmp/conformance-report
+
+      # strict: a pull request that re-pins the corpus (manifest.source_commit
+      # differs from the merge-base with main). report: everything else.
+      - name: Choose drift policy
+        id: policy
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          MODE=report
+          if [ "$EVENT" = "pull_request" ]; then
+            BASE=$(git merge-base HEAD origin/main)
+            BASE_STAMP=$(git show "$BASE:conformance/vectors/manifest.json" | jq -r .source_commit)
+            HEAD_STAMP=$(jq -r .source_commit conformance/vectors/manifest.json)
+            if [ "$BASE_STAMP" != "$HEAD_STAMP" ]; then
+              MODE=strict
+            fi
+          fi
+          echo "Drift policy: $MODE"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+
+      - name: Typecheck conformance tooling
+        run: uv run mypy conformance/
+
+      # Stamp-provenance guard (conformance/record/check_stamps.py). The drift
+      # check injects the committed manifest's own stamps back into the
+      # re-extraction, so it can never notice a wrong stamp. This step checks
+      # that manifest.source_commit, every extracted $bundle.source_commit,
+      # and every contract generated_from is a 40-hex SHA reachable from main
+      # (rule 1). On pull requests it also checks that in-scope corpus content
+      # did not change without the stamp changing (rule 2: the PR #223
+      # failure mode, where 68 new vectors landed under the previous stamp).
+      - name: Stamp-provenance guard
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          BASE_ARGS=()
+          if [ "$EVENT" = "pull_request" ]; then
+            BASE_ARGS=(--base-ref origin/main)
+          fi
+          uv run python -m conformance.record.check_stamps --main-ref origin/main "${BASE_ARGS[@]}"
+
+      # The drift check records from this checkout's code and locked
+      # dependencies, not from those at the stamp. So a re-pin is honest only
+      # when src/, tests/, pyproject.toml, and uv.lock here equal the same
+      # paths at the new stamp. Without this check, a library change or a
+      # dependency bump merged after the release would land under the release
+      # stamp (the manifest records the httpx, hypothesis, and pydantic
+      # versions).
+      - name: Re-pin stamp names this code
+        if: steps.policy.outputs.mode == 'strict'
+        run: |
+          STAMP=$(jq -r .source_commit conformance/vectors/manifest.json)
+          if ! git diff --quiet "$STAMP" HEAD -- src tests pyproject.toml uv.lock; then
+            git diff --stat "$STAMP" HEAD -- src tests pyproject.toml uv.lock
+            echo "::error title=Re-pin stamp::src/, tests/, pyproject.toml, or uv.lock changed after $STAMP. Re-extract, and stamp the current main commit instead (conformance/record/README.md, \"When to re-pin\")."
+            exit 1
+          fi
+
+      - name: Conformance tooling unit tests
+        id: tooling
+        run: |
+          set +e
+          uv run pytest conformance/tests -o addopts="" -q 2>&1 | tee /tmp/conformance-report/tooling-tests.txt
+          CODE=${PIPESTATUS[0]}
+          set -e
+          case "$CODE" in
+            0) echo "result=clean" >> "$GITHUB_OUTPUT" ;;
+            1) echo "result=drift" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error title=Tooling unit tests::pytest crashed (exit $CODE)."; exit "$CODE" ;;
+          esac
+
+      - name: Corpus runner
+        id: runner
+        run: |
+          set +e
+          uv run pytest conformance/runner -o addopts="" -q 2>&1 | tee /tmp/conformance-report/corpus-runner.txt
+          CODE=${PIPESTATUS[0]}
+          set -e
+          case "$CODE" in
+            0) echo "result=clean" >> "$GITHUB_OUTPUT" ;;
+            1) echo "result=drift" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error title=Corpus runner::pytest crashed (exit $CODE)."; exit "$CODE" ;;
+          esac
+
+      # On a pull request in report mode, a tooling-test or runner failure is
+      # either drift that main already has or a regression in this PR. To
+      # tell them apart, run each failing suite again on the merge-base with
+      # main, and fail on any failure that the merge-base does not have. That
+      # includes a new test or a new vector that fails. Limits: in a PR that
+      # also changes src/, the PR's own library drift counts as new. Failures
+      # match by test id only, so a test that already fails on main and now
+      # fails for a different reason is not new; the next re-pin (strict
+      # mode) catches it. Comparing failure messages is not reliable: the
+      # short summary truncates them, and some carry per-run values.
+      - name: New failures against the merge-base
+        id: baseline
+        if: github.event_name == 'pull_request' && steps.policy.outputs.mode == 'report' && (steps.tooling.outputs.result == 'drift' || steps.runner.outputs.result == 'drift')
+        env:
+          TOOLING: ${{ steps.tooling.outputs.result }}
+          RUNNER: ${{ steps.runner.outputs.result }}
+        run: |
+          REPORTS=/tmp/conformance-report
+          BASE=$(git merge-base HEAD origin/main)
+          git worktree add --detach /tmp/base-tree "$BASE"
+          if [ -f .python-version ]; then
+            cp .python-version /tmp/base-tree/
+          fi
+          cd /tmp/base-tree
+          uv sync --all-extras --frozen
+
+          # pytest's short summary lists one "FAILED <node id> - ..." or
+          # "ERROR <node id> - ..." line per failure. Node ids have no spaces.
+          failed_ids() {
+            grep -E '^(FAILED|ERROR) ' "$1" | sed -E 's/^(FAILED|ERROR) ([^ ]+).*/\2/' | sort -u || true
+          }
+
+          NEW=0
+          for ENTRY in "tooling-tests conformance/tests $TOOLING" "corpus-runner conformance/runner $RUNNER"; do
+            read -r REPORT SUITE RESULT <<< "$ENTRY"
+            [ "$RESULT" = drift ] || continue
+            set +e
+            uv run pytest "$SUITE" -o addopts="" -q > "$REPORTS/base-$REPORT.txt" 2>&1
+            set -e
+            failed_ids "$REPORTS/$REPORT.txt" > "$REPORTS/head-failed-$REPORT.txt"
+            failed_ids "$REPORTS/base-$REPORT.txt" > "$REPORTS/base-failed-$REPORT.txt"
+            comm -23 "$REPORTS/head-failed-$REPORT.txt" "$REPORTS/base-failed-$REPORT.txt" > "$REPORTS/new-$REPORT.txt"
+            if [ -s "$REPORTS/new-$REPORT.txt" ]; then
+              echo "::error title=New $REPORT failures::This PR adds $(wc -l < "$REPORTS/new-$REPORT.txt" | tr -d " ") failure(s) that the merge-base with main does not have."
+              cat "$REPORTS/new-$REPORT.txt"
+              NEW=1
+            fi
+          done
+          if [ "$NEW" = 0 ]; then
+            echo "result=same" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$NEW"
+
+      # Re-extracts the full corpus with the committed manifest's own stamps
+      # injected back in (the date and commit are inputs, never the wall
+      # clock or `git rev-parse`), then byte-diffs it in both directions
+      # against the committed vectors (conformance.record.diff). A failure in
+      # the recording run itself always fails the job. An uncaught exception
+      # in the diff tool also exits 1, so exit 1 counts as drift only when
+      # the tool printed its drift report. `uv run python -m
+      # pytest` (not bare `uv run pytest`) puts the repo root on sys.path for
+      # the plugin import (see conformance/record/README.md).
+      - name: Record-mode drift check
+        id: corpus
+        env:
+          HYPOTHESIS_PROFILE: ci
+        run: |
+          # exclusions.args holds pytest selector words and must word-split.
+          # shellcheck disable=SC2046
+          uv run python -m pytest tests -p conformance.record.plugin \
+            --mp-record-vectors=/tmp/re-extract \
+            --mp-record-date="$(jq -r .extraction_date conformance/vectors/manifest.json)" \
+            --mp-record-commit="$(jq -r .source_commit conformance/vectors/manifest.json)" \
+            -o addopts="" -m "not live" $(cat conformance/record/exclusions.args)
+          set +e
+          uv run python -m conformance.record.diff /tmp/re-extract conformance/vectors 2>&1 | tee /tmp/conformance-report/drift-check.txt
+          CODE=${PIPESTATUS[0]}
+          set -e
+          if [ "$CODE" = 0 ]; then
+            echo "result=clean" >> "$GITHUB_OUTPUT"
+          elif [ "$CODE" = 1 ] && grep -q '^drift check: FAILED' /tmp/conformance-report/drift-check.txt; then
+            echo "result=drift" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error title=Drift check::conformance.record.diff failed (exit $CODE) without a drift report."
+            exit "$CODE"
+          fi
+
+      # The report and the re-extracted corpus show which vectors this commit
+      # changed, which keeps a large per-release re-pin easy to review.
+      # always(): upload also when the merge-base comparison fails.
+      - name: Upload drift report
+        if: always() && (steps.tooling.outputs.result == 'drift' || steps.runner.outputs.result == 'drift' || steps.corpus.outputs.result == 'drift')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: conformance-drift
+          path: |
+            /tmp/conformance-report/
+            /tmp/re-extract/
+
+      - name: Apply drift policy
+        env:
+          MODE: ${{ steps.policy.outputs.mode }}
+          TOOLING: ${{ steps.tooling.outputs.result }}
+          RUNNER: ${{ steps.runner.outputs.result }}
+          CORPUS: ${{ steps.corpus.outputs.result }}
+          BASELINE: ${{ steps.baseline.outputs.result }}
+          EVENT: ${{ github.event_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "## Conformance"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Tooling unit tests | $TOOLING |"
+            echo "| Corpus runner | $RUNNER |"
+            echo "| Record-mode drift check | $CORPUS |"
+            echo
+            echo "Drift policy: \`$MODE\`."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$TOOLING" = clean ] && [ "$RUNNER" = clean ] && [ "$CORPUS" = clean ]; then
+            echo "The corpus matches the code." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          for PAIR in "tooling-tests:$TOOLING" "corpus-runner:$RUNNER" "drift-check:$CORPUS"; do
+            REPORT=${PAIR%%:*}
+            [ "${PAIR#*:}" = drift ] || continue
+            {
+              echo "<details><summary>$REPORT (last 40 lines)</summary>"
+              echo
+              echo '```text'
+              tail -n 40 "/tmp/conformance-report/$REPORT.txt"
+              echo '```'
+              echo
+              echo "</details>"
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          if [ "$MODE" = strict ]; then
+            echo "This PR re-pins the corpus, so the corpus must match the code." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Conformance drift::This PR re-pins the corpus, but the corpus does not match the code. See the job summary."
+            exit 1
+          fi
+
+          if [ "$BASELINE" = same ]; then
+            echo "The merge-base with main has the same tooling-test and runner failures, so this PR adds none." >> "$GITHUB_STEP_SUMMARY"
+            echo >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "::warning title=Conformance drift::The code no longer matches the corpus. This is expected between releases. See the job summary."
+          if [ "$EVENT" = release ]; then
+            echo "Re-pin the corpus now, with the release commit \`$SHA\` as the stamp. See conformance/record/README.md, \"When to re-pin\"." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "This is expected between releases. Re-pin the corpus after the next release. See conformance/record/README.md, \"When to re-pin\"." >> "$GITHUB_STEP_SUMMARY"
+          fi

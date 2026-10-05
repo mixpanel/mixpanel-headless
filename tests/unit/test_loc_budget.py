@@ -66,10 +66,10 @@ class TestLocBudget:
     FILE_COUNT_CAP = 20
     """Maximum number of auth-subsystem files. A 21st file fails this test."""
 
-    LOC_CAP = 8975
+    LOC_CAP = 9000
     """Maximum total LoC across the auth subsystem (~7% headroom over current).
 
-    Bumped 6500 → 6700 → 8800 → 8900 → 8975:
+    Bumped 6500 → 6700 → 8800 → 8900 → 8975 → 9000:
     - 6500 → 6700 covered the two new files
       (``_internal/auth/region_probe.py``, ``_internal/auth/naming.py``)
       plus the relaxations in ``cli/commands/account.py`` /
@@ -91,6 +91,10 @@ class TestLocBudget:
       ``context/phase3/bug-reports/python-oauth-error-details-token-payload.md``,
       findings F-B1/F-B2/F-B3 in
       ``context/phase4/notes/bugfix-reviewB-resolution.md``).
+    - 8975 → 9000 covers docstrings only: the nested ``_to_dict`` and
+      ``_render_table`` helpers in ``cli/commands/project.py`` and
+      ``cli/commands/workspace.py`` gained them when the ``src/``
+      docstring gate moved from 99% to 100%.
     See ``specs/043-frictionless-auth/plan.md`` §"Scale/Scope".
     """
 

@@ -38,7 +38,7 @@ from dataclasses import replace
 from datetime import date as _date
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal, NoReturn
 
 if TYPE_CHECKING:
     from mixpanel_headless._internal.me import MeService
@@ -68,9 +68,7 @@ from mixpanel_headless._internal.auth.session import (
     WorkspaceRef as _WorkspaceRef,
 )
 from mixpanel_headless._internal.bookmark_builders import (
-    _build_composed_properties,
     build_date_range,
-    build_filter_entry,
     build_filter_section,
     build_flow_cohort_filter,
     build_flow_property_filter,
@@ -85,6 +83,15 @@ from mixpanel_headless._internal.bookmark_schema import (
     validate_with_pydantic,
 )
 from mixpanel_headless._internal.config import ConfigManager
+from mixpanel_headless._internal.query.metric_builders import (
+    assemble_metric_clause,
+    build_behavior_ref,
+    build_funnel_behavior,
+    build_funnel_measurement,
+    build_retention_behavior,
+    build_retention_measurement,
+    build_show_section,
+)
 from mixpanel_headless._internal.query.user_builders import (
     extract_cohort_filter,
     filters_to_selector,
@@ -106,6 +113,16 @@ from mixpanel_headless._internal.response_validation import (
     validate_response_model,
     validate_response_models,
 )
+from mixpanel_headless._internal.saved_definitions import (
+    behavior_wire_definition,
+    check_behavior_definition,
+    check_description,
+    check_name,
+    check_same_kind,
+    finish_metric_change,
+    prepare_metric_change,
+    prepare_new_metric,
+)
 from mixpanel_headless._internal.segfilter import build_segfilter_entry
 from mixpanel_headless._internal.services.discovery import DiscoveryService
 from mixpanel_headless._internal.services.live_query import LiveQueryService
@@ -116,13 +133,16 @@ from mixpanel_headless._internal.services.replays import (
 from mixpanel_headless._internal.transforms import transform_event, transform_profile
 from mixpanel_headless._internal.validation import (
     _scan_custom_properties,
+    check_retention_event_kinds,
     contains_control_chars,
     validate_bookmark,
     validate_flow_args,
     validate_flow_bookmark,
     validate_funnel_args,
+    validate_funnel_ref_args,
     validate_query_args,
     validate_retention_args,
+    validate_retention_ref_args,
     validate_sorting_block,
 )
 from mixpanel_headless._literal_types import (
@@ -165,6 +185,7 @@ from mixpanel_headless.types import (
     AnnotationTag,
     AuditResponse,
     AuditViolation,
+    BehaviorRef,
     BlueprintConfig,
     BlueprintFinishParams,
     BlueprintTemplate,
@@ -180,6 +201,7 @@ from mixpanel_headless.types import (
     BulkUpdateBookmarkEntry,
     BulkUpdateCohortEntry,
     BulkUpdateEventsParams,
+    BulkUpdateMetricEntry,
     BulkUpdatePropertiesParams,
     BusinessContext,
     BusinessContextChain,
@@ -190,6 +212,7 @@ from mixpanel_headless.types import (
     CreateAlertParams,
     CreateAnnotationParams,
     CreateAnnotationTagParams,
+    CreateBehaviorParams,
     CreateBookmarkParams,
     CreateCohortParams,
     CreateCustomEventParams,
@@ -199,13 +222,13 @@ from mixpanel_headless.types import (
     CreateDropFilterParams,
     CreateExperimentParams,
     CreateFeatureFlagParams,
+    CreateMetricParams,
     CreateRcaDashboardParams,
     CreateTagParams,
     CreateWebhookParams,
     CustomAlert,
     CustomEvent,
     CustomProperty,
-    CustomPropertyRef,
     Dashboard,
     DataVolumeAnomaly,
     DeleteSchemasResponse,
@@ -233,13 +256,13 @@ from mixpanel_headless.types import (
     FrequencyResult,
     FunnelInfo,
     FunnelMathType,
+    FunnelMetric,
     FunnelQueryResult,
     FunnelResult,
     FunnelStep,
     GroupBy,
     HoldingConstant,
     InitSchemaEnforcementParams,
-    InlineCustomProperty,
     LexiconSchema,
     LexiconTag,
     LookupTable,
@@ -247,6 +270,7 @@ from mixpanel_headless.types import (
     MarkLookupTableReadyParams,
     MathType,
     Metric,
+    MetricRef,
     NumericAverageResult,
     NumericBucketResult,
     NumericSumResult,
@@ -269,10 +293,13 @@ from mixpanel_headless.types import (
     RetentionAlignment,
     RetentionEvent,
     RetentionMathType,
+    RetentionMetric,
     RetentionMode,
     RetentionQueryResult,
     RetentionResult,
+    SavedBehavior,
     SavedCohort,
+    SavedMetric,
     SavedReportResult,
     SchemaEnforcementConfig,
     SchemaEntry,
@@ -286,6 +313,7 @@ from mixpanel_headless.types import (
     UpdateAlertParams,
     UpdateAnnotationParams,
     UpdateAnomalyParams,
+    UpdateBehaviorParams,
     UpdateBookmarkParams,
     UpdateCohortParams,
     UpdateCustomPropertyParams,
@@ -295,6 +323,7 @@ from mixpanel_headless.types import (
     UpdateExperimentParams,
     UpdateFeatureFlagParams,
     UpdateLookupTableParams,
+    UpdateMetricParams,
     UpdatePropertyDefinitionParams,
     UpdateReportLinkParams,
     UpdateSchemaEnforcementParams,
@@ -305,6 +334,7 @@ from mixpanel_headless.types import (
     UserQueryResult,
     ValidateAlertsForBookmarkParams,
     ValidateAlertsForBookmarkResponse,
+    WarehouseMetric,
     WebhookMutationResult,
     WebhookTestParams,
     WebhookTestResult,
@@ -316,6 +346,29 @@ logger = logging.getLogger(__name__)
 # Limit validation bounds (Mixpanel API restriction)
 _MIN_LIMIT = 1
 _MAX_LIMIT = 100_000
+
+_FUNNEL_BEHAVIOR_DEFAULTS: Final[dict[str, object]] = {
+    "conversion_window": 14,
+    "conversion_window_unit": "day",
+    "order": "loose",
+}
+"""Signature defaults of the funnel behavior settings.
+
+With a ``BehaviorRef`` the saved behavior owns these settings, so a value
+other than the default is refused. Keep in step with the ``query_funnel``
+and ``build_funnel_params`` signatures.
+"""
+
+_RETENTION_BEHAVIOR_DEFAULTS: Final[dict[str, object]] = {
+    "retention_unit": "week",
+    "alignment": "birth",
+}
+"""Signature defaults of the retention behavior settings.
+
+With a ``BehaviorRef`` the saved behavior owns these settings, so a value
+other than the default is refused. Keep in step with the
+``query_retention`` and ``build_retention_params`` signatures.
+"""
 
 
 def _check_event_properties_count(event_properties: list[str] | None) -> None:
@@ -2125,7 +2178,9 @@ class Workspace:
     def _build_query_params(
         self,
         *,
-        events: Sequence[str | Metric | CohortMetric],
+        events: Sequence[
+            str | Metric | CohortMetric | FunnelMetric | RetentionMetric | MetricRef
+        ],
         math: MathType,
         math_property: str | None,
         per_user: PerUserAggregation | None,
@@ -2154,7 +2209,7 @@ class Workspace:
         the Mixpanel insights query API.
 
         Args:
-            events: Event names or Metric objects.
+            events: Event names, Metric, CohortMetric, and MetricRef objects.
             math: Top-level aggregation function.
             math_property: Property for property-based math.
             per_user: Per-user pre-aggregation.
@@ -2177,139 +2232,14 @@ class Workspace:
             Bookmark params dict ready for insights query API.
         """
         # --- Build sections.show[] ---
-        show: list[dict[str, Any]] = []
-        for item in events:
-            if isinstance(item, CohortMetric):
-                # CohortMetric: cohort size tracking (CM3: ignore top-level math)
-                cohort_behavior: dict[str, Any] = {
-                    "type": "cohort",
-                    "name": item.name or "",
-                    "resourceType": "cohorts",
-                    "dataGroupId": None,
-                    "dataset": "$mixpanel",
-                    "filtersDeterminer": "all",
-                    "filters": [],
-                }
-                if isinstance(item.cohort, int):
-                    cohort_behavior["id"] = item.cohort
-                else:
-                    raw = _sanitize_raw_cohort(item.cohort.to_dict())
-                    # Server-side cohort processing expects `name` in
-                    # the raw_cohort dict (matching get_raw_cohort_by_id
-                    # DB format). Without it, label generation crashes.
-                    raw["name"] = item.name or ""
-                    cohort_behavior["raw_cohort"] = raw
-
-                entry: dict[str, Any] = {
-                    "type": "metric",
-                    "behavior": cohort_behavior,
-                    "measurement": {
-                        "math": "unique",
-                        "property": None,
-                        "perUserAggregation": None,
-                    },
-                    "isHidden": bool(formulas),
-                }
-                show.append(entry)
-                continue
-
-            if isinstance(item, Metric):
-                event_name = item.event
-                item_math = item.math
-                item_prop = item.property
-                item_per_user = item.per_user
-                item_percentile = item.percentile_value
-                item_filters = item.filters
-                item_filters_combinator = item.filters_combinator
-                item_segment_method = item.segment_method
-            else:
-                event_name = item
-                item_math = math
-                item_prop = math_property
-                item_per_user = per_user
-                item_percentile = percentile_value
-                item_filters = None
-                item_filters_combinator = "all"
-                item_segment_method = None
-
-            # Map user-facing "percentile" to bookmark "custom_percentile"
-            bookmark_math = (
-                "custom_percentile" if item_math == "percentile" else item_math
-            )
-
-            measurement: dict[str, Any] = {"math": bookmark_math}
-            if item_prop is not None:
-                if isinstance(item_prop, CustomPropertyRef):
-                    measurement["property"] = {
-                        "customPropertyId": item_prop.id,
-                        "name": "",
-                        "resourceType": "events",
-                    }
-                elif isinstance(item_prop, InlineCustomProperty):
-                    cp_dict: dict[str, Any] = {
-                        "displayFormula": item_prop.formula,
-                        "composedProperties": _build_composed_properties(
-                            item_prop.inputs
-                        ),
-                        "name": "",
-                        "description": "",
-                        "resourceType": item_prop.resource_type,
-                    }
-                    if item_prop.property_type is not None:
-                        cp_dict["propertyType"] = item_prop.property_type
-                    measurement["property"] = {
-                        "customProperty": cp_dict,
-                        "name": "",
-                        "resourceType": item_prop.resource_type,
-                        "dataset": "$mixpanel",
-                        "dataGroupId": None,
-                    }
-                else:
-                    measurement["property"] = {
-                        "name": item_prop,
-                        "resourceType": "events",
-                    }
-            if item_per_user is not None:
-                measurement["perUserAggregation"] = item_per_user
-            if item_percentile is not None:
-                measurement["percentile"] = item_percentile
-            if item_segment_method is not None:
-                measurement["segmentMethod"] = item_segment_method
-
-            # Build behavior block with optional per-metric filters
-            behavior_filters: list[dict[str, Any]] = []
-            if item_filters:
-                behavior_filters = [build_filter_entry(f) for f in item_filters]
-
-            entry = {
-                "type": "metric",
-                "behavior": {
-                    "type": "event",
-                    "name": event_name,
-                    "resourceType": "events",
-                    "filtersDeterminer": item_filters_combinator,
-                    "filters": behavior_filters,
-                },
-                "measurement": measurement,
-            }
-
-            # Mark hidden when formula is present
-            if formulas:
-                entry["isHidden"] = True
-
-            show.append(entry)
-
-        # Append formula entries to show[]
-        for f in formulas:
-            formula_entry: dict[str, Any] = {
-                "type": "formula",
-                "definition": f.expression,
-                "measurement": {},
-                "referencedMetrics": [],
-            }
-            if f.label:
-                formula_entry["name"] = f.label
-            show.append(formula_entry)
+        show = build_show_section(
+            events,
+            math=math,
+            math_property=math_property,
+            per_user=per_user,
+            percentile_value=percentile_value,
+            formulas=formulas,
+        )
 
         # --- Build sections.time (array) ---
         time_section = build_time_section(
@@ -2367,8 +2297,21 @@ class Workspace:
         events: str
         | Metric
         | CohortMetric
+        | FunnelMetric
+        | RetentionMetric
+        | MetricRef
+        | SavedMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | Formula],
+        | Sequence[
+            str
+            | Metric
+            | CohortMetric
+            | FunnelMetric
+            | RetentionMetric
+            | MetricRef
+            | SavedMetric
+            | Formula
+        ],
         *,
         from_date: str | None = None,
         to_date: str | None = None,
@@ -2402,14 +2345,19 @@ class Workspace:
 
         Args:
             events: Event name(s) to query. Accepts a single string,
-                a Metric object, a CohortMetric object, a Formula
-                object, or a sequence mixing strings, Metrics,
-                CohortMetrics, and Formulas. Formula objects in the
-                list are extracted and appended as formula show clauses.
-                When events includes a CohortMetric, ``math``,
-                ``math_property``, and ``per_user`` are silently
-                ignored for that entry — cohort size is always counted
-                as unique users (CM3).
+                a Metric object, a CohortMetric object, a FunnelMetric,
+                a RetentionMetric, a MetricRef or a SavedMetric (from
+                ``list_metrics`` or ``get_metric``), a Formula object, or
+                a sequence mixing them. Formula objects in the list are
+                extracted and appended as formula show clauses. A Formula
+                with its own operands (``metrics=``) can be the only
+                item. A Metric can count a custom event or more than one
+                event as one series. ``math``, ``math_property``, and
+                ``per_user`` apply to plain strings only: a CohortMetric
+                always counts unique users (CM3), and a saved metric keeps
+                its saved definition except for its own overrides. The
+                params keep each saved metric as a reference, so the
+                server expands the saved definition at query time.
             from_date: Start date (YYYY-MM-DD). If set, overrides ``last``.
             to_date: End date (YYYY-MM-DD). Requires ``from_date``.
             last: Relative time range in days. Default: 30.
@@ -2468,6 +2416,9 @@ class Workspace:
 
         Raises:
             ValueError: If arguments violate validation rules.
+            ParamValidationError: ``events`` holds a ``WarehouseMetric``,
+                which defines a saved warehouse metric and is not a query
+                value (``MR3_WAREHOUSE_INLINE``); query it by reference.
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials.
             QueryError: Invalid query parameters.
@@ -2497,6 +2448,9 @@ class Workspace:
                  Metric("Purchase", math="unique"),
                  Formula("(B / A) * 100", label="Conversion Rate")],
             )
+
+            # A saved metric by id, with a report-level override
+            result = ws.query(MetricRef(88999, segment_method="first"))
             ```
         """
         params = self._resolve_and_build_params(
@@ -2575,8 +2529,21 @@ class Workspace:
         events: str
         | Metric
         | CohortMetric
+        | FunnelMetric
+        | RetentionMetric
+        | MetricRef
+        | SavedMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | Formula],
+        | Sequence[
+            str
+            | Metric
+            | CohortMetric
+            | FunnelMetric
+            | RetentionMetric
+            | MetricRef
+            | SavedMetric
+            | Formula
+        ],
         *,
         from_date: str | None = None,
         to_date: str | None = None,
@@ -2610,9 +2577,13 @@ class Workspace:
 
         Args:
             events: Event name(s) to query. Accepts a single string,
-                a ``Metric``, ``CohortMetric``, ``Formula``, or a
-                sequence mixing strings, ``Metric``s, ``CohortMetric``s,
-                and ``Formula``s.
+                a ``Metric``, ``CohortMetric``, ``FunnelMetric``,
+                ``RetentionMetric``, ``MetricRef``, ``SavedMetric``,
+                ``Formula``, or a sequence mixing them. A ``Formula`` with
+                its own operands can be the only item. A ``MetricRef`` or
+                ``SavedMetric`` stays a reference in the params
+                (``{"type", "id", "overrides"}``), so a report built from
+                them follows the saved metric.
             from_date: Start date (YYYY-MM-DD). If set, overrides ``last``.
             to_date: End date (YYYY-MM-DD). Requires ``from_date``.
             last: Relative time range in days. Default: 30.
@@ -2648,6 +2619,8 @@ class Workspace:
 
         Raises:
             BookmarkValidationError: If arguments violate validation rules.
+            ParamValidationError: ``events`` holds a ``WarehouseMetric``
+                (``MR3_WAREHOUSE_INLINE``); query it by reference.
 
         Example:
             ```python
@@ -2693,8 +2666,21 @@ class Workspace:
         events: str
         | Metric
         | CohortMetric
+        | FunnelMetric
+        | RetentionMetric
+        | MetricRef
+        | SavedMetric
         | Formula
-        | Sequence[str | Metric | CohortMetric | Formula],
+        | Sequence[
+            str
+            | Metric
+            | CohortMetric
+            | FunnelMetric
+            | RetentionMetric
+            | MetricRef
+            | SavedMetric
+            | Formula
+        ],
         from_date: str | None,
         to_date: str | None,
         last: int,
@@ -2727,7 +2713,7 @@ class Workspace:
 
         Args:
             events: Raw events input (str, Metric, CohortMetric,
-                Formula, or sequence).
+                MetricRef, SavedMetric, Formula, or sequence).
             from_date: Start date (YYYY-MM-DD) or None.
             to_date: End date (YYYY-MM-DD) or None.
             last: Relative time range in days.
@@ -2754,16 +2740,49 @@ class Workspace:
 
         Raises:
             BookmarkValidationError: If validation fails at any layer.
+            ParamValidationError: ``events`` holds a ``WarehouseMetric``
+                (``MR3_WAREHOUSE_INLINE``).
         """
-        # Type guard: events must be str, Metric, CohortMetric, Formula, or sequence thereof
-        if not isinstance(events, (str, Metric, CohortMetric, Formula, list, tuple)):
+        # A WarehouseMetric defines a saved warehouse metric. The server runs
+        # warehouse SQL only by saved id and ignores an inline query, so the
+        # value is refused here with a pointer to the reference form.
+        items = events if isinstance(events, (list, tuple)) else [events]
+        if any(isinstance(item, WarehouseMetric) for item in items):
+            raise ParamValidationError(
+                "A WarehouseMetric defines a saved warehouse metric; it is not a "
+                "query value, because the server runs warehouse SQL only by saved "
+                "id. Save it with create_metric, then query "
+                'MetricRef(id, type="warehouse") or the SavedMetric that '
+                "create_metric returns.",
+                code="MR3_WAREHOUSE_INLINE",
+            )
+
+        # Type guard: events must be an inline metric, a saved-metric
+        # reference, a Formula, or a sequence thereof
+        if not isinstance(
+            events,
+            (
+                str,
+                Metric,
+                CohortMetric,
+                FunnelMetric,
+                RetentionMetric,
+                MetricRef,
+                SavedMetric,
+                Formula,
+                list,
+                tuple,
+            ),
+        ):
             raise BookmarkValidationError(
                 [
                     ValidationError(
                         path="events",
                         message=(
-                            f"events must be a string, Metric, CohortMetric, Formula, or "
-                            f"sequence, got {type(events).__name__}"
+                            f"events must be a string, Metric, CohortMetric, "
+                            f"FunnelMetric, RetentionMetric, MetricRef, "
+                            f"SavedMetric, Formula, or sequence, got "
+                            f"{type(events).__name__}"
                         ),
                         code="V21_INVALID_EVENT_TYPE",
                     )
@@ -2785,29 +2804,40 @@ class Workspace:
                 ]
             )
 
-        # Normalize events to sequence, separating Formula objects
-        if isinstance(events, str):
-            events_list: list[str | Metric | CohortMetric] = [events]
-            formulas_from_list: list[Formula] = []
-        elif isinstance(events, (Metric, CohortMetric)):
+        # Normalize events to sequence, separating Formula objects. A
+        # SavedMetric becomes a MetricRef, so it stays a reference.
+        events_list: list[
+            str | Metric | CohortMetric | FunnelMetric | RetentionMetric | MetricRef
+        ]
+        formulas_from_list: list[Formula] = []
+        if isinstance(events, SavedMetric):
+            events_list = [events.to_ref()]
+        elif isinstance(
+            events,
+            (str, Metric, CohortMetric, FunnelMetric, RetentionMetric, MetricRef),
+        ):
             events_list = [events]
-            formulas_from_list = []
         elif isinstance(events, Formula):
-            raise BookmarkValidationError(
-                [
-                    ValidationError(
-                        path="events",
-                        message="Formula cannot be the only item; provide event(s) too",
-                        code="V0_NO_EVENTS",
-                    )
-                ]
-            )
+            # A formula with its own operands needs no other metric.
+            if events.metrics is None:
+                raise BookmarkValidationError(
+                    [
+                        ValidationError(
+                            path="events",
+                            message="Formula cannot be the only item; provide event(s) too",
+                            code="V0_NO_EVENTS",
+                        )
+                    ]
+                )
+            events_list = []
+            formulas_from_list = [events]
         else:
             events_list = []
-            formulas_from_list = []
             for item in events:
                 if isinstance(item, Formula):
                     formulas_from_list.append(item)
+                elif isinstance(item, SavedMetric):
+                    events_list.append(item.to_ref())
                 else:
                     events_list.append(item)
 
@@ -2843,17 +2873,22 @@ class Workspace:
             from_date=from_date,
             to_date=to_date,
             last=last,
-            has_formula=bool(resolved_formulas),
+            has_formula=any(f.metrics is None for f in resolved_formulas),
             rolling=rolling,
             cumulative=cumulative,
             group_by=group_by,
             formulas=resolved_formulas,
             data_group_id=data_group_id,
+            where=where,
         )
         # CP1-CP6: Custom property validation for where filters
         arg_errors.extend(_scan_custom_properties(where=where))
         if any(e.severity == "error" for e in arg_errors):
             raise BookmarkValidationError(arg_errors)
+        for w in (e for e in arg_errors if e.severity == "warning"):
+            logger.warning(
+                "insights query validation warning: %s [%s]", w.message, w.code
+            )
 
         # Build bookmark params
         params = self._build_query_params(
@@ -2892,9 +2927,9 @@ class Workspace:
         *,
         steps: list[FunnelStep],
         conversion_window: int,
-        conversion_window_unit: str,
-        order: str,
-        math: str,
+        conversion_window_unit: ConversionWindowUnit,
+        order: FunnelOrder,
+        math: FunnelMathType,
         math_property: str | None,
         from_date: str | None,
         to_date: str | None,
@@ -2947,89 +2982,71 @@ class Workspace:
         Returns:
             Bookmark params dict ready for insights query API.
         """
-        # Build behaviors array from steps
-        behaviors: list[dict[str, Any]] = []
-        for step in steps:
-            behavior_entry: dict[str, Any] = {
-                "type": "event",
-                "id": None,
-                "name": step.event,
-                "filters": [],
-                "filtersDeterminer": step.filters_combinator,
-                "funnelOrder": order,
-            }
-            # Per-step filters
-            if step.filters:
-                behavior_entry["filters"] = [
-                    build_filter_entry(f) for f in step.filters
-                ]
-            # Per-step label → renamed
-            if step.label is not None:
-                behavior_entry["renamed"] = step.label
-            # Per-step order override
-            if step.order is not None:
-                behavior_entry["funnelOrder"] = step.order
-            behaviors.append(behavior_entry)
-
-        # Build exclusions array
-        exclusions_list: list[dict[str, Any]] = []
-        for ex in exclusions:
-            ex_entry: dict[str, Any] = {
-                "event": ex.event,
-            }
-            # Step range — API uses 1-indexed, Exclusion uses 0-indexed
-            api_from = ex.from_step + 1
-            api_to = (ex.to_step + 1) if ex.to_step is not None else len(steps)
-            ex_entry["steps"] = {
-                "from": api_from,
-                "to": api_to,
-            }
-            exclusions_list.append(ex_entry)
-
-        # Build aggregateBy array
-        aggregate_by: list[dict[str, Any]] = [
-            {"value": hc.property, "resourceType": hc.resource_type}
-            for hc in holding_constant
-        ]
-
-        # Build behavior block
-        behavior: dict[str, Any] = {
-            "type": "funnel",
-            "resourceType": "events",
-            "behaviors": behaviors,
-            "conversionWindowDuration": conversion_window,
-            "conversionWindowUnit": conversion_window_unit,
-            "funnelOrder": order,
-            "exclusions": exclusions_list,
-            "aggregateBy": aggregate_by,
-            "filter": [],
-        }
-        if reentry_mode is not None:
-            behavior["funnelReentryMode"] = reentry_mode
-
-        # Build measurement
-        measurement: dict[str, Any] = {
-            "math": math,
-            "property": (
-                {
-                    "name": math_property,
-                    "type": "number",
-                    "resourceType": "events",
-                }
-                if math_property
-                else None
-            ),
-            "stepIndex": None,
-        }
-
         # Build show clause
-        show: list[dict[str, Any]] = [
-            {
-                "type": "metric",
-                "behavior": behavior,
-                "measurement": measurement,
-            }
-        ]
+        behavior = build_funnel_behavior(
+            steps=steps,
+            conversion_window=conversion_window,
+            conversion_window_unit=conversion_window_unit,
+            order=order,
+            exclusions=exclusions,
+            holding_constant=holding_constant,
+            reentry_mode=reentry_mode,
+        )
+        measurement = build_funnel_measurement(math=math, math_property=math_property)
+        return self._assemble_funnel_params(
+            assemble_metric_clause(behavior, measurement),
+            from_date=from_date,
+            to_date=to_date,
+            last=last,
+            unit=unit,
+            group_by=group_by,
+            where=where,
+            mode=mode,
+            time_comparison=time_comparison,
+            data_group_id=data_group_id,
+        )
+
+    def _assemble_funnel_params(
+        self,
+        show_clause: dict[str, Any],
+        *,
+        from_date: str | None,
+        to_date: str | None,
+        last: int,
+        unit: QueryTimeUnit,
+        group_by: str
+        | GroupBy
+        | CohortBreakdown
+        | list[str | GroupBy | CohortBreakdown]
+        | None,
+        where: Filter | list[Filter] | None,
+        mode: str,
+        time_comparison: TimeComparison | None = None,
+        data_group_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Wrap a funnel metric clause in the full funnel bookmark params.
+
+        Shared by the inline-steps path and the saved-behavior path, so both
+        get the same sections and display options.
+
+        Args:
+            show_clause: The funnel metric show clause.
+            from_date: Start date (YYYY-MM-DD) or None.
+            to_date: End date (YYYY-MM-DD) or None.
+            last: Relative date range in days.
+            unit: Time granularity.
+            group_by: Breakdown specification.
+            where: Filter conditions.
+            mode: Display mode (steps, trends, table).
+            time_comparison: Optional period-over-period comparison.
+                Adds ``timeComparison`` to ``displayOptions``.
+            data_group_id: Optional data group ID for group-level
+                analytics. Default: ``None``.
+
+        Returns:
+            Bookmark params dict ready for insights query API.
+        """
+        show: list[dict[str, Any]] = [show_clause]
 
         # Build sections using shared builders
         time_section = build_time_section(
@@ -3076,7 +3093,7 @@ class Workspace:
     def _resolve_and_build_funnel_params(
         self,
         *,
-        steps: list[str | FunnelStep],
+        steps: list[str | FunnelStep] | BehaviorRef | SavedBehavior,
         conversion_window: int,
         conversion_window_unit: ConversionWindowUnit,
         order: FunnelOrder,
@@ -3108,7 +3125,8 @@ class Workspace:
         (Layer 2).
 
         Args:
-            steps: Funnel step specs (strings or FunnelStep objects).
+            steps: Funnel step specs (strings or FunnelStep objects), or a
+                BehaviorRef or SavedBehavior for a saved funnel behavior.
             conversion_window: Conversion window size.
             conversion_window_unit: Conversion window time unit.
             order: Funnel step ordering mode.
@@ -3136,6 +3154,63 @@ class Workspace:
         Raises:
             BookmarkValidationError: If validation fails at any layer.
         """
+        if isinstance(steps, SavedBehavior):
+            steps = steps.to_ref()
+        if isinstance(steps, BehaviorRef):
+            changed_settings = [
+                name
+                for name, changed in (
+                    (
+                        "conversion_window",
+                        conversion_window
+                        != _FUNNEL_BEHAVIOR_DEFAULTS["conversion_window"],
+                    ),
+                    (
+                        "conversion_window_unit",
+                        conversion_window_unit
+                        != _FUNNEL_BEHAVIOR_DEFAULTS["conversion_window_unit"],
+                    ),
+                    ("order", order != _FUNNEL_BEHAVIOR_DEFAULTS["order"]),
+                    ("exclusions", bool(exclusions)),
+                    ("holding_constant", bool(holding_constant)),
+                    ("reentry_mode", reentry_mode is not None),
+                )
+                if changed
+            ]
+            arg_errors = validate_funnel_ref_args(
+                behavior=steps,
+                changed_settings=changed_settings,
+                math=math,
+                math_property=math_property,
+                from_date=from_date,
+                to_date=to_date,
+                last=last,
+                group_by=group_by,
+                data_group_id=data_group_id,
+            )
+            arg_errors.extend(_scan_custom_properties(where=where))
+            if any(e.severity == "error" for e in arg_errors):
+                raise BookmarkValidationError(arg_errors)
+            params = self._assemble_funnel_params(
+                assemble_metric_clause(
+                    build_behavior_ref(steps),
+                    build_funnel_measurement(math=math, math_property=math_property),
+                ),
+                from_date=from_date,
+                to_date=to_date,
+                last=last,
+                unit=unit,
+                group_by=group_by,
+                where=where,
+                mode=mode,
+                time_comparison=time_comparison,
+                data_group_id=data_group_id,
+            )
+            bookmark_errors = validate_bookmark(params, bookmark_type="funnels")
+            if any(e.severity == "error" for e in bookmark_errors):
+                raise BookmarkValidationError(bookmark_errors)
+            return params
+
         # Normalize steps: str → FunnelStep
         normalized_steps = [FunnelStep(s) if isinstance(s, str) else s for s in steps]
 
@@ -3209,7 +3284,7 @@ class Workspace:
 
     def query_funnel(
         self,
-        steps: list[str | FunnelStep],
+        steps: list[str | FunnelStep] | BehaviorRef | SavedBehavior,
         *,
         conversion_window: int = 14,
         conversion_window_unit: Literal[
@@ -3247,7 +3322,13 @@ class Workspace:
         Args:
             steps: Funnel step specifications. At least 2 required.
                 Accepts event name strings or ``FunnelStep`` objects
-                for per-step filters, labels, and ordering.
+                for per-step filters, labels, and ordering. A
+                ``BehaviorRef`` or ``SavedBehavior`` for a saved funnel
+                behavior replaces the list: the saved behavior sets the
+                steps, the conversion window, the order, the exclusions,
+                the held properties, and the reentry mode, so those
+                arguments must keep their defaults
+                (``F14_BEHAVIOR_REF_SETTINGS``).
             conversion_window: How long users have to complete the
                 funnel. Default: 14.
             conversion_window_unit: Time unit for conversion window.
@@ -3321,6 +3402,9 @@ class Workspace:
                 last=90,
             )
             print(result.df)
+
+            # A saved funnel behavior by id
+            result = ws.query_funnel(BehaviorRef(3120, "funnel"), last=90)
             ```
         """
         params = self._resolve_and_build_funnel_params(
@@ -3394,7 +3478,7 @@ class Workspace:
 
     def build_funnel_params(
         self,
-        steps: list[str | FunnelStep],
+        steps: list[str | FunnelStep] | BehaviorRef | SavedBehavior,
         *,
         conversion_window: int = 14,
         conversion_window_unit: Literal[
@@ -3431,6 +3515,8 @@ class Workspace:
 
         Args:
             steps: Funnel step specifications. At least 2 required.
+                A ``BehaviorRef`` or ``SavedBehavior`` for a saved funnel
+                behavior replaces the list; see :meth:`query_funnel`.
             conversion_window: Conversion window size. Default: 14.
             conversion_window_unit: Time unit. Default: ``"day"``.
             order: Step ordering mode. Default: ``"loose"``.
@@ -3570,49 +3656,72 @@ class Workspace:
         Returns:
             Bookmark params dict ready for insights query API.
         """
-        # Build behaviors array (exactly 2: born + return)
-        behaviors: list[dict[str, Any]] = []
-        for evt in [born_event, return_event]:
-            behavior_entry: dict[str, Any] = {
-                "type": "event",
-                "id": None,
-                "name": evt.event,
-                "filters": [],
-                "filtersDeterminer": evt.filters_combinator,
-            }
-            # Per-event filters
-            if evt.filters:
-                behavior_entry["filters"] = [build_filter_entry(f) for f in evt.filters]
-            behaviors.append(behavior_entry)
-
-        # Build behavior block
-        behavior: dict[str, Any] = {
-            "type": "retention",
-            "resourceType": "events",
-            "behaviors": behaviors,
-            "retentionUnit": retention_unit,
-            "retentionAlignmentType": alignment,
-            "retentionCustomBucketSizes": list(bucket_sizes) if bucket_sizes else [],
-            "filter": [],
-        }
-        if unbounded_mode is not None:
-            behavior["retentionUnboundedMode"] = unbounded_mode
-
-        # Build measurement
-        measurement: dict[str, Any] = {
-            "math": math,
-        }
-        if retention_cumulative:
-            measurement["retentionCumulative"] = True
-
         # Build show clause
-        show: list[dict[str, Any]] = [
-            {
-                "type": "metric",
-                "behavior": behavior,
-                "measurement": measurement,
-            }
-        ]
+        behavior = build_retention_behavior(
+            born_event=born_event,
+            return_event=return_event,
+            retention_unit=retention_unit,
+            alignment=alignment,
+            bucket_sizes=bucket_sizes,
+            unbounded_mode=unbounded_mode,
+        )
+        measurement = build_retention_measurement(
+            math=math, cumulative=retention_cumulative
+        )
+        return self._assemble_retention_params(
+            assemble_metric_clause(behavior, measurement),
+            from_date=from_date,
+            to_date=to_date,
+            last=last,
+            unit=unit,
+            group_by=group_by,
+            where=where,
+            mode=mode,
+            time_comparison=time_comparison,
+            data_group_id=data_group_id,
+        )
+
+    def _assemble_retention_params(
+        self,
+        show_clause: dict[str, Any],
+        *,
+        from_date: str | None,
+        to_date: str | None,
+        last: int,
+        unit: QueryTimeUnit,
+        group_by: str
+        | GroupBy
+        | CohortBreakdown
+        | list[str | GroupBy | CohortBreakdown]
+        | None,
+        where: Filter | list[Filter] | None,
+        mode: RetentionMode,
+        time_comparison: TimeComparison | None = None,
+        data_group_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Wrap a retention metric clause in the full retention bookmark params.
+
+        Shared by the inline-events path and the saved-behavior path, so both
+        get the same sections, display options, and sorting.
+
+        Args:
+            show_clause: The retention metric show clause.
+            from_date: Start date (YYYY-MM-DD) or None.
+            to_date: End date (YYYY-MM-DD) or None.
+            last: Relative date range in days.
+            unit: Time granularity.
+            group_by: Breakdown specification.
+            where: Filter conditions.
+            mode: Display mode (curve, trends, table).
+            time_comparison: Optional period-over-period comparison.
+                Adds ``timeComparison`` to ``displayOptions``.
+            data_group_id: Optional data group ID for group-level
+                analytics. Default: ``None``.
+
+        Returns:
+            Bookmark params dict ready for insights query API.
+        """
+        show: list[dict[str, Any]] = [show_clause]
 
         # Build sections using shared builders
         time_section = build_time_section(
@@ -4343,8 +4452,8 @@ class Workspace:
     def _resolve_and_build_retention_params(
         self,
         *,
-        born_event: str | RetentionEvent,
-        return_event: str | RetentionEvent,
+        born_event: str | RetentionEvent | BehaviorRef | SavedBehavior,
+        return_event: str | RetentionEvent | None,
         retention_unit: TimeUnit,
         alignment: RetentionAlignment,
         bucket_sizes: list[int] | None,
@@ -4374,8 +4483,10 @@ class Workspace:
         (Layer 2).
 
         Args:
-            born_event: Born event spec (string or RetentionEvent).
-            return_event: Return event spec (string or RetentionEvent).
+            born_event: Born event spec (string or RetentionEvent), or a
+                BehaviorRef or SavedBehavior for a saved retention behavior.
+            return_event: Return event spec (string or RetentionEvent);
+                None with a BehaviorRef.
             retention_unit: Retention period unit.
             alignment: Retention alignment mode.
             bucket_sizes: Custom bucket sizes or None.
@@ -4400,6 +4511,71 @@ class Workspace:
         Raises:
             BookmarkValidationError: If validation fails at any layer.
         """
+        if isinstance(born_event, SavedBehavior):
+            born_event = born_event.to_ref()
+        if isinstance(born_event, BehaviorRef):
+            changed_settings = [
+                name
+                for name, changed in (
+                    ("return_event", return_event is not None),
+                    (
+                        "retention_unit",
+                        retention_unit
+                        != _RETENTION_BEHAVIOR_DEFAULTS["retention_unit"],
+                    ),
+                    (
+                        "alignment",
+                        alignment != _RETENTION_BEHAVIOR_DEFAULTS["alignment"],
+                    ),
+                    ("bucket_sizes", bucket_sizes is not None),
+                    ("unbounded_mode", unbounded_mode is not None),
+                )
+                if changed
+            ]
+            ref_errors = validate_retention_ref_args(
+                behavior=born_event,
+                changed_settings=changed_settings,
+                math=math,
+                mode=mode,
+                unit=unit,
+                from_date=from_date,
+                to_date=to_date,
+                last=last,
+                group_by=group_by,
+                data_group_id=data_group_id,
+            )
+            ref_errors.extend(_scan_custom_properties(where=where))
+            if any(e.severity == "error" for e in ref_errors):
+                raise BookmarkValidationError(ref_errors)
+            ref_params = self._assemble_retention_params(
+                assemble_metric_clause(
+                    build_behavior_ref(born_event),
+                    build_retention_measurement(
+                        math=math, cumulative=retention_cumulative
+                    ),
+                ),
+                from_date=from_date,
+                to_date=to_date,
+                last=last,
+                unit=unit,
+                group_by=group_by,
+                where=where,
+                mode=mode,
+                time_comparison=time_comparison,
+                data_group_id=data_group_id,
+            )
+            ref_bookmark_errors = validate_bookmark(
+                ref_params, bookmark_type="retention"
+            )
+            if any(e.severity == "error" for e in ref_bookmark_errors):
+                raise BookmarkValidationError(ref_bookmark_errors)
+            return ref_params
+
+        # More than one event per retention event: point to custom events
+        kind_errors = check_retention_event_kinds(born_event, return_event)
+        if kind_errors:
+            raise BookmarkValidationError(kind_errors)
+
         # Normalize events: str → RetentionEvent
         norm_born = (
             RetentionEvent(born_event) if isinstance(born_event, str) else born_event
@@ -4410,10 +4586,11 @@ class Workspace:
             else return_event
         )
 
-        # Layer 1: Argument validation
+        # Layer 1: Argument validation. A missing return event is reported
+        # by R2 the same way as an empty one.
         arg_errors = validate_retention_args(
             born_event=norm_born.event,
-            return_event=norm_return.event,
+            return_event=norm_return.event if norm_return is not None else "",
             retention_unit=retention_unit,
             alignment=alignment,
             bucket_sizes=bucket_sizes,
@@ -4431,10 +4608,10 @@ class Workspace:
         arg_errors.extend(
             _scan_custom_properties(
                 where=where,
-                retention_events=[norm_born, norm_return],
+                retention_events=[e for e in (norm_born, norm_return) if e is not None],
             )
         )
-        if any(e.severity == "error" for e in arg_errors):
+        if norm_return is None or any(e.severity == "error" for e in arg_errors):
             raise BookmarkValidationError(arg_errors)
 
         # Build bookmark params
@@ -4467,8 +4644,8 @@ class Workspace:
 
     def query_retention(
         self,
-        born_event: str | RetentionEvent,
-        return_event: str | RetentionEvent,
+        born_event: str | RetentionEvent | BehaviorRef | SavedBehavior,
+        return_event: str | RetentionEvent | None = None,
         *,
         retention_unit: TimeUnit = "week",
         alignment: RetentionAlignment = "birth",
@@ -4500,9 +4677,16 @@ class Workspace:
         Args:
             born_event: Event that defines cohort membership. Accepts
                 an event name string or a ``RetentionEvent`` object
-                for per-event filters.
+                for per-event filters. A ``BehaviorRef`` or
+                ``SavedBehavior`` for a saved retention behavior replaces
+                both events: the saved behavior sets the events, the
+                retention unit, the alignment, the buckets, and the
+                unbounded mode, so ``return_event`` stays ``None`` and
+                those arguments keep their defaults
+                (``R15_BEHAVIOR_REF_SETTINGS``).
             return_event: Event that defines return. Accepts an event
-                name string or a ``RetentionEvent`` object.
+                name string or a ``RetentionEvent`` object. Required
+                unless ``born_event`` is a ``BehaviorRef``.
             retention_unit: Retention period unit. Default: ``"week"``.
             alignment: Retention alignment mode. Default: ``"birth"``.
             bucket_sizes: Custom bucket sizes (positive ints in
@@ -4566,6 +4750,9 @@ class Workspace:
                 last=90,
             )
             print(result.df)
+
+            # A saved retention behavior by id
+            result = ws.query_retention(BehaviorRef(4410, "retention"))
             ```
         """
         params = self._resolve_and_build_retention_params(
@@ -4639,8 +4826,8 @@ class Workspace:
 
     def build_retention_params(
         self,
-        born_event: str | RetentionEvent,
-        return_event: str | RetentionEvent,
+        born_event: str | RetentionEvent | BehaviorRef | SavedBehavior,
+        return_event: str | RetentionEvent | None = None,
         *,
         retention_unit: TimeUnit = "week",
         alignment: RetentionAlignment = "birth",
@@ -4671,8 +4858,11 @@ class Workspace:
         :meth:`create_bookmark`, or testing.
 
         Args:
-            born_event: Event that defines cohort membership.
-            return_event: Event that defines return.
+            born_event: Event that defines cohort membership, or a
+                ``BehaviorRef`` or ``SavedBehavior`` for a saved retention
+                behavior; see :meth:`query_retention`.
+            return_event: Event that defines return. Required unless
+                ``born_event`` is a ``BehaviorRef``.
             retention_unit: Retention period unit. Default: ``"week"``.
             alignment: Retention alignment mode. Default: ``"birth"``.
             bucket_sizes: Custom bucket sizes. Default: ``None``.
@@ -8815,6 +9005,982 @@ class Workspace:
         client.delete_custom_event(custom_event_id)
 
     # =============================================================================
+    # Saved Metrics & Saved Behaviors
+    # =============================================================================
+    # Project entities at /projects/{pid}/metrics and /projects/{pid}/behaviors.
+    # One collection holds all three metric kinds (behavior metric, formula,
+    # warehouse), so one method family serves them. The lists have no server
+    # filters, so the filter arguments apply locally to the one response.
+    # Deletes use the bulk routes only: the single-metric DELETE answers 501,
+    # and the single-behavior DELETE skips the permission check.
+
+    def list_metrics(
+        self,
+        *,
+        metric_type: str | None = None,
+        verified: bool | None = None,
+        name_contains: str | None = None,
+        viewable_only: bool = False,
+    ) -> list[SavedMetric]:
+        """List saved metrics: behavior metrics, formulas, and warehouse metrics.
+
+        Returns what the server returns, which includes metrics that the
+        caller cannot view (``can_view`` is False, but the definition is
+        complete). The server has no pagination, filters, or search, so one
+        request fetches every active metric, and the filters below apply
+        locally to that response. On a large project the request can take
+        more than 30 seconds; the read timeout is at least 120 seconds.
+
+        Args:
+            metric_type: Keep only metrics of this kind: ``"metric"`` (a
+                behavior metric), ``"formula"``, ``"warehouse"``, or the
+                legacy ``"behavior"``. Exact match.
+            verified: ``True`` keeps verified metrics; ``False`` keeps
+                unverified metrics. ``None`` (default) keeps both.
+            name_contains: Keep only metrics whose name contains this text,
+                ignoring case.
+            viewable_only: Drop the metrics that the server marks
+                ``can_view: false`` for the caller, as the web app does.
+                Rows without a ``can_view`` flag are kept. Default False.
+
+        Returns:
+            ``SavedMetric`` objects in server order.
+
+        Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller lacks the metrics permission or scope (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            for metric in ws.list_metrics(verified=True, viewable_only=True):
+                print(metric.id, metric.type, metric.name)
+
+            formulas = ws.list_metrics(metric_type="formula", name_contains="rate")
+            ```
+        """
+        client = self._require_api_client()
+        metrics = validate_response_models(
+            SavedMetric, client.list_metrics(), endpoint="list_metrics"
+        )
+        if metric_type is not None:
+            metrics = [m for m in metrics if m.type == metric_type]
+        if verified is not None:
+            metrics = [m for m in metrics if m.verified is verified]
+        if name_contains is not None:
+            needle = name_contains.casefold()
+            metrics = [m for m in metrics if needle in m.name.casefold()]
+        if viewable_only:
+            metrics = [m for m in metrics if m.can_view is not False]
+        return metrics
+
+    def get_metric(self, metric_id: int) -> SavedMetric:
+        """Get one saved metric by id, with its full definition.
+
+        Args:
+            metric_id: The saved metric id.
+
+        Returns:
+            The ``SavedMetric``. Its typed accessors (``math``,
+            ``formula_expression``, ``referenced_metric_ids``, ``display``,
+            ``goals``) read the definition.
+
+        Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The metric does not exist or is deleted (404), or the
+                caller lacks permission (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            metric = ws.get_metric(104700)
+            print(metric.type, metric.math, metric.definition)
+            ```
+        """
+        client = self._require_api_client()
+        return validate_response_model(
+            SavedMetric, client.get_metric(metric_id), endpoint="get_metric"
+        )
+
+    def create_metric(
+        self, params: CreateMetricParams, *, validate: bool = True
+    ) -> SavedMetric:
+        """Create a saved metric from a typed or raw definition.
+
+        The kind comes from the definition: a ``Metric``, ``CohortMetric``,
+        ``FunnelMetric``, or ``RetentionMetric`` gives a behavior metric, a
+        ``Formula`` with its own operands gives a saved formula, a
+        ``WarehouseMetric`` gives a warehouse metric, and a
+        ``RawMetricDefinition`` gives the kind it names. A behavior metric
+        saves the ``behavior`` and ``measurement`` that :meth:`query` writes
+        for the same value, and a saved formula holds the operands that a
+        query formula holds, so the saved metric queries the same way as its
+        inline twin.
+
+        Stored definitions can carry legacy keys (for example a behavior
+        ``filter``, or the ``id`` and ``type`` of a measurement) that the
+        server reads past at query time but refuses on a create. So the
+        method removes them from a ``RawMetricDefinition``, with or without
+        ``validate``, and a copy of a stored metric works. A definition
+        compiled from a typed value never has one; if it does, the method
+        refuses it (``SM4_SCHEMA``).
+
+        Before any request, the method checks the name and description and
+        the definition (see Raises). Then it sends the create. The server
+        drops ``owned_by`` and ``verified`` from a create, so when the params
+        set an owner or ``verified=True``, a second request (an update)
+        sets them. The two requests are not atomic: if the second one fails,
+        the metric exists without the owner or the verified flag, and the
+        method raises an error that names the id of the created metric
+        (see Raises).
+
+        In a project with sharing on, a new metric is private to its
+        creator; this API cannot share it.
+
+        Args:
+            params: Name, definition, and optional description, display,
+                goals, owner, and verified flag.
+            validate: Check the definition with the mirror of the server
+                schema before the request (default), including the refusal
+                of legacy keys in a compiled definition. ``False`` sends it
+                without the check (a raw definition still loses its legacy
+                keys); the server still checks a create and answers a
+                failing definition with a 400 (``QueryError``).
+
+        Returns:
+            The created ``SavedMetric`` (after the second request, when one
+            was needed).
+
+        Raises:
+            ParamValidationError: Before any request: an empty name
+                (``SM1_EMPTY_NAME``); a name or description longer than 255
+                characters, which the server fails with a 500
+                (``SM2_NAME_TOO_LONG``); a definition that fails the schema
+                mirror, or a warehouse definition without a source
+                (``SM4_SCHEMA``); a saved formula whose operands use segment
+                method or attribution (``FM6_OPERAND_ATTRIBUTION``); a
+                ``Formula`` without operands (``SM7_FORMULA_WITHOUT_OPERANDS``).
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The server refused the body (400; the message names
+                the failure and its schema location, and ``response_body``
+                holds the full server body); the pricing-plan gate
+                ("Cannot save metric with your current plan"), a missing
+                permission, or an unknown warehouse source (403; the body can
+                have an empty error); an active metric has the same name
+                (409).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: The create succeeded, but the second
+                request (owner or verified flag) failed
+                (``code="CREATE_FOLLOW_UP_FAILED"``). ``details`` holds
+                ``metric_id`` (the created metric) and ``fields`` (the
+                values that were not set); the error of the second request
+                is chained as ``__cause__``. The errors above come from the
+                create itself, so nothing was created.
+
+        Example:
+            ```python
+            ws = Workspace()
+            saved = ws.create_metric(CreateMetricParams(
+                name="Weekly buyers",
+                definition=Metric("Purchase", math="unique"),
+                description="Unique users who bought.",
+                verified=True,
+            ))
+            print(saved.id, saved.verified)
+            ```
+        """
+        check_name(params.name, entity="saved metric")
+        check_description(params.description, entity="saved metric")
+        parts = prepare_new_metric(
+            params.definition,
+            params.display,
+            params.goals,
+            validate=validate,
+            for_create=True,
+        )
+        if parts.kind == "warehouse" and parts.warehouse_source_id is None:
+            raise ParamValidationError(
+                "A new warehouse metric needs a warehouse source: set "
+                "WarehouseMetric.source_id or RawMetricDefinition."
+                "warehouse_source_id.",
+                code="SM4_SCHEMA",
+                details={"path": "warehouse_source_id"},
+            )
+        body: dict[str, Any] = {"type": parts.kind, "name": params.name}
+        if params.description is not None:
+            body["description"] = params.description
+        body["definition"] = parts.definition
+        if parts.kind == "warehouse":
+            body["warehouse_source_id"] = parts.warehouse_source_id
+
+        client = self._require_api_client()
+        created = validate_response_model(
+            SavedMetric, client.create_metric(body), endpoint="create_metric"
+        )
+        follow_up: dict[str, Any] = {}
+        if params.owned_by is not None:
+            follow_up["owned_by"] = {"id": params.owned_by}
+        if params.verified:
+            follow_up["verified"] = True
+        if not follow_up:
+            return created
+        try:
+            row = client.update_metric(created.id, follow_up)
+        except MixpanelHeadlessError as exc:
+            fields = sorted(follow_up)
+            logger.warning(
+                "create_metric: created saved metric %s, but the follow-up "
+                "update of %s failed",
+                created.id,
+                fields,
+            )
+            raise MixpanelHeadlessError(
+                f"create_metric: created saved metric {created.id}, but the "
+                f"follow-up update of {', '.join(fields)} failed: {exc.message}. "
+                f"The metric exists without these values; set them with "
+                f"update_metric or remove the metric with delete_metric.",
+                code="CREATE_FOLLOW_UP_FAILED",
+                details={"metric_id": created.id, "fields": fields},
+            ) from exc
+        return validate_response_model(SavedMetric, row, endpoint="create_metric")
+
+    def update_metric(
+        self,
+        metric_id: int,
+        params: UpdateMetricParams,
+        *,
+        validate: bool = True,
+    ) -> SavedMetric:
+        """Update a saved metric: metadata, definition, presentation, owner, or verified.
+
+        The server runs no schema check on an update and stores a new
+        definition as sent, so this method runs the same checks as
+        :meth:`create_metric` before any request. It sends one update.
+
+        When the params change the definition, the display, or the goals,
+        the method reads the metric first, because the server replaces the
+        definition in full:
+
+        - A new definition must have the stored kind and, for a warehouse
+          metric, the stored source. It keeps the stored display and goals
+          unless the params or the new definition set them.
+        - Display or goals without a definition send the stored definition
+          back with the new values, as the web app does.
+        - The params display merges into the stored display (or into the
+          display of the new definition, when it has one): the keys that
+          you set replace the stored ones, a key set to ``None`` is
+          removed, and the other keys stay. The params goals replace the
+          stored goals in full.
+        - A ``WarehouseMetric`` whose ``aggregation`` or ``sync_interval``
+          is ``None`` keeps the stored value, so an update of the SQL alone
+          keeps a stored ``"sum"`` and ``"daily"``. A
+          ``RawMetricDefinition`` is sent as given.
+
+        The read and the update are not atomic; an edit in the web app
+        between them is overwritten. A failed read raises; the method never
+        guesses the stored definition.
+
+        Args:
+            metric_id: The saved metric id.
+            params: The fields to change; ``None`` leaves a field as it is.
+                ``verified=True`` stamps the verification time again.
+                ``owned_by`` sets an owner; an owner cannot be removed.
+            validate: Check new definition, display, and goal values with the
+                mirror of the server schema (default). ``False`` sends them
+                as given, and the server stores them unchecked.
+
+        Returns:
+            The updated ``SavedMetric``.
+
+        Raises:
+            ParamValidationError: Before any request: an empty name
+                (``SM1_EMPTY_NAME``), a name or description longer than 255
+                characters (``SM2_NAME_TOO_LONG``), a value that fails the
+                schema mirror (``SM4_SCHEMA``), or a saved formula operand
+                with segment method or attribution
+                (``FM6_OPERAND_ATTRIBUTION``). After the read: a new
+                definition of another kind or warehouse source
+                (``SM3_KIND_CHANGE``).
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The metric does not exist or is deleted (404), the
+                caller cannot edit it or the pricing-plan gate blocks the write
+                (403), or the new name is taken (409).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            ws.update_metric(104700, UpdateMetricParams(
+                display=MetricDisplay(suffix=" users", precision=0),
+                verified=True,
+            ))
+            ws.update_metric(104700, UpdateMetricParams(
+                definition=Metric("Purchase", math="unique", segment_method="first"),
+            ))
+            ```
+        """
+        check_name(params.name, entity="saved metric")
+        check_description(params.description, entity="saved metric")
+        change = prepare_metric_change(
+            params.definition, params.display, params.goals, validate=validate
+        )
+        client = self._require_api_client()
+        body: dict[str, Any] = {}
+        if params.name is not None:
+            body["name"] = params.name
+        if params.description is not None:
+            body["description"] = params.description
+        if change is not None:
+            stored = validate_response_model(
+                SavedMetric, client.get_metric(metric_id), endpoint="update_metric"
+            )
+            body["definition"] = finish_metric_change(change, stored)
+        if params.owned_by is not None:
+            body["owned_by"] = {"id": params.owned_by}
+        if params.verified is not None:
+            body["verified"] = params.verified
+        row = client.update_metric(metric_id, body)
+        return validate_response_model(SavedMetric, row, endpoint="update_metric")
+
+    def bulk_update_metrics(
+        self,
+        entries: Sequence[BulkUpdateMetricEntry],
+        *,
+        validate: bool = True,
+    ) -> list[SavedMetric]:
+        """Update several saved metrics with one request, for example to verify them.
+
+        Each entry holds a metric id plus the fields to change. The method
+        runs the checks of :meth:`update_metric` on every entry before it
+        sends anything. An entry with a new definition reads its metric
+        first (one read per such entry) to check the kind and to keep the
+        stored display and goals. One bad entry stops the whole batch.
+
+        The server skips ids that do not name a metric of the project, with
+        no error; compare the ids of the result with the ids you sent.
+
+        Args:
+            entries: One entry per metric.
+            validate: Check new definitions with the mirror of the server
+                schema (default).
+
+        Returns:
+            The updated ``SavedMetric`` objects, in server order. An empty
+            ``entries`` sends no request and returns ``[]``.
+
+        Raises:
+            ParamValidationError: An entry breaks a rule of
+                :meth:`update_metric` (``SM1_EMPTY_NAME``,
+                ``SM2_NAME_TOO_LONG``, ``SM4_SCHEMA``,
+                ``FM6_OPERAND_ATTRIBUTION``, ``SM3_KIND_CHANGE``); nothing
+                was sent.
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The read of an entry's metric failed (404), the
+                caller cannot edit one of the metrics (403), or a new name
+                is taken (409).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            candidates = ws.list_metrics(name_contains="[core]", verified=False)
+            ws.bulk_update_metrics(
+                [BulkUpdateMetricEntry(id=m.id, verified=True) for m in candidates]
+            )
+            ```
+        """
+        prepared = []
+        for entry in entries:
+            check_name(entry.name, entity="saved metric")
+            check_description(entry.description, entity="saved metric")
+            change = prepare_metric_change(
+                entry.definition, None, None, validate=validate
+            )
+            prepared.append((entry, change))
+        if not prepared:
+            return []
+        client = self._require_api_client()
+        wire_entries: list[dict[str, Any]] = []
+        for entry, change in prepared:
+            item: dict[str, Any] = {"id": entry.id}
+            if entry.name is not None:
+                item["name"] = entry.name
+            if entry.description is not None:
+                item["description"] = entry.description
+            if change is not None:
+                stored = validate_response_model(
+                    SavedMetric,
+                    client.get_metric(entry.id),
+                    endpoint="bulk_update_metrics",
+                )
+                item["definition"] = finish_metric_change(change, stored)
+            if entry.owned_by is not None:
+                item["owned_by"] = {"id": entry.owned_by}
+            if entry.verified is not None:
+                item["verified"] = entry.verified
+            wire_entries.append(item)
+        rows = client.bulk_update_metrics(wire_entries)
+        return validate_response_models(
+            SavedMetric, rows, endpoint="bulk_update_metrics"
+        )
+
+    def delete_metric(self, metric_id: int, *, force: bool = False) -> None:
+        """Delete one saved metric, after a read that confirms it exists and is yours to edit.
+
+        The server has no working single-metric delete, and its bulk delete
+        skips unknown ids with no error. So this method reads the metric
+        first, then sends the bulk delete with the one id. An unknown id
+        raises instead of passing silently. The delete is a soft delete on
+        the server; reports that refer to the metric keep a copy of its
+        definition but lose the link.
+
+        The server's bulk delete lets a project superadmin delete metrics
+        that other users own, even when the metric's ``can_update_basic``
+        flag is false for that account. So this method refuses a metric
+        whose ``can_update_basic`` is false, unless ``force`` is true. A
+        read without the flag does not refuse; the server stays the
+        authority.
+
+        Args:
+            metric_id: The saved metric id.
+            force: Delete even when the read says that the caller cannot
+                edit the metric (a superadmin account can delete metrics
+                that other users own). The existence read still runs.
+
+        Raises:
+            ParamValidationError: The read found no active metric with this
+                id (404); nothing was deleted (``SM5_NOT_FOUND_FOR_DELETE``).
+                The read shows ``can_update_basic`` false and ``force`` is
+                false; nothing was deleted (``SM6_DELETE_NOT_PERMITTED``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller cannot read or edit the metric, or lacks
+                the warehouse permission for a warehouse metric (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            ws.delete_metric(104700)
+            ws.delete_metric(118228, force=True)  # a metric another user owns
+            ```
+        """
+        client = self._require_api_client()
+        try:
+            row = client.get_metric(metric_id)
+        except QueryError as exc:
+            if exc.status_code != 404:
+                raise
+            raise ParamValidationError(
+                f"Saved metric {metric_id} was not found in project "
+                f"{client.project_id}; nothing was deleted.",
+                code="SM5_NOT_FOUND_FOR_DELETE",
+                details={
+                    "metric_id": metric_id,
+                    "project_id": client.project_id,
+                    "status_code": 404,
+                },
+            ) from exc
+        if not force and row.get("can_update_basic") is False:
+            self._refuse_delete("metric", [row])
+        client.delete_metrics([metric_id])
+
+    def delete_metrics(self, metric_ids: Sequence[int], *, force: bool = False) -> None:
+        """Delete several saved metrics with one bulk request.
+
+        The server skips ids that do not name an active metric of the
+        project, with no error, so a typo in an id passes silently. Use
+        :meth:`delete_metric` to delete one metric with an existence check.
+        An empty sequence sends no request.
+
+        The server's bulk delete lets a project superadmin delete metrics
+        that other users own. So, unless ``force`` is true, this method
+        reads the metric list once and refuses the whole request, before
+        the delete, when any target has ``can_update_basic`` false. Ids that
+        the list does not hold are not refused; the server skips them.
+
+        Args:
+            metric_ids: The saved metric ids to delete.
+            force: Skip the list read and the permission guard, and send the
+                delete as given.
+
+        Raises:
+            ParamValidationError: A target has ``can_update_basic`` false and
+                ``force`` is false; nothing was deleted. The error lists every
+                refused id (``SM6_DELETE_NOT_PERMITTED``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller cannot edit one of the metrics, or lacks
+                the warehouse permission for a warehouse metric (403);
+                nothing was deleted.
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            stale = ws.list_metrics(name_contains="[old]")
+            ws.delete_metrics([m.id for m in stale])
+            ```
+        """
+        if not metric_ids:
+            return
+        client = self._require_api_client()
+        if not force:
+            self._check_bulk_delete("metric", metric_ids, client.list_metrics())
+        client.delete_metrics(list(metric_ids))
+
+    @staticmethod
+    def _check_bulk_delete(
+        entity: Literal["metric", "behavior"],
+        target_ids: Sequence[int],
+        rows: list[dict[str, Any]],
+    ) -> None:
+        """Refuse a bulk delete when a target row says the caller cannot edit it.
+
+        Args:
+            entity: ``"metric"`` or ``"behavior"``.
+            target_ids: The ids to delete.
+            rows: The listed rows of the project.
+
+        Raises:
+            ParamValidationError: A listed target has ``can_update_basic``
+                false (``SM6_DELETE_NOT_PERMITTED`` or
+                ``BH4_DELETE_NOT_PERMITTED``).
+        """
+        by_id = {row.get("id"): row for row in rows}
+        wanted = list(dict.fromkeys(target_ids))
+        refused = [
+            by_id[target]
+            for target in wanted
+            if target in by_id and by_id[target].get("can_update_basic") is False
+        ]
+        if refused:
+            Workspace._refuse_delete(entity, refused)
+
+    @staticmethod
+    def _refuse_delete(
+        entity: Literal["metric", "behavior"], rows: list[dict[str, Any]]
+    ) -> NoReturn:
+        """Raise the delete guard refusal for rows the caller cannot edit.
+
+        Args:
+            entity: ``"metric"`` or ``"behavior"``.
+            rows: The refused rows (one for a single delete).
+
+        Raises:
+            ParamValidationError: Always (``SM6_DELETE_NOT_PERMITTED`` for
+                metrics, ``BH4_DELETE_NOT_PERMITTED`` for behaviors).
+        """
+        code = (
+            "SM6_DELETE_NOT_PERMITTED"
+            if entity == "metric"
+            else "BH4_DELETE_NOT_PERMITTED"
+        )
+        ids = [row.get("id") for row in rows]
+        noun = f"saved {entity}"
+        advice = (
+            "The server would still delete it for a project superadmin account. "
+            "Pass force=True (CLI: --force) to delete it anyway."
+        )
+        if len(rows) == 1:
+            row = rows[0]
+            creator = row.get("created_by")
+            email = creator.get("email") if isinstance(creator, dict) else None
+            by = f", created by {email}" if email else ""
+            raise ParamValidationError(
+                f"This account cannot edit {noun} {row.get('id')} "
+                f"({row.get('name')!r}{by}): its can_update_basic flag is false. "
+                f"{advice}",
+                code=code,
+                details={
+                    f"{entity}_ids": ids,
+                    "name": row.get("name"),
+                    "created_by": email,
+                },
+            )
+        joined = ", ".join(str(i) for i in ids)
+        raise ParamValidationError(
+            f"This account cannot edit {noun}s {joined}: their can_update_basic "
+            f"flag is false. Nothing was deleted. The server would still delete "
+            f"them for a project superadmin account. Pass force=True (CLI: "
+            f"--force) to delete them anyway.",
+            code=code,
+            details={f"{entity}_ids": ids},
+        )
+
+    def list_behaviors(
+        self,
+        *,
+        behavior_type: str | None = None,
+        name_contains: str | None = None,
+    ) -> list[SavedBehavior]:
+        """List saved behaviors: simple, funnel, and retention behaviors.
+
+        The server has no pagination, filters, or search, so one request
+        fetches every active behavior, and the filters below apply locally
+        to that response. The read timeout is at least 120 seconds.
+
+        Args:
+            behavior_type: Keep only behaviors of this type: ``"simple"``,
+                ``"funnel"``, or ``"retention"``. Exact match.
+            name_contains: Keep only behaviors whose name contains this
+                text, ignoring case.
+
+        Returns:
+            ``SavedBehavior`` objects in server order.
+
+        Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller lacks the behaviors permission or scope (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            for behavior in ws.list_behaviors(behavior_type="funnel"):
+                print(behavior.id, behavior.name)
+            ```
+        """
+        client = self._require_api_client()
+        behaviors = validate_response_models(
+            SavedBehavior, client.list_behaviors(), endpoint="list_behaviors"
+        )
+        if behavior_type is not None:
+            behaviors = [b for b in behaviors if b.type == behavior_type]
+        if name_contains is not None:
+            needle = name_contains.casefold()
+            behaviors = [b for b in behaviors if needle in b.name.casefold()]
+        return behaviors
+
+    def get_behavior(self, behavior_id: int) -> SavedBehavior:
+        """Get one saved behavior by id, with its full definition.
+
+        The server does not answer an unknown or deleted id with 404; it
+        answers with a 500, which raises ``ServerError``.
+
+        Args:
+            behavior_id: The saved behavior id.
+
+        Returns:
+            The ``SavedBehavior``.
+
+        Raises:
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller lacks permission (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx), including an unknown or
+                deleted behavior id.
+
+        Example:
+            ```python
+            ws = Workspace()
+            behavior = ws.get_behavior(3001)
+            print(behavior.type, behavior.definition["behavior"])
+            ```
+        """
+        client = self._require_api_client()
+        return validate_response_model(
+            SavedBehavior, client.get_behavior(behavior_id), endpoint="get_behavior"
+        )
+
+    def create_behavior(
+        self, params: CreateBehaviorParams, *, validate: bool = True
+    ) -> SavedBehavior:
+        """Create a saved behavior: a reusable simple, funnel, or retention behavior.
+
+        The wire type of the behavior comes from its definition. Before the
+        request, the method checks the name and description and the
+        definition (see Raises). In a project with sharing on, a new
+        behavior is private to its creator; this API cannot share it.
+
+        Stored definitions can carry legacy keys (for example a behavior
+        ``filter``, or a legacy funnel step key of an exclusion) that the
+        server reads past at query time but refuses on a create. So the
+        method removes them from a ``RawBehaviorDefinition``, with or
+        without ``validate``, and a copy of a stored behavior works. A
+        definition compiled from a typed value never has one; if it does,
+        the method refuses it (``SM4_SCHEMA``).
+
+        Args:
+            params: Name, behavior definition, and optional description.
+            validate: Check the definition with the mirror of the server
+                schema before the request (default), including the refusal
+                of legacy keys in a compiled definition. ``False`` sends it
+                without the check (a raw definition still loses its legacy
+                keys); the server still checks a create and answers a
+                failing definition with a 400 (``QueryError``).
+
+        Returns:
+            The created ``SavedBehavior``.
+
+        Raises:
+            ParamValidationError: Before any request: an empty name
+                (``SM1_EMPTY_NAME``); a name or description longer than 255
+                characters (``SM2_NAME_TOO_LONG``); a definition with no
+                ``behavior.type`` string, or one that fails the schema mirror
+                (``SM4_SCHEMA``).
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The server refused the body (400); the pricing-plan gate
+                ("Cannot save behavior with your current plan") or a missing
+                permission (403); an active behavior has the same name (409).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            source = ws.get_behavior(3001)
+            copy = ws.create_behavior(CreateBehaviorParams(
+                name="Checkout (copy)",
+                behavior=RawBehaviorDefinition(source.definition),
+            ))
+            ```
+        """
+        check_name(params.name, entity="saved behavior")
+        check_description(params.description, entity="saved behavior")
+        definition = behavior_wire_definition(params.behavior, for_create=True)
+        behavior_type = self._saved_behavior_type(definition)
+        if validate:
+            check_behavior_definition(definition, for_create=True)
+        body: dict[str, Any] = {"type": behavior_type, "name": params.name}
+        if params.description is not None:
+            body["description"] = params.description
+        body["definition"] = definition
+        client = self._require_api_client()
+        row = client.create_behavior(body)
+        return validate_response_model(SavedBehavior, row, endpoint="create_behavior")
+
+    def update_behavior(
+        self,
+        behavior_id: int,
+        params: UpdateBehaviorParams,
+        *,
+        validate: bool = True,
+    ) -> SavedBehavior:
+        """Update a saved behavior: name, description, definition, or verified flag.
+
+        The server runs no schema check on an update and ignores the
+        behavior type, so a new definition goes through the checks of
+        :meth:`create_behavior` first. A new definition also makes the method
+        read the behavior, to refuse a change of type. The server answers
+        the read of an unknown or deleted id with a 500.
+
+        Args:
+            behavior_id: The saved behavior id.
+            params: The fields to change; ``None`` leaves a field as it is.
+                ``verified=True`` stamps the verification time again.
+            validate: Check a new definition with the mirror of the server
+                schema (default). ``False`` sends it as given, and the server
+                stores it unchecked.
+
+        Returns:
+            The updated ``SavedBehavior``.
+
+        Raises:
+            ParamValidationError: Before any request: an empty name
+                (``SM1_EMPTY_NAME``), a name or description longer than 255
+                characters (``SM2_NAME_TOO_LONG``), or a definition with no
+                type or one that fails the schema mirror (``SM4_SCHEMA``).
+                After the read: a definition of another type
+                (``SM3_KIND_CHANGE``).
+            ResponseValidationError: Malformed API response payload
+                (``RESPONSE_VALIDATION_ERROR``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller cannot edit the behavior (403), or the new
+                name is taken (409).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx), including the read of an
+                unknown behavior id.
+
+        Example:
+            ```python
+            ws = Workspace()
+            ws.update_behavior(3001, UpdateBehaviorParams(verified=True))
+            ```
+        """
+        check_name(params.name, entity="saved behavior")
+        check_description(params.description, entity="saved behavior")
+        definition: dict[str, Any] | None = None
+        behavior_type: str | None = None
+        if params.behavior is not None:
+            definition = behavior_wire_definition(params.behavior)
+            behavior_type = self._saved_behavior_type(definition)
+            if validate:
+                check_behavior_definition(definition)
+        client = self._require_api_client()
+        body: dict[str, Any] = {}
+        if params.name is not None:
+            body["name"] = params.name
+        if params.description is not None:
+            body["description"] = params.description
+        if definition is not None and behavior_type is not None:
+            stored = validate_response_model(
+                SavedBehavior,
+                client.get_behavior(behavior_id),
+                endpoint="update_behavior",
+            )
+            check_same_kind(
+                entity="saved behavior",
+                entity_id=behavior_id,
+                stored_kind=stored.type,
+                new_kind=behavior_type,
+            )
+            body["definition"] = definition
+        if params.verified is not None:
+            body["verified"] = params.verified
+        row = client.update_behavior(behavior_id, body)
+        return validate_response_model(SavedBehavior, row, endpoint="update_behavior")
+
+    @staticmethod
+    def _saved_behavior_type(definition: dict[str, Any]) -> str:
+        """Read the wire type of a saved behavior from its definition.
+
+        Args:
+            definition: The wire definition, ``{"behavior": {...}}``.
+
+        Returns:
+            ``definition["behavior"]["type"]``.
+
+        Raises:
+            ParamValidationError: The definition has no type string; the POST
+                needs it as the behavior's wire type (``SM4_SCHEMA``).
+        """
+        behavior = definition.get("behavior")
+        behavior_type = behavior.get("type") if isinstance(behavior, dict) else None
+        if not isinstance(behavior_type, str) or not behavior_type:
+            raise ParamValidationError(
+                "A saved behavior definition needs a behavior type string at "
+                "definition.behavior.type (for example 'funnel').",
+                code="SM4_SCHEMA",
+                details={"path": "definition.behavior.type"},
+            )
+        return behavior_type
+
+    def delete_behavior(self, behavior_id: int, *, force: bool = False) -> None:
+        """Delete one saved behavior, after a read that confirms it exists and is yours to edit.
+
+        Sends the bulk delete with the one id, because the bulk route is the
+        one that checks the caller's permission; the single-behavior route
+        does not. The bulk route skips unknown ids with no error, so this
+        method reads the behavior first. For an unknown or deleted id that
+        read fails with a server 500 (``ServerError``), and nothing is
+        deleted.
+
+        The server's bulk delete lets a project superadmin delete behaviors
+        that other users created, even when the behavior's
+        ``can_update_basic`` flag is false for that account. So this method
+        refuses a behavior whose ``can_update_basic`` is false, unless
+        ``force`` is true. A read without the flag does not refuse.
+
+        Args:
+            behavior_id: The saved behavior id.
+            force: Delete even when the read says that the caller cannot
+                edit the behavior. The existence read still runs.
+
+        Raises:
+            ParamValidationError: The read shows ``can_update_basic`` false
+                and ``force`` is false; nothing was deleted
+                (``BH4_DELETE_NOT_PERMITTED``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller cannot read or edit the behavior (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx), including the read of an
+                unknown or deleted behavior id.
+
+        Example:
+            ```python
+            ws = Workspace()
+            ws.delete_behavior(3001)
+            ```
+        """
+        client = self._require_api_client()
+        row = client.get_behavior(behavior_id)
+        if not force and row.get("can_update_basic") is False:
+            self._refuse_delete("behavior", [row])
+        client.delete_behaviors([behavior_id])
+
+    def delete_behaviors(
+        self, behavior_ids: Sequence[int], *, force: bool = False
+    ) -> None:
+        """Delete several saved behaviors with one bulk request.
+
+        The server skips ids that do not name a behavior of the project,
+        with no error, so a typo in an id passes silently. Use
+        :meth:`delete_behavior` to delete one behavior with an existence
+        check. An empty sequence sends no request.
+
+        The server's bulk delete lets a project superadmin delete behaviors
+        that other users created. So, unless ``force`` is true, this method
+        reads the behavior list once and refuses the whole request, before
+        the delete, when any target has ``can_update_basic`` false. Ids that
+        the list does not hold are not refused; the server skips them.
+
+        Args:
+            behavior_ids: The saved behavior ids to delete.
+            force: Skip the list read and the permission guard, and send the
+                delete as given.
+
+        Raises:
+            ParamValidationError: A target has ``can_update_basic`` false and
+                ``force`` is false; nothing was deleted. The error lists every
+                refused id (``BH4_DELETE_NOT_PERMITTED``).
+            ConfigError: If credentials are not available.
+            AuthenticationError: Invalid credentials (401).
+            QueryError: The caller cannot edit one of the behaviors (403).
+            RateLimitError: Rate limit exceeded after retries (429).
+            ServerError: Server-side errors (5xx).
+
+        Example:
+            ```python
+            ws = Workspace()
+            drafts = ws.list_behaviors(name_contains="draft")
+            ws.delete_behaviors([b.id for b in drafts])
+            ```
+        """
+        if not behavior_ids:
+            return
+        client = self._require_api_client()
+        if not force:
+            self._check_bulk_delete("behavior", behavior_ids, client.list_behaviors())
+        client.delete_behaviors(list(behavior_ids))
+
+    # =============================================================================
     # Data Governance — Tracking & History (Phase 027)
     # =============================================================================
 
@@ -11790,7 +12956,7 @@ class Workspace:
         Example:
             ```python
             ws = Workspace()
-            result = ws.query(mp.Metric.total("Login"), last=7)
+            result = ws.query(mp.Metric("Login", math="total"), last=7)
             link = ws.create_report_link(result, name="Logins, last 7 days")
             print(link.url)
             # https://mixpanel.com/project/3/view/75/app/insights#EBrV5bW2u9Mw

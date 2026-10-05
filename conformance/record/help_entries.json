@@ -1,0 +1,4558 @@
+{
+ "entries": [
+  {
+   "slug": "method-segmentation",
+   "query": "Workspace.segmentation",
+   "domain": null,
+   "entry": {
+    "kind": "method",
+    "name": "Workspace.segmentation",
+    "qualname": "Workspace.segmentation",
+    "summary": "Run a segmentation query against Mixpanel API.",
+    "doc": {
+     "summary": "Run a segmentation query against Mixpanel API.",
+     "body": "Run a segmentation query against Mixpanel API.",
+     "args": [
+      [
+       "event",
+       "Event name to query."
+      ],
+      [
+       "from_date",
+       "Start date (YYYY-MM-DD)."
+      ],
+      [
+       "to_date",
+       "End date (YYYY-MM-DD)."
+      ],
+      [
+       "on",
+       "Optional property to segment by."
+      ],
+      [
+       "unit",
+       "Time unit for aggregation."
+      ],
+      [
+       "where",
+       "Optional WHERE clause."
+      ]
+     ],
+     "returns": "SegmentationResult with time-series data.",
+     "raises": [
+      [
+       "ConfigError",
+       "If API credentials not available."
+      ]
+     ],
+     "example": "",
+     "notes": ""
+    },
+    "signature": {
+     "name": "segmentation",
+     "params": [
+      {
+       "name": "event",
+       "annotation": "str",
+       "default": null,
+       "description": "Event name to query.",
+       "values": [],
+       "kind": "positional_or_keyword"
+      },
+      {
+       "name": "from_date",
+       "annotation": "str",
+       "default": null,
+       "description": "Start date (YYYY-MM-DD).",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "to_date",
+       "annotation": "str",
+       "default": null,
+       "description": "End date (YYYY-MM-DD).",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "on",
+       "annotation": "str | None",
+       "default": "None",
+       "description": "Optional property to segment by.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "unit",
+       "annotation": "Literal['day', 'week', 'month']",
+       "default": "'day'",
+       "description": "Time unit for aggregation.",
+       "values": [
+        "day",
+        "week",
+        "month"
+       ],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "where",
+       "annotation": "str | None",
+       "default": "None",
+       "description": "Optional WHERE clause.",
+       "values": [],
+       "kind": "keyword_only"
+      }
+     ],
+     "returns": "SegmentationResult"
+    },
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [],
+    "referenced_types": [
+     [
+      "SegmentationResult",
+      "Result of a segmentation query."
+     ],
+     [
+      "TimeUnit",
+      "Bucket size for the legacy live queries segmentation, retention, event_counts, property_counts, and frequency, and the retention_unit of Workspace.query_retention / build_retention_params."
+     ]
+    ],
+    "used_by": [],
+    "domain": "legacy live queries",
+    "see_also": [
+     "activity_feed",
+     "event_counts",
+     "frequency",
+     "funnel",
+     "property_counts",
+     "query_saved_flows",
+     "query_saved_report",
+     "retention",
+     "segmentation_average",
+     "segmentation_numeric",
+     "segmentation_sum"
+    ],
+    "hints": [
+     {
+      "title": "segmentation, funnels, retention (legacy live queries)",
+      "url": "https://mixpanel.github.io/mixpanel-headless/guide/live-analytics/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "method-query-funnel",
+   "query": "Workspace.query_funnel",
+   "domain": null,
+   "entry": {
+    "kind": "method",
+    "name": "Workspace.query_funnel",
+    "qualname": "Workspace.query_funnel",
+    "summary": "Run a typed funnel query against the Mixpanel API.",
+    "doc": {
+     "summary": "Run a typed funnel query against the Mixpanel API.",
+     "body": "Run a typed funnel query against the Mixpanel API.\n\nGenerates funnel bookmark params from keyword arguments, POSTs\nthem inline to ``/api/query/insights``, and returns a structured\nFunnelQueryResult with lazy DataFrame conversion.",
+     "args": [
+      [
+       "steps",
+       "Funnel step specifications. At least 2 required. Accepts event name strings or ``FunnelStep`` objects for per-step filters, labels, and ordering."
+      ],
+      [
+       "conversion_window",
+       "How long users have to complete the funnel. Default: 14."
+      ],
+      [
+       "conversion_window_unit",
+       "Time unit for conversion window. Default: ``\"day\"``."
+      ],
+      [
+       "order",
+       "Step ordering mode. ``\"loose\"`` requires steps in order but allows other events between. ``\"any\"`` allows steps in any order. Default: ``\"loose\"``."
+      ],
+      [
+       "from_date",
+       "Start date (YYYY-MM-DD). If set, overrides ``last``."
+      ],
+      [
+       "to_date",
+       "End date (YYYY-MM-DD). Requires ``from_date``."
+      ],
+      [
+       "last",
+       "Relative time range in days. Default: 30."
+      ],
+      [
+       "unit",
+       "Time aggregation unit. Default: ``\"day\"``."
+      ],
+      [
+       "math",
+       "Funnel aggregation function. Default: ``\"conversion_rate_unique\"``."
+      ],
+      [
+       "math_property",
+       "Numeric property name for property-aggregation math types (``\"average\"``, ``\"median\"``, ``\"min\"``, ``\"max\"``, ``\"p25\"``, ``\"p75\"``, ``\"p90\"``, ``\"p99\"``). Required when using those math types; must be ``None`` for count/rate math types. Default: ``None``."
+      ],
+      [
+       "group_by",
+       "Break down results by property or cohort membership. Accepts a string, ``GroupBy``, ``CohortBreakdown``, or list of any mix."
+      ],
+      [
+       "where",
+       "Filter results by conditions."
+      ],
+      [
+       "exclusions",
+       "Events to exclude between steps. Accepts event name strings or ``Exclusion`` objects."
+      ],
+      [
+       "holding_constant",
+       "Properties to hold constant across steps. Accepts strings, ``HoldingConstant`` objects, or a list mixing both."
+      ],
+      [
+       "mode",
+       "Result display mode. ``\"steps\"`` shows step-level data, ``\"trends\"`` shows conversion over time, ``\"table\"`` shows tabular breakdown. Default: ``\"steps\"``."
+      ],
+      [
+       "reentry_mode",
+       "Funnel reentry mode controlling how users re-enter the funnel after conversion. One of ``\"default\"``, ``\"basic\"``, ``\"aggressive\"``, or ``\"optimized\"``. Default: ``None`` (server default)."
+      ],
+      [
+       "time_comparison",
+       "Optional period-over-period comparison. Use ``TimeComparison.relative(\"month\")`` for previous month, etc. Default: ``None``."
+      ],
+      [
+       "data_group_id",
+       "Optional data group ID for group-level analytics. Scopes the query to a specific data group. Default: ``None``."
+      ],
+      [
+       "limit",
+       "Segments to return, 1 to 50000. Default ``None`` keeps the 3000 the Mixpanel UI uses."
+      ]
+     ],
+     "returns": "FunnelQueryResult with step data, DataFrame, and metadata.",
+     "raises": [
+      [
+       "ValueError",
+       "``limit`` is not an integer from 1 to 50000."
+      ],
+      [
+       "BookmarkValidationError",
+       "If arguments violate validation rules (before API call)."
+      ],
+      [
+       "ConfigError",
+       "If credentials are not available."
+      ],
+      [
+       "AuthenticationError",
+       "Invalid credentials."
+      ],
+      [
+       "QueryError",
+       "Invalid query parameters."
+      ],
+      [
+       "RateLimitError",
+       "Rate limit exceeded."
+      ]
+     ],
+     "example": "```python\nws = Workspace()\n\n# Simple two-step funnel\nresult = ws.query_funnel([\"Signup\", \"Purchase\"])\nprint(result.overall_conversion_rate)\n\n# Configured funnel\nresult = ws.query_funnel(\n    [\"Signup\", \"Add to Cart\", \"Checkout\", \"Purchase\"],\n    conversion_window=7,\n    order=\"loose\",\n    last=90,\n)\nprint(result.df)\n```",
+     "notes": ""
+    },
+    "signature": {
+     "name": "query_funnel",
+     "params": [
+      {
+       "name": "steps",
+       "annotation": "list[str | FunnelStep]",
+       "default": null,
+       "description": "Funnel step specifications. At least 2 required. Accepts event name strings or ``FunnelStep`` objects for per-step filters, labels, and ordering.",
+       "values": [],
+       "kind": "positional_or_keyword"
+      },
+      {
+       "name": "conversion_window",
+       "annotation": "int",
+       "default": "14",
+       "description": "How long users have to complete the funnel. Default: 14.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "conversion_window_unit",
+       "annotation": "Literal['second', 'minute', 'hour', 'day', 'week', 'month', 'session']",
+       "default": "'day'",
+       "description": "Time unit for conversion window. Default: ``\"day\"``.",
+       "values": [
+        "second",
+        "minute",
+        "hour",
+        "day",
+        "week",
+        "month",
+        "session"
+       ],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "order",
+       "annotation": "Literal['loose', 'any']",
+       "default": "'loose'",
+       "description": "Step ordering mode. ``\"loose\"`` requires steps in order but allows other events between. ``\"any\"`` allows steps in any order. Default: ``\"loose\"``.",
+       "values": [
+        "loose",
+        "any"
+       ],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "from_date",
+       "annotation": "str | None",
+       "default": "None",
+       "description": "Start date (YYYY-MM-DD). If set, overrides ``last``.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "to_date",
+       "annotation": "str | None",
+       "default": "None",
+       "description": "End date (YYYY-MM-DD). Requires ``from_date``.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "last",
+       "annotation": "int",
+       "default": "30",
+       "description": "Relative time range in days. Default: 30.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "unit",
+       "annotation": "QueryTimeUnit",
+       "default": "'day'",
+       "description": "Time aggregation unit. Default: ``\"day\"``.",
+       "values": [
+        "hour",
+        "day",
+        "week",
+        "month",
+        "quarter"
+       ],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "math",
+       "annotation": "FunnelMathType",
+       "default": "'conversion_rate_unique'",
+       "description": "Funnel aggregation function. Default: ``\"conversion_rate_unique\"``.",
+       "values": [
+        "conversion_rate_unique",
+        "conversion_rate_total",
+        "conversion_rate_session",
+        "unique",
+        "total",
+        "average",
+        "median",
+        "min",
+        "max",
+        "p25",
+        "p75",
+        "p90",
+        "p99",
+        "histogram"
+       ],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "math_property",
+       "annotation": "str | None",
+       "default": "None",
+       "description": "Numeric property name for property-aggregation math types (``\"average\"``, ``\"median\"``, ``\"min\"``, ``\"max\"``, ``\"p25\"``, ``\"p75\"``, ``\"p90\"``, ``\"p99\"``). Required when using those math types; must be ``None`` for count/rate math types. Default: ``None``.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "group_by",
+       "annotation": "str | GroupBy | CohortBreakdown | list[str | GroupBy | CohortBreakdown] | None",
+       "default": "None",
+       "description": "Break down results by property or cohort membership. Accepts a string, ``GroupBy``, ``CohortBreakdown``, or list of any mix.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "where",
+       "annotation": "Filter | list[Filter] | None",
+       "default": "None",
+       "description": "Filter results by conditions.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "exclusions",
+       "annotation": "list[str | Exclusion] | None",
+       "default": "None",
+       "description": "Events to exclude between steps. Accepts event name strings or ``Exclusion`` objects.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "holding_constant",
+       "annotation": "str | HoldingConstant | list[str | HoldingConstant] | None",
+       "default": "None",
+       "description": "Properties to hold constant across steps. Accepts strings, ``HoldingConstant`` objects, or a list mixing both.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "mode",
+       "annotation": "Literal['steps', 'trends', 'table']",
+       "default": "'steps'",
+       "description": "Result display mode. ``\"steps\"`` shows step-level data, ``\"trends\"`` shows conversion over time, ``\"table\"`` shows tabular breakdown. Default: ``\"steps\"``.",
+       "values": [
+        "steps",
+        "trends",
+        "table"
+       ],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "reentry_mode",
+       "annotation": "FunnelReentryMode | None",
+       "default": "None",
+       "description": "Funnel reentry mode controlling how users re-enter the funnel after conversion. One of ``\"default\"``, ``\"basic\"``, ``\"aggressive\"``, or ``\"optimized\"``. Default: ``None`` (server default).",
+       "values": [
+        "default",
+        "basic",
+        "aggressive",
+        "optimized"
+       ],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "time_comparison",
+       "annotation": "TimeComparison | None",
+       "default": "None",
+       "description": "Optional period-over-period comparison. Use ``TimeComparison.relative(\"month\")`` for previous month, etc. Default: ``None``.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "data_group_id",
+       "annotation": "int | None",
+       "default": "None",
+       "description": "Optional data group ID for group-level analytics. Scopes the query to a specific data group. Default: ``None``.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "limit",
+       "annotation": "int | None",
+       "default": "None",
+       "description": "Segments to return, 1 to 50000. Default ``None`` keeps the 3000 the Mixpanel UI uses.",
+       "values": [],
+       "kind": "keyword_only"
+      }
+     ],
+     "returns": "FunnelQueryResult"
+    },
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [],
+    "referenced_types": [
+     [
+      "CohortBreakdown",
+      "Break down query results by cohort membership."
+     ],
+     [
+      "ConversionWindowUnit",
+      "Unit of the funnel conversion window (conversion_window_unit) in Workspace.query_funnel / build_funnel_params."
+     ],
+     [
+      "Exclusion",
+      "An event to exclude between funnel steps."
+     ],
+     [
+      "Filter",
+      "Represents a typed filter condition on a property."
+     ],
+     [
+      "FunnelMathType",
+      "Aggregation for Workspace.query_funnel / build_funnel_params (math), including the conversion_rate_* variants."
+     ],
+     [
+      "FunnelMode",
+      "Display mode for Workspace.query_funnel / build_funnel_params (mode): steps, trends, or table."
+     ],
+     [
+      "FunnelOrder",
+      "Step ordering for FunnelStep.order: loose (in order, other events allowed between steps) or any."
+     ],
+     [
+      "FunnelQueryResult",
+      "Result of a funnel query via the insights API."
+     ],
+     [
+      "FunnelReentryMode",
+      "Re-entry handling for Workspace.query_funnel / build_funnel_params (reentry_mode) when a user restarts the funnel."
+     ],
+     [
+      "FunnelStep",
+      "A single step in a funnel query."
+     ],
+     [
+      "GroupBy",
+      "Specifies a property breakdown with optional numeric bucketing."
+     ],
+     [
+      "HoldingConstant",
+      "A property to hold constant across all funnel steps."
+     ],
+     [
+      "QueryTimeUnit",
+      "Time bucket for the unit parameter of Workspace.query, query_funnel, query_retention, and their build_* helpers."
+     ],
+     [
+      "TimeComparison",
+      "Overlay a comparison time period on insights, funnel, or retention queries."
+     ]
+    ],
+    "used_by": [],
+    "domain": "funnel query",
+    "see_also": [
+     "build_funnel_params",
+     "run_funnel_params"
+    ],
+    "hints": [
+     {
+      "title": "FunnelStep, Exclusion, HoldingConstant, conversion windows",
+      "url": "https://mixpanel.github.io/mixpanel-headless/guide/query-funnels/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "function-accounts-add",
+   "query": "accounts.add",
+   "domain": null,
+   "entry": {
+    "kind": "function",
+    "name": "accounts.add",
+    "qualname": "accounts.add",
+    "summary": "Add a new account.",
+    "doc": {
+     "summary": "Add a new account.",
+     "body": "Add a new account.\n\nPer 043 FR-001, ``default_project`` is OPTIONAL for every account\ntype at add-time. Service-account and oauth_token callers can\nbackfill it later via ``mp project use ID`` (or the ``mp login``\norchestrator's project picker). For ``oauth_browser`` the value is\nadditionally backfilled by ``login(name)`` from the ``/me`` lookup\nwhen no explicit project was set at add-time.\n\nPer FR-045, the first account added auto-promotes to\n``[active].account``. Subsequent accounts do not.\n\n## Derived naming (specs/043-frictionless-auth)\n\nPass ``derive_name=True`` (and leave ``name=None``) to have the\nfunction fetch ``/me`` against the supplied credentials and pick a\nname from the first organization via\n:func:`naming.default_account_name`. ``derive_name=True`` together\nwith an explicit ``name=`` is a logic error and raises\n``TypeError`` to surface the conflict at the caller. Derivation is\nonly supported for ``service_account`` and ``oauth_token`` \u2014 the\n``oauth_browser`` path needs the PKCE flow to obtain credentials,\nwhich lives in ``mp login`` / ``login_unified`` (not here).",
+     "args": [
+      [
+       "name",
+       "Account name (must match ``^[a-zA-Z0-9_-]{1,64}$``). Required unless ``derive_name=True``."
+      ],
+      [
+       "type",
+       "One of ``service_account`` / ``oauth_browser`` / ``oauth_token``."
+      ],
+      [
+       "region",
+       "One of ``us`` / ``eu`` / ``in``. May be omitted only for ``oauth_browser`` (the PKCE flow commits to the account's stored region at login time). For ``service_account`` and ``oauth_token``, ``region=None`` raises ``ConfigError`` \u2014 the Python API does not probe; pass ``--region`` to the CLI or use ``mp login`` for the guided probing flow."
+      ],
+      [
+       "default_project",
+       "Numeric project ID. Optional for every type; populated later via ``mp project use`` or ``mp login``."
+      ],
+      [
+       "username",
+       "Required for ``service_account``."
+      ],
+      [
+       "secret",
+       "Required for ``service_account``."
+      ],
+      [
+       "token",
+       "For ``oauth_token`` (mutually exclusive with ``token_env``)."
+      ],
+      [
+       "token_env",
+       "For ``oauth_token`` (mutually exclusive with ``token``)."
+      ],
+      [
+       "derive_name",
+       "When ``True``, fetch ``/me`` and pick a name via :func:`naming.default_account_name`. Mutually exclusive with ``name=`` (passing both raises ``TypeError``). Not supported for ``oauth_browser``."
+      ]
+     ],
+     "returns": ":class:`AccountSummary` for the new account.",
+     "raises": [
+      [
+       "TypeError",
+       "``derive_name=True`` with explicit ``name=...``, or ``derive_name=False`` with ``name=None``."
+      ],
+      [
+       "ConfigError",
+       "Validation failure, duplicate name, ``region=None`` for a non-browser type, or ``derive_name=True`` for ``oauth_browser``."
+      ]
+     ],
+     "example": "",
+     "notes": ""
+    },
+    "signature": {
+     "name": "add",
+     "params": [
+      {
+       "name": "name",
+       "annotation": "str | None",
+       "default": "None",
+       "description": "Account name (must match ``^[a-zA-Z0-9_-]{1,64}$``). Required unless ``derive_name=True``.",
+       "values": [],
+       "kind": "positional_or_keyword"
+      },
+      {
+       "name": "type",
+       "annotation": "AccountType",
+       "default": null,
+       "description": "One of ``service_account`` / ``oauth_browser`` / ``oauth_token``.",
+       "values": [
+        "service_account",
+        "oauth_browser",
+        "oauth_token"
+       ],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "region",
+       "annotation": "Region | None",
+       "default": "None",
+       "description": "One of ``us`` / ``eu`` / ``in``. May be omitted only for ``oauth_browser`` (the PKCE flow commits to the account's stored region at login time). For ``service_account`` and ``oauth_token``, ``region=None`` raises ``ConfigError`` \u2014 the Python API does not probe; pass ``--region`` to the CLI or use ``mp login`` for the guided probing flow.",
+       "values": [
+        "us",
+        "eu",
+        "in"
+       ],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "default_project",
+       "annotation": "str | None",
+       "default": "None",
+       "description": "Numeric project ID. Optional for every type; populated later via ``mp project use`` or ``mp login``.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "username",
+       "annotation": "str | None",
+       "default": "None",
+       "description": "Required for ``service_account``.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "secret",
+       "annotation": "SecretStr | str | None",
+       "default": "None",
+       "description": "Required for ``service_account``.",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "token",
+       "annotation": "SecretStr | str | None",
+       "default": "None",
+       "description": "For ``oauth_token`` (mutually exclusive with ``token_env``).",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "token_env",
+       "annotation": "str | None",
+       "default": "None",
+       "description": "For ``oauth_token`` (mutually exclusive with ``token``).",
+       "values": [],
+       "kind": "keyword_only"
+      },
+      {
+       "name": "derive_name",
+       "annotation": "bool",
+       "default": "False",
+       "description": "When ``True``, fetch ``/me`` and pick a name via :func:`naming.default_account_name`. Mutually exclusive with ``name=`` (passing both raises ``TypeError``). Not supported for ``oauth_browser``.",
+       "values": [],
+       "kind": "keyword_only"
+      }
+     ],
+     "returns": "AccountSummary"
+    },
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [],
+    "referenced_types": [
+     [
+      "AccountSummary",
+      "Read-only summary of a configured account for ``mp account list``."
+     ],
+     [
+      "AccountType",
+      "Discriminator of the Account union and AccountSummary.type: service_account, oauth_browser, or oauth_token."
+     ],
+     [
+      "Region",
+      "Mixpanel data residency region (us, eu, in) used by accounts, sessions, and report links."
+     ]
+    ],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "auth and accounts \u2014 account types, sessions, targets, in-session switching",
+      "url": "https://mixpanel.github.io/mixpanel-headless/api/auth/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "function-url-normalizer",
+   "query": "url_normalizer",
+   "domain": null,
+   "entry": {
+    "kind": "function",
+    "name": "url_normalizer",
+    "qualname": "url_normalizer",
+    "summary": "Normalize a URL into a path template suitable for label aggregation.",
+    "doc": {
+     "summary": "Normalize a URL into a path template suitable for label aggregation.",
+     "body": "Normalize a URL into a path template suitable for label aggregation.\n\nStrips the query string and replaces numeric / hex path segments with\n``:id``. The host portion is preserved when present (otherwise the\nfunction treats the input as a bare path).",
+     "args": [
+      [
+       "url",
+       "A URL, absolute or relative."
+      ]
+     ],
+     "returns": "The normalized path template. Example:\n``/users/12345/profile?ref=x`` \u2192 ``/users/:id/profile``.",
+     "raises": [],
+     "example": "```python\nurl_normalizer(\"/users/12345/profile?ref=x\")\n# '/users/:id/profile'\nurl_normalizer(\"https://app.example.com/orders/abc12345-de00\")\n# 'https://app.example.com/orders/:id'\n```",
+     "notes": ""
+    },
+    "signature": {
+     "name": "url_normalizer",
+     "params": [
+      {
+       "name": "url",
+       "annotation": "str",
+       "default": null,
+       "description": "A URL, absolute or relative.",
+       "values": [],
+       "kind": "positional_or_keyword"
+      }
+     ],
+     "returns": "str"
+    },
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [],
+    "referenced_types": [],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "session replay \u2014 discover, sign, fetch, and analyze rrweb recordings",
+      "url": "https://mixpanel.github.io/mixpanel-headless/guide/session-replay/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "property-project",
+   "query": "Workspace.project",
+   "domain": null,
+   "entry": {
+    "kind": "property",
+    "name": "Workspace.project",
+    "qualname": "Workspace.project",
+    "summary": "Return the resolved :class:`Project` for the current session.",
+    "doc": {
+     "summary": "Return the resolved :class:`Project` for the current session.",
+     "body": "Return the resolved :class:`Project` for the current session.",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "",
+     "notes": ""
+    },
+    "signature": {
+     "name": "project",
+     "params": [],
+     "returns": "_Project"
+    },
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [],
+    "referenced_types": [],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "auth and accounts \u2014 account types, sessions, targets, in-session switching",
+      "url": "https://mixpanel.github.io/mixpanel-headless/api/auth/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "parameter-query-math",
+   "query": "Workspace.query.math",
+   "domain": null,
+   "entry": {
+    "kind": "parameter",
+    "name": "Workspace.query.math",
+    "qualname": "Workspace.query.math",
+    "summary": "Aggregation function for plain-string events. Default: ``\"total\"``.",
+    "doc": {
+     "summary": "Aggregation function for plain-string events. Default: ``\"total\"``.",
+     "body": "Aggregation function for plain-string events. Default: ``\"total\"``.",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "",
+     "notes": ""
+    },
+    "signature": {
+     "name": "query",
+     "params": [
+      {
+       "name": "math",
+       "annotation": "MathType",
+       "default": "'total'",
+       "description": "Aggregation function for plain-string events. Default: ``\"total\"``.",
+       "values": [
+        "total",
+        "unique",
+        "dau",
+        "wau",
+        "mau",
+        "average",
+        "median",
+        "min",
+        "max",
+        "p25",
+        "p75",
+        "p90",
+        "p99",
+        "percentile",
+        "histogram",
+        "cumulative_unique",
+        "sessions",
+        "unique_values",
+        "most_frequent",
+        "first_value",
+        "multi_attribution",
+        "numeric_summary"
+       ],
+       "kind": "keyword_only"
+      }
+     ],
+     "returns": "QueryResult"
+    },
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [
+     "total",
+     "unique",
+     "dau",
+     "wau",
+     "mau",
+     "average",
+     "median",
+     "min",
+     "max",
+     "p25",
+     "p75",
+     "p90",
+     "p99",
+     "percentile",
+     "histogram",
+     "cumulative_unique",
+     "sessions",
+     "unique_values",
+     "most_frequent",
+     "first_value",
+     "multi_attribution",
+     "numeric_summary"
+    ],
+    "value": null,
+    "groups": [],
+    "referenced_types": [],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "MathType, Filter, GroupBy, Formula, validation rules",
+      "url": "https://mixpanel.github.io/mixpanel-headless/guide/query/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "class-query-meta",
+   "query": "QueryMeta",
+   "domain": null,
+   "entry": {
+    "kind": "class",
+    "name": "QueryMeta",
+    "qualname": "QueryMeta",
+    "summary": "Response metadata shared across all query result types.",
+    "doc": {
+     "summary": "Response metadata shared across all query result types.",
+     "body": "Response metadata shared across all query result types.\n\nAll fields are optional since the API may omit them depending on\nthe query type and server-side configuration.",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [
+     "dict"
+    ],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [],
+    "referenced_types": [],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "MathType, Filter, GroupBy, Formula, validation rules",
+      "url": "https://mixpanel.github.io/mixpanel-headless/guide/query/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "model-create-dashboard-params",
+   "query": "CreateDashboardParams",
+   "domain": null,
+   "entry": {
+    "kind": "model",
+    "name": "CreateDashboardParams",
+    "qualname": "CreateDashboardParams",
+    "summary": "Parameters for creating a new dashboard.",
+    "doc": {
+     "summary": "Parameters for creating a new dashboard.",
+     "body": "Parameters for creating a new dashboard.",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "```python\nimport json\n\nparams = CreateDashboardParams(\n    title=\"Product Health\",\n    rows=[\n        DashboardRow(contents=[\n            DashboardRowContent(\n                content_type=\"text\",\n                content_params={\"markdown\": \"<h2>Overview</h2>\"},\n            ),\n        ]),\n        DashboardRow(contents=[\n            DashboardRowContent(\n                content_type=\"report\",\n                content_params={\"bookmark\": {\n                    \"name\": \"DAU\", \"type\": \"insights\",\n                    \"params\": json.dumps(dau_result.params),\n                }},\n            ),\n            DashboardRowContent(\n                content_type=\"report\",\n                content_params={\"bookmark\": {\n                    \"name\": \"Signups\", \"type\": \"insights\",\n                    \"params\": json.dumps(signup_result.params),\n                }},\n            ),\n        ]),\n    ],\n)\n```",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [
+     {
+      "name": "title",
+      "annotation": "str",
+      "default": null,
+      "required": true,
+      "constraints": [],
+      "alias": null,
+      "values": [],
+      "description": ""
+     },
+     {
+      "name": "description",
+      "annotation": "str | None",
+      "default": null,
+      "required": false,
+      "constraints": [],
+      "alias": null,
+      "values": [],
+      "description": ""
+     },
+     {
+      "name": "is_private",
+      "annotation": "bool | None",
+      "default": null,
+      "required": false,
+      "constraints": [],
+      "alias": null,
+      "values": [],
+      "description": ""
+     },
+     {
+      "name": "is_restricted",
+      "annotation": "bool | None",
+      "default": null,
+      "required": false,
+      "constraints": [],
+      "alias": null,
+      "values": [],
+      "description": ""
+     },
+     {
+      "name": "filters",
+      "annotation": "list[Any] | None",
+      "default": null,
+      "required": false,
+      "constraints": [],
+      "alias": null,
+      "values": [],
+      "description": ""
+     },
+     {
+      "name": "breakdowns",
+      "annotation": "list[Any] | None",
+      "default": null,
+      "required": false,
+      "constraints": [],
+      "alias": null,
+      "values": [],
+      "description": ""
+     },
+     {
+      "name": "time_filter",
+      "annotation": "Any | None",
+      "default": null,
+      "required": false,
+      "constraints": [],
+      "alias": null,
+      "values": [],
+      "description": ""
+     },
+     {
+      "name": "duplicate",
+      "annotation": "int | None",
+      "default": null,
+      "required": false,
+      "constraints": [],
+      "alias": null,
+      "values": [],
+      "description": ""
+     },
+     {
+      "name": "rows",
+      "annotation": "list[DashboardRow] | None",
+      "default": null,
+      "required": false,
+      "constraints": [],
+      "alias": null,
+      "values": [],
+      "description": ""
+     }
+    ],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [],
+    "referenced_types": [],
+    "used_by": [
+     {
+      "method": "create_dashboard",
+      "params": [
+       "params"
+      ]
+     }
+    ],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "dashboards, reports, and cohorts (entity management)",
+      "url": "https://mixpanel.github.io/mixpanel-headless/guide/entity-management/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "dataclass-filter",
+   "query": "Filter",
+   "domain": null,
+   "entry": {
+    "kind": "dataclass",
+    "name": "Filter",
+    "qualname": "Filter",
+    "summary": "Represents a typed filter condition on a property.",
+    "doc": {
+     "summary": "Represents a typed filter condition on a property.",
+     "body": "Represents a typed filter condition on a property.\n\nThe factory classmethods (``Filter.equals``, ``Filter.greater_than``,\n``Filter.is_set``, ...) are the recommended way to build a Filter: each\none maps to a specific filterType, filterOperator, and filterValue format\nin the bookmark JSON. Direct construction is supported and validated:\n``_operator`` must be a :data:`FilterOperator` member or a factory-method\nname (``\"greater_than\"``, ``\"is_set\"``, ...), which ``__post_init__``\nnormalizes to the wire spelling so both paths serialize identically.\nAnything else raises ``ValueError`` at construction instead of surfacing\nas an HTTP 400 from the query API.",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "```python\nfrom mixpanel_headless import Filter\n\nf1 = Filter.equals(\"country\", \"US\")\nf2 = Filter.greater_than(\"age\", 18)\nf3 = Filter.between(\"amount\", 10, 100)\nf4 = Filter.is_set(\"email\")\n\n# Direct construction accepts the factory-method spelling as an alias\nFilter(\"age\", \"greater_than\", 18, \"number\") == f2   # True\nFilter(\"won\", \"equals\", True, \"boolean\") == Filter.is_true(\"won\")  # True\n```",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [],
+    "config": [],
+    "construction": [
+     {
+      "name": "at_least",
+      "kind": "method",
+      "summary": "Create a greater-than-or-equal filter.",
+      "signature": {
+       "name": "at_least",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "value",
+         "annotation": "int | float",
+         "default": null,
+         "description": "Numeric threshold (inclusive).",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "at_most",
+      "kind": "method",
+      "summary": "Create a less-than-or-equal filter.",
+      "signature": {
+       "name": "at_most",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "value",
+         "annotation": "int | float",
+         "default": null,
+         "description": "Numeric threshold (inclusive).",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "before",
+      "kind": "method",
+      "summary": "Create a date before filter.",
+      "signature": {
+       "name": "before",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "date",
+         "annotation": "str",
+         "default": null,
+         "description": "Date in YYYY-MM-DD format.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "between",
+      "kind": "method",
+      "summary": "Create a between (inclusive range) filter.",
+      "signature": {
+       "name": "between",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "min_val",
+         "annotation": "int | float",
+         "default": null,
+         "description": "Minimum value (inclusive).",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "max_val",
+         "annotation": "int | float",
+         "default": null,
+         "description": "Maximum value (inclusive).",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "contains",
+      "kind": "method",
+      "summary": "Create a contains (substring) filter.",
+      "signature": {
+       "name": "contains",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "value",
+         "annotation": "str",
+         "default": null,
+         "description": "Substring to match.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "date_between",
+      "kind": "method",
+      "summary": "Create a date range filter (between two dates, inclusive).",
+      "signature": {
+       "name": "date_between",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "from_date",
+         "annotation": "str",
+         "default": null,
+         "description": "Start date in YYYY-MM-DD format.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "to_date",
+         "annotation": "str",
+         "default": null,
+         "description": "End date in YYYY-MM-DD format.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "date_not_between",
+      "kind": "method",
+      "summary": "Create a date exclusion range filter (not between two dates).",
+      "signature": {
+       "name": "date_not_between",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "from_date",
+         "annotation": "str",
+         "default": null,
+         "description": "Start date in YYYY-MM-DD format.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "to_date",
+         "annotation": "str",
+         "default": null,
+         "description": "End date in YYYY-MM-DD format.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "ends_with",
+      "kind": "method",
+      "summary": "Create an ends-with (suffix match) filter.",
+      "signature": {
+       "name": "ends_with",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "suffix",
+         "annotation": "str",
+         "default": null,
+         "description": "String suffix to match.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "equals",
+      "kind": "method",
+      "summary": "Create an equality filter.",
+      "signature": {
+       "name": "equals",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "value",
+         "annotation": "str | list[str]",
+         "default": null,
+         "description": "Value or list of values.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "greater_than",
+      "kind": "method",
+      "summary": "Create a greater-than filter.",
+      "signature": {
+       "name": "greater_than",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "value",
+         "annotation": "int | float",
+         "default": null,
+         "description": "Numeric threshold.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "in_cohort",
+      "kind": "method",
+      "summary": "Create a filter restricting to users in a cohort.",
+      "signature": {
+       "name": "in_cohort",
+       "params": [
+        {
+         "name": "cohort",
+         "annotation": "int | CohortDefinition",
+         "default": null,
+         "description": "Saved cohort ID (positive integer) or inline ``CohortDefinition``.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "name",
+         "annotation": "str | None",
+         "default": "None",
+         "description": "Display name for the cohort. Optional for saved cohorts; recommended for inline definitions.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "in_the_last",
+      "kind": "method",
+      "summary": "Create a relative date filter (in the last N units).",
+      "signature": {
+       "name": "in_the_last",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "quantity",
+         "annotation": "int",
+         "default": null,
+         "description": "Number of time units (must be positive).",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "date_unit",
+         "annotation": "FilterDateUnit",
+         "default": null,
+         "description": "Time unit (``\"hour\"``, ``\"day\"``, ``\"week\"``, ``\"month\"``).",
+         "values": [
+          "hour",
+          "day",
+          "week",
+          "month"
+         ],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "in_the_next",
+      "kind": "method",
+      "summary": "Create a relative date filter (in the next N units).",
+      "signature": {
+       "name": "in_the_next",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "quantity",
+         "annotation": "int",
+         "default": null,
+         "description": "Number of time units (must be positive).",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "date_unit",
+         "annotation": "FilterDateUnit",
+         "default": null,
+         "description": "Time unit (``\"hour\"``, ``\"day\"``, ``\"week\"``, ``\"month\"``).",
+         "values": [
+          "hour",
+          "day",
+          "week",
+          "month"
+         ],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "is_false",
+      "kind": "method",
+      "summary": "Create a boolean false filter.",
+      "signature": {
+       "name": "is_false",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "is_not_set",
+      "kind": "method",
+      "summary": "Create a property-nonexistence filter.",
+      "signature": {
+       "name": "is_not_set",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "is_set",
+      "kind": "method",
+      "summary": "Create a property-existence filter.",
+      "signature": {
+       "name": "is_set",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "is_true",
+      "kind": "method",
+      "summary": "Create a boolean true filter.",
+      "signature": {
+       "name": "is_true",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "less_than",
+      "kind": "method",
+      "summary": "Create a less-than filter.",
+      "signature": {
+       "name": "less_than",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "value",
+         "annotation": "int | float",
+         "default": null,
+         "description": "Numeric threshold.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "list_contains",
+      "kind": "method",
+      "summary": "Match events whose list-of-object property contains items satisfying inner conditions.",
+      "signature": {
+       "name": "list_contains",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str",
+         "default": null,
+         "description": "Name of the list-of-object property to filter on.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "*item_filters",
+         "annotation": "Filter",
+         "default": null,
+         "description": "Inner ``Filter`` instances applied per list item. Mutually exclusive with ``**equals``.",
+         "values": [],
+         "kind": "var_positional"
+        },
+        {
+         "name": "quantifier",
+         "annotation": "Literal['any', 'all']",
+         "default": "'any'",
+         "description": "``\"any\"`` (\u22651 item must match all inner conditions) or ``\"all\"`` (every item must). Default: ``\"any\"``.",
+         "values": [
+          "any",
+          "all"
+         ],
+         "kind": "keyword_only"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        },
+        {
+         "name": "**equals",
+         "annotation": "str | list[str]",
+         "default": null,
+         "description": "Keyword shorthand \u2014 each ``key=value`` becomes ``Filter.equals(key, value, resource_type=resource_type)``. Mutually exclusive with ``*item_filters``. Values must be ``str`` or ``list[str]``; keys must be non-empty.",
+         "values": [],
+         "kind": "var_keyword"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "not_between",
+      "kind": "method",
+      "summary": "Create a not-between (exclusive range) filter.",
+      "signature": {
+       "name": "not_between",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "min_val",
+         "annotation": "int | float",
+         "default": null,
+         "description": "Minimum value (exclusive).",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "max_val",
+         "annotation": "int | float",
+         "default": null,
+         "description": "Maximum value (exclusive).",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "not_contains",
+      "kind": "method",
+      "summary": "Create a not-contains filter.",
+      "signature": {
+       "name": "not_contains",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "value",
+         "annotation": "str",
+         "default": null,
+         "description": "Substring that must not match.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "not_equals",
+      "kind": "method",
+      "summary": "Create a not-equals filter.",
+      "signature": {
+       "name": "not_equals",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "value",
+         "annotation": "str | list[str]",
+         "default": null,
+         "description": "Value or list of values.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "not_in_cohort",
+      "kind": "method",
+      "summary": "Create a filter excluding users in a cohort.",
+      "signature": {
+       "name": "not_in_cohort",
+       "params": [
+        {
+         "name": "cohort",
+         "annotation": "int | CohortDefinition",
+         "default": null,
+         "description": "Saved cohort ID (positive integer) or inline ``CohortDefinition``.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "name",
+         "annotation": "str | None",
+         "default": "None",
+         "description": "Display name for the cohort. Optional for saved cohorts; recommended for inline definitions.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "not_in_the_last",
+      "kind": "method",
+      "summary": "Create a relative date exclusion filter (not in the last N units).",
+      "signature": {
+       "name": "not_in_the_last",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "quantity",
+         "annotation": "int",
+         "default": null,
+         "description": "Number of time units (must be positive).",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "date_unit",
+         "annotation": "FilterDateUnit",
+         "default": null,
+         "description": "Time unit (``\"hour\"``, ``\"day\"``, ``\"week\"``, ``\"month\"``).",
+         "values": [
+          "hour",
+          "day",
+          "week",
+          "month"
+         ],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "not_on",
+      "kind": "method",
+      "summary": "Create a date inequality filter (not on date).",
+      "signature": {
+       "name": "not_on",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "date",
+         "annotation": "str",
+         "default": null,
+         "description": "Date in YYYY-MM-DD format.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "on",
+      "kind": "method",
+      "summary": "Create a date equality filter (exact date match).",
+      "signature": {
+       "name": "on",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty (e.g. ``\"$time\"``, ``\"created\"``).",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "date",
+         "annotation": "str",
+         "default": null,
+         "description": "Date in YYYY-MM-DD format.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "since",
+      "kind": "method",
+      "summary": "Create a date since filter (from date onward).",
+      "signature": {
+       "name": "since",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "date",
+         "annotation": "str",
+         "default": null,
+         "description": "Date in YYYY-MM-DD format.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     },
+     {
+      "name": "starts_with",
+      "kind": "method",
+      "summary": "Create a starts-with (prefix match) filter.",
+      "signature": {
+       "name": "starts_with",
+       "params": [
+        {
+         "name": "property",
+         "annotation": "str | CustomPropertyRef | InlineCustomProperty",
+         "default": null,
+         "description": "Property name, CustomPropertyRef, or InlineCustomProperty.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "prefix",
+         "annotation": "str",
+         "default": null,
+         "description": "String prefix to match.",
+         "values": [],
+         "kind": "positional_or_keyword"
+        },
+        {
+         "name": "resource_type",
+         "annotation": "Literal['events', 'people']",
+         "default": "'events'",
+         "description": "Resource type. Default: ``\"events\"``.",
+         "values": [
+          "events",
+          "people"
+         ],
+         "kind": "keyword_only"
+        }
+       ],
+       "returns": "Filter"
+      },
+      "depth": 0
+     }
+    ],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [],
+    "referenced_types": [],
+    "used_by": [
+     {
+      "method": "build_flow_params",
+      "params": [
+       "where"
+      ]
+     },
+     {
+      "method": "build_funnel_params",
+      "params": [
+       "where"
+      ]
+     },
+     {
+      "method": "build_params",
+      "params": [
+       "where"
+      ]
+     },
+     {
+      "method": "build_retention_params",
+      "params": [
+       "where"
+      ]
+     },
+     {
+      "method": "build_user_params",
+      "params": [
+       "where"
+      ]
+     },
+     {
+      "method": "query",
+      "params": [
+       "where"
+      ]
+     },
+     {
+      "method": "query_flow",
+      "params": [
+       "where"
+      ]
+     },
+     {
+      "method": "query_funnel",
+      "params": [
+       "where"
+      ]
+     },
+     {
+      "method": "query_retention",
+      "params": [
+       "where"
+      ]
+     },
+     {
+      "method": "query_user",
+      "params": [
+       "where"
+      ]
+     }
+    ],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "MathType, Filter, GroupBy, Formula, validation rules",
+      "url": "https://mixpanel.github.io/mixpanel-headless/guide/query/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "enum-feature-flag-status",
+   "query": "FeatureFlagStatus",
+   "domain": null,
+   "entry": {
+    "kind": "enum",
+    "name": "FeatureFlagStatus",
+    "qualname": "FeatureFlagStatus",
+    "summary": "Lifecycle state of a feature flag.",
+    "doc": {
+     "summary": "Lifecycle state of a feature flag.",
+     "body": "Lifecycle state of a feature flag.",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "```python\nstatus = FeatureFlagStatus.ENABLED\nassert status.value == \"enabled\"\n```",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [
+     "str",
+     "Enum"
+    ],
+    "config": [],
+    "construction": [],
+    "fields": [
+     {
+      "name": "ENABLED",
+      "annotation": "str",
+      "default": "'enabled'",
+      "required": false,
+      "constraints": [],
+      "alias": null,
+      "values": [],
+      "description": ""
+     },
+     {
+      "name": "DISABLED",
+      "annotation": "str",
+      "default": "'disabled'",
+      "required": false,
+      "constraints": [],
+      "alias": null,
+      "values": [],
+      "description": ""
+     },
+     {
+      "name": "ARCHIVED",
+      "annotation": "str",
+      "default": "'archived'",
+      "required": false,
+      "constraints": [],
+      "alias": null,
+      "values": [],
+      "description": ""
+     }
+    ],
+    "properties": [],
+    "methods": [],
+    "values": [
+     "ENABLED",
+     "DISABLED",
+     "ARCHIVED"
+    ],
+    "value": null,
+    "groups": [],
+    "referenced_types": [],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "feature flag CRUD, archive and restore, test users, history (entity management)",
+      "url": "https://mixpanel.github.io/mixpanel-headless/guide/entity-management/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "literal-math-type",
+   "query": "MathType",
+   "domain": null,
+   "entry": {
+    "kind": "literal",
+    "name": "MathType",
+    "qualname": "MathType",
+    "summary": "Aggregation for a plain-string event in Workspace.query / build_params and for Metric.math.",
+    "doc": {
+     "summary": "Aggregation for a plain-string event in Workspace.query / build_params and for Metric.math.",
+     "body": "Aggregation for a plain-string event in Workspace.query / build_params and for Metric.math.",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [
+     "total",
+     "unique",
+     "dau",
+     "wau",
+     "mau",
+     "average",
+     "median",
+     "min",
+     "max",
+     "p25",
+     "p75",
+     "p90",
+     "p99",
+     "percentile",
+     "histogram",
+     "cumulative_unique",
+     "sessions",
+     "unique_values",
+     "most_frequent",
+     "first_value",
+     "multi_attribution",
+     "numeric_summary"
+    ],
+    "value": null,
+    "groups": [],
+    "referenced_types": [],
+    "used_by": [
+     {
+      "method": "build_params",
+      "params": [
+       "math"
+      ]
+     },
+     {
+      "method": "query",
+      "params": [
+       "math"
+      ]
+     }
+    ],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "MathType, Filter, GroupBy, Formula, validation rules",
+      "url": "https://mixpanel.github.io/mixpanel-headless/guide/query/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "alias-account",
+   "query": "Account",
+   "domain": null,
+   "entry": {
+    "kind": "alias",
+    "name": "Account",
+    "qualname": "Account",
+    "summary": "Discriminated union over the three account variants, dispatched on the type field; build one from a dict with pydantic.TypeAdapter(Account).",
+    "doc": {
+     "summary": "Discriminated union over the three account variants, dispatched on the type field; build one from a dict with pydantic.TypeAdapter(Account).",
+     "body": "Discriminated union over the three account variants, dispatched on the type field; build one from a dict with pydantic.TypeAdapter(Account).",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [
+     "ServiceAccount",
+     "OAuthBrowserAccount",
+     "OAuthTokenAccount"
+    ],
+    "value": null,
+    "groups": [],
+    "referenced_types": [
+     [
+      "ServiceAccount",
+      "Basic-auth service account credentials."
+     ],
+     [
+      "OAuthBrowserAccount",
+      "OAuth account authenticated via PKCE browser flow."
+     ],
+     [
+      "OAuthTokenAccount",
+      "OAuth account using a static bearer token (CI, agents, ephemeral runs)."
+     ]
+    ],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "auth and accounts \u2014 account types, sessions, targets, in-session switching",
+      "url": "https://mixpanel.github.io/mixpanel-headless/api/auth/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "exception-api-error",
+   "query": "APIError",
+   "domain": null,
+   "entry": {
+    "kind": "exception",
+    "name": "APIError",
+    "qualname": "APIError",
+    "summary": "Base class for Mixpanel API HTTP errors.",
+    "doc": {
+     "summary": "Base class for Mixpanel API HTTP errors.",
+     "body": "Base class for Mixpanel API HTTP errors.\n\nProvides structured access to HTTP request/response context for debugging\nand automated recovery by AI agents. All API-related exceptions inherit\nfrom this class, enabling agents to:\n\n- Understand what went wrong (status code, error message)\n- See exactly what was sent (request method, URL, params, body)\n- See exactly what came back (response body, headers)\n- Modify their approach and retry autonomously",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "```python\ntry:\n    result = client.segmentation(event=\"signup\", ...)\nexcept APIError as e:\n    print(f\"Status: {e.status_code}\")\n    print(f\"Response: {e.response_body}\")\n    print(f\"Request URL: {e.request_url}\")\n    print(f\"Request params: {e.request_params}\")\n```",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [
+     "MixpanelHeadlessError"
+    ],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [
+     {
+      "title": "Subclasses",
+      "items": [
+       {
+        "name": "AuthenticationError",
+        "kind": "exception",
+        "summary": "Authentication with Mixpanel API failed (HTTP 401).",
+        "signature": null,
+        "depth": 0
+       },
+       {
+        "name": "QueryError",
+        "kind": "exception",
+        "summary": "Query execution failed (HTTP 400 or query-specific error).",
+        "signature": null,
+        "depth": 0
+       },
+       {
+        "name": "RateLimitError",
+        "kind": "exception",
+        "summary": "Mixpanel API rate limit exceeded (HTTP 429).",
+        "signature": null,
+        "depth": 0
+       },
+       {
+        "name": "ServerError",
+        "kind": "exception",
+        "summary": "Mixpanel server error (HTTP 5xx).",
+        "signature": null,
+        "depth": 0
+       },
+       {
+        "name": "SessionReplayError",
+        "kind": "exception",
+        "summary": "Base class for session-replay-specific failures.",
+        "signature": null,
+        "depth": 0
+       },
+       {
+        "name": "ReplayNotFoundError",
+        "kind": "exception",
+        "summary": "No CDN bytes found for a requested replay.",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "SessionReplayAccessError",
+        "kind": "exception",
+        "summary": "Project has SESSION_RECORDING_SENSITIVE_DATA enabled and caller lacks access.",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "SignedURLExpiredError",
+        "kind": "exception",
+        "summary": "Signed CDN URL passed to a fetch has expired (5-minute TTL).",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "UnsupportedReplayFormatError",
+        "kind": "exception",
+        "summary": "Replay bytes are not in rrweb format.",
+        "signature": null,
+        "depth": 1
+       }
+      ]
+     }
+    ],
+    "referenced_types": [],
+    "used_by": [
+     {
+      "method": "query_user",
+      "params": []
+     },
+     {
+      "method": "run_user_params",
+      "params": []
+     },
+     {
+      "method": "sign_replay",
+      "params": []
+     },
+     {
+      "method": "sign_replays",
+      "params": []
+     }
+    ],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "exception hierarchy \u2014 base classes, API errors, validation errors",
+      "url": "https://mixpanel.github.io/mixpanel-headless/api/exceptions/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "exception-leaf",
+   "query": "RateLimitError",
+   "domain": null,
+   "entry": {
+    "kind": "exception",
+    "name": "RateLimitError",
+    "qualname": "RateLimitError",
+    "summary": "Mixpanel API rate limit exceeded (HTTP 429).",
+    "doc": {
+     "summary": "Mixpanel API rate limit exceeded (HTTP 429).",
+     "body": "Mixpanel API rate limit exceeded (HTTP 429).\n\nRaised when the API returns a 429 status. The retry_after property\nindicates when the request can be retried. Inherits from APIError\nto provide full request context for debugging.",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "```python\ntry:\n    for _ in range(1000):\n        client.segmentation(...)\nexcept RateLimitError as e:\n    print(f\"Rate limited! Retry after {e.retry_after}s\")\n    print(f\"Request: {e.request_method} {e.request_url}\")\n    print(f\"Request a higher limit: {e.rate_limit_form_url}\")\n    time.sleep(e.retry_after or 60)\n```",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [
+     "APIError"
+    ],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [],
+    "referenced_types": [],
+    "used_by": [
+     {
+      "method": "create_report_link",
+      "params": []
+     },
+     {
+      "method": "create_schema",
+      "params": []
+     },
+     {
+      "method": "create_schemas_bulk",
+      "params": []
+     },
+     {
+      "method": "delete_schemas",
+      "params": []
+     },
+     {
+      "method": "list_schema_registry",
+      "params": []
+     },
+     {
+      "method": "query",
+      "params": []
+     },
+     {
+      "method": "query_flow",
+      "params": []
+     },
+     {
+      "method": "query_funnel",
+      "params": []
+     },
+     {
+      "method": "query_report_link",
+      "params": []
+     },
+     {
+      "method": "query_retention",
+      "params": []
+     },
+     {
+      "method": "query_user",
+      "params": []
+     },
+     {
+      "method": "resolve_report_link",
+      "params": []
+     },
+     {
+      "method": "run_flow_params",
+      "params": []
+     },
+     {
+      "method": "run_funnel_params",
+      "params": []
+     },
+     {
+      "method": "run_params",
+      "params": []
+     },
+     {
+      "method": "run_retention_params",
+      "params": []
+     },
+     {
+      "method": "run_user_params",
+      "params": []
+     },
+     {
+      "method": "stream_events",
+      "params": []
+     },
+     {
+      "method": "stream_profiles",
+      "params": []
+     },
+     {
+      "method": "update_schema",
+      "params": []
+     },
+     {
+      "method": "update_schemas_bulk",
+      "params": []
+     }
+    ],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "exception hierarchy \u2014 base classes, API errors, validation errors",
+      "url": "https://mixpanel.github.io/mixpanel-headless/api/exceptions/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "module-accounts",
+   "query": "accounts",
+   "domain": null,
+   "entry": {
+    "kind": "module",
+    "name": "accounts",
+    "qualname": "accounts",
+    "summary": "Public ``mp.accounts`` namespace.",
+    "doc": {
+     "summary": "Public ``mp.accounts`` namespace.",
+     "body": "Public ``mp.accounts`` namespace.\n\nThin wrapper around :class:`~mixpanel_headless._internal.config.ConfigManager`\nexposing account CRUD, switching, and probing operations as the canonical\nPython API for ``mp account ...`` CLI commands and the plugin's\n``auth_manager.py``.\n\nReference: specs/042-auth-architecture-redesign/contracts/python-api.md \u00a75.",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [
+     {
+      "title": "Members",
+      "items": [
+       {
+        "name": "add",
+        "kind": "function",
+        "summary": "Add a new account.",
+        "signature": {
+         "name": "add",
+         "params": [
+          {
+           "name": "name",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "Account name (must match ``^[a-zA-Z0-9_-]{1,64}$``). Required unless ``derive_name=True``.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          },
+          {
+           "name": "type",
+           "annotation": "AccountType",
+           "default": null,
+           "description": "One of ``service_account`` / ``oauth_browser`` / ``oauth_token``.",
+           "values": [
+            "service_account",
+            "oauth_browser",
+            "oauth_token"
+           ],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "region",
+           "annotation": "Region | None",
+           "default": "None",
+           "description": "One of ``us`` / ``eu`` / ``in``. May be omitted only for ``oauth_browser`` (the PKCE flow commits to the account's stored region at login time). For ``service_account`` and ``oauth_token``, ``region=None`` raises ``ConfigError`` \u2014 the Python API does not probe; pass ``--region`` to the CLI or use ``mp login`` for the guided probing flow.",
+           "values": [
+            "us",
+            "eu",
+            "in"
+           ],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "default_project",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "Numeric project ID. Optional for every type; populated later via ``mp project use`` or ``mp login``.",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "username",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "Required for ``service_account``.",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "secret",
+           "annotation": "SecretStr | str | None",
+           "default": "None",
+           "description": "Required for ``service_account``.",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "token",
+           "annotation": "SecretStr | str | None",
+           "default": "None",
+           "description": "For ``oauth_token`` (mutually exclusive with ``token_env``).",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "token_env",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "For ``oauth_token`` (mutually exclusive with ``token``).",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "derive_name",
+           "annotation": "bool",
+           "default": "False",
+           "description": "When ``True``, fetch ``/me`` and pick a name via :func:`naming.default_account_name`. Mutually exclusive with ``name=`` (passing both raises ``TypeError``). Not supported for ``oauth_browser``.",
+           "values": [],
+           "kind": "keyword_only"
+          }
+         ],
+         "returns": "AccountSummary"
+        },
+        "depth": 0
+       },
+       {
+        "name": "export_bridge",
+        "kind": "function",
+        "summary": "Export the named (or active) account as a v2 bridge file.",
+        "signature": {
+         "name": "export_bridge",
+         "params": [
+          {
+           "name": "to",
+           "annotation": "Path",
+           "default": null,
+           "description": "Destination path for the bridge file.",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "account",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "Account to export; ``None`` means the active account.",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "project",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "Optional pinned project ID. ``None`` omits the field.",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "workspace",
+           "annotation": "int | None",
+           "default": "None",
+           "description": "Optional pinned workspace ID. ``None`` omits the field.",
+           "values": [],
+           "kind": "keyword_only"
+          }
+         ],
+         "returns": "Path"
+        },
+        "depth": 0
+       },
+       {
+        "name": "list",
+        "kind": "function",
+        "summary": "Return all configured accounts as ``AccountSummary`` records.",
+        "signature": {
+         "name": "list",
+         "params": [],
+         "returns": "list[AccountSummary]"
+        },
+        "depth": 0
+       },
+       {
+        "name": "login",
+        "kind": "function",
+        "summary": "Run the OAuth browser flow for an ``oauth_browser`` account.",
+        "signature": {
+         "name": "login",
+         "params": [
+          {
+           "name": "name",
+           "annotation": "str",
+           "default": null,
+           "description": "Account name (must be ``oauth_browser`` type).",
+           "values": [],
+           "kind": "positional_or_keyword"
+          },
+          {
+           "name": "open_browser",
+           "annotation": "bool",
+           "default": "True",
+           "description": "Whether to launch the system browser. When False, the authorize URL is printed to stderr for manual copy (CLI flag: ``mp account login NAME --no-browser``).",
+           "values": [],
+           "kind": "keyword_only"
+          }
+         ],
+         "returns": "OAuthLoginResult"
+        },
+        "depth": 0
+       },
+       {
+        "name": "login_unified",
+        "kind": "function",
+        "summary": "Add and activate a Mixpanel account in one orchestrated call.",
+        "signature": {
+         "name": "login_unified",
+         "params": [
+          {
+           "name": "name",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "Explicit local account name. Wins over derived names.",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "region",
+           "annotation": "Region | None",
+           "default": "None",
+           "description": "Explicit region. ``None`` triggers the probe (SA / token) or defaults to ``us`` (oauth_browser).",
+           "values": [
+            "us",
+            "eu",
+            "in"
+           ],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "project",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "Explicit project ID. Must exist in ``/me``.",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "account_type",
+           "annotation": "AccountType | None",
+           "default": "None",
+           "description": "Explicit auth-type override.",
+           "values": [
+            "service_account",
+            "oauth_browser",
+            "oauth_token"
+           ],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "no_browser",
+           "annotation": "bool",
+           "default": "False",
+           "description": "For oauth_browser, print the authorize URL instead of launching the browser. Combined with a non-browser ``account_type`` raises :class:`InvalidArgumentError` (``violation=\"no_browser_misuse\"``).",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "secret_stdin",
+           "annotation": "bool",
+           "default": "False",
+           "description": "For service_account, read the secret from stdin. Combined with a non-SA ``account_type`` raises :class:`InvalidArgumentError` (``violation=\"secret_stdin_misuse\"``).",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "token_env",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "For oauth_token, env-var name carrying the bearer. Defaults to ``MP_OAUTH_TOKEN`` when not set.",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "service_account",
+           "annotation": "bool",
+           "default": "False",
+           "description": "When ``True``, forces ``account_type = \"service_account\"`` (mirrors the CLI ``--service-account`` flag). Combined with ``token_env`` raises :class:`InvalidArgumentError` (``violation=\"mutually_exclusive\"``). Library callers can instead pass ``account_type=\"service_account\"`` directly; this flag exists so the CLI can forward its raw arguments without per-flag remapping.",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "project_picker",
+           "annotation": "ProjectPicker | None",
+           "default": "None",
+           "description": "Callable invoked with ``(MeResponse, sorted_projects)`` when ``len(me.projects) > 1`` and no other project source resolves. Returns the chosen project ID. The CLI supplies a TTY-aware picker; library callers can supply their own or leave it ``None`` to fail-fast non-interactively.",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "progress",
+           "annotation": "ProgressFactory | None",
+           "default": "None",
+           "description": "Optional CM factory wrapped around the ``/me`` round- trip. The CLI passes a Rich-spinner-backed factory so the terminal does not appear hung while ``/me`` runs. Library callers leave ``None`` and the orchestrator substitutes :class:`contextlib.nullcontext`.",
+           "values": [],
+           "kind": "keyword_only"
+          }
+         ],
+         "returns": "AccountSummary"
+        },
+        "depth": 0
+       },
+       {
+        "name": "logout",
+        "kind": "function",
+        "summary": "Remove the on-disk OAuth tokens for an ``oauth_browser`` account.",
+        "signature": {
+         "name": "logout",
+         "params": [
+          {
+           "name": "name",
+           "annotation": "str",
+           "default": null,
+           "description": "Account name.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "None"
+        },
+        "depth": 0
+       },
+       {
+        "name": "remove",
+        "kind": "function",
+        "summary": "Remove an account.",
+        "signature": {
+         "name": "remove",
+         "params": [
+          {
+           "name": "name",
+           "annotation": "str",
+           "default": null,
+           "description": "Account name.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          },
+          {
+           "name": "force",
+           "annotation": "bool",
+           "default": "False",
+           "description": "When ``True``, remove even if referenced by targets.",
+           "values": [],
+           "kind": "keyword_only"
+          }
+         ],
+         "returns": "list[str]"
+        },
+        "depth": 0
+       },
+       {
+        "name": "remove_bridge",
+        "kind": "function",
+        "summary": "Remove the v2 bridge file at ``at`` (or the default path).",
+        "signature": {
+         "name": "remove_bridge",
+         "params": [
+          {
+           "name": "at",
+           "annotation": "Path | None",
+           "default": "None",
+           "description": "Bridge file path; ``None`` means ``MP_AUTH_FILE`` then the default search paths.",
+           "values": [],
+           "kind": "keyword_only"
+          }
+         ],
+         "returns": "bool"
+        },
+        "depth": 0
+       },
+       {
+        "name": "show",
+        "kind": "function",
+        "summary": "Return the named account summary, or the active one if no name given.",
+        "signature": {
+         "name": "show",
+         "params": [
+          {
+           "name": "name",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "Account name; if ``None``, the active account is shown.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "AccountSummary"
+        },
+        "depth": 0
+       },
+       {
+        "name": "test",
+        "kind": "function",
+        "summary": "Probe ``/me`` for the named account and return the structured result.",
+        "signature": {
+         "name": "test",
+         "params": [
+          {
+           "name": "name",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "Account to test; ``None`` means the active account.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "AccountTestResult"
+        },
+        "depth": 0
+       },
+       {
+        "name": "token",
+        "kind": "function",
+        "summary": "Return the current bearer token for an OAuth account.",
+        "signature": {
+         "name": "token",
+         "params": [
+          {
+           "name": "name",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "Account name; ``None`` means the active account.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "str | None"
+        },
+        "depth": 0
+       },
+       {
+        "name": "update",
+        "kind": "function",
+        "summary": "Update fields on an existing account in place.",
+        "signature": {
+         "name": "update",
+         "params": [
+          {
+           "name": "name",
+           "annotation": "str",
+           "default": null,
+           "description": "Account to update.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          },
+          {
+           "name": "region",
+           "annotation": "Region | None",
+           "default": "None",
+           "description": "New region.",
+           "values": [
+            "us",
+            "eu",
+            "in"
+           ],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "default_project",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "New ``default_project`` (digit string).",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "username",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "New username (service_account only).",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "secret",
+           "annotation": "SecretStr | str | None",
+           "default": "None",
+           "description": "New secret (service_account only).",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "token",
+           "annotation": "SecretStr | str | None",
+           "default": "None",
+           "description": "New inline token (oauth_token only).",
+           "values": [],
+           "kind": "keyword_only"
+          },
+          {
+           "name": "token_env",
+           "annotation": "str | None",
+           "default": "None",
+           "description": "New env-var name (oauth_token only).",
+           "values": [],
+           "kind": "keyword_only"
+          }
+         ],
+         "returns": "AccountSummary"
+        },
+        "depth": 0
+       },
+       {
+        "name": "use",
+        "kind": "function",
+        "summary": "Switch the active account, clearing any prior workspace pin.",
+        "signature": {
+         "name": "use",
+         "params": [
+          {
+           "name": "name",
+           "annotation": "str",
+           "default": null,
+           "description": "Account to make active.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "None"
+        },
+        "depth": 0
+       }
+      ]
+     }
+    ],
+    "referenced_types": [],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "auth and accounts \u2014 account types, sessions, targets, in-session switching",
+      "url": "https://mixpanel.github.io/mixpanel-headless/api/auth/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "constant-enum-member",
+   "query": "FeatureFlagStatus.ENABLED",
+   "domain": null,
+   "entry": {
+    "kind": "constant",
+    "name": "FeatureFlagStatus.ENABLED",
+    "qualname": "FeatureFlagStatus.ENABLED",
+    "summary": "Lifecycle state of a feature flag.",
+    "doc": {
+     "summary": "Lifecycle state of a feature flag.",
+     "body": "Lifecycle state of a feature flag.",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [
+     "FeatureFlagStatus"
+    ],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": "'enabled'",
+    "groups": [],
+    "referenced_types": [],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "feature flag CRUD, archive and restore, test users, history (entity management)",
+      "url": "https://mixpanel.github.io/mixpanel-headless/guide/entity-management/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "constant-int",
+   "query": "BUSINESS_CONTEXT_MAX_CHARS",
+   "domain": null,
+   "entry": {
+    "kind": "constant",
+    "name": "BUSINESS_CONTEXT_MAX_CHARS",
+    "qualname": "BUSINESS_CONTEXT_MAX_CHARS",
+    "summary": "Maximum length of a business-context document in characters; the server rejects longer content and set_business_context checks it before sending.",
+    "doc": {
+     "summary": "Maximum length of a business-context document in characters; the server rejects longer content and set_business_context checks it before sending.",
+     "body": "Maximum length of a business-context document in characters; the server rejects longer content and set_business_context checks it before sending.",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [
+     "int"
+    ],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": "50000",
+    "groups": [],
+    "referenced_types": [],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "business context \u2014 org and project markdown that grounds AI assistants",
+      "url": "https://mixpanel.github.io/mixpanel-headless/guide/business-context/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "listing-workspace-dashboards",
+   "query": "Workspace",
+   "domain": "dashboards",
+   "entry": {
+    "kind": "listing",
+    "name": "Workspace",
+    "qualname": "Workspace",
+    "summary": "Unified entry point for Mixpanel data operations.",
+    "doc": {
+     "summary": "Unified entry point for Mixpanel data operations.",
+     "body": "Unified entry point for Mixpanel data operations.\n\nThe Workspace class is a facade that orchestrates:\n- DiscoveryService for schema exploration\n- LiveQueryService for real-time analytics\n- App API client for CRUD and data governance operations",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "Basic usage with credentials from config:\n\n```python\nws = Workspace()\nevents = ws.events()  # discover schema\nresult = ws.segmentation(event=\"login\", from_date=\"2024-01-01\", to_date=\"2024-01-31\")\nws.close()\n```\n\nStream events for external processing:\n\n```python\nws = Workspace()\nfor event in ws.stream_events(from_date=\"2024-01-01\", to_date=\"2024-01-31\"):\n    process(event)\nws.close()\n```",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [
+     {
+      "title": "dashboards",
+      "items": [
+       {
+        "name": "list_dashboards",
+        "kind": "method",
+        "summary": "List dashboards for the current project/workspace.",
+        "signature": {
+         "name": "list_dashboards",
+         "params": [
+          {
+           "name": "ids",
+           "annotation": "list[int] | None",
+           "default": "None",
+           "description": "Optional list of dashboard IDs to filter by.",
+           "values": [],
+           "kind": "keyword_only"
+          }
+         ],
+         "returns": "list[Dashboard]"
+        },
+        "depth": 0
+       },
+       {
+        "name": "create_dashboard",
+        "kind": "method",
+        "summary": "Create a new dashboard.",
+        "signature": {
+         "name": "create_dashboard",
+         "params": [
+          {
+           "name": "params",
+           "annotation": "CreateDashboardParams",
+           "default": null,
+           "description": "Dashboard creation parameters.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "Dashboard"
+        },
+        "depth": 0
+       },
+       {
+        "name": "get_dashboard",
+        "kind": "method",
+        "summary": "Get a single dashboard by ID.",
+        "signature": {
+         "name": "get_dashboard",
+         "params": [
+          {
+           "name": "dashboard_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Dashboard identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "Dashboard"
+        },
+        "depth": 0
+       },
+       {
+        "name": "update_dashboard",
+        "kind": "method",
+        "summary": "Update an existing dashboard.",
+        "signature": {
+         "name": "update_dashboard",
+         "params": [
+          {
+           "name": "dashboard_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Dashboard identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          },
+          {
+           "name": "params",
+           "annotation": "UpdateDashboardParams",
+           "default": null,
+           "description": "Fields to update.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "Dashboard"
+        },
+        "depth": 0
+       },
+       {
+        "name": "delete_dashboard",
+        "kind": "method",
+        "summary": "Delete a dashboard.",
+        "signature": {
+         "name": "delete_dashboard",
+         "params": [
+          {
+           "name": "dashboard_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Dashboard identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "None"
+        },
+        "depth": 0
+       },
+       {
+        "name": "bulk_delete_dashboards",
+        "kind": "method",
+        "summary": "Delete multiple dashboards.",
+        "signature": {
+         "name": "bulk_delete_dashboards",
+         "params": [
+          {
+           "name": "ids",
+           "annotation": "list[int]",
+           "default": null,
+           "description": "List of dashboard IDs to delete.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "None"
+        },
+        "depth": 0
+       },
+       {
+        "name": "favorite_dashboard",
+        "kind": "method",
+        "summary": "Favorite a dashboard.",
+        "signature": {
+         "name": "favorite_dashboard",
+         "params": [
+          {
+           "name": "dashboard_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Dashboard identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "None"
+        },
+        "depth": 0
+       },
+       {
+        "name": "unfavorite_dashboard",
+        "kind": "method",
+        "summary": "Unfavorite a dashboard.",
+        "signature": {
+         "name": "unfavorite_dashboard",
+         "params": [
+          {
+           "name": "dashboard_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Dashboard identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "None"
+        },
+        "depth": 0
+       },
+       {
+        "name": "pin_dashboard",
+        "kind": "method",
+        "summary": "Pin a dashboard.",
+        "signature": {
+         "name": "pin_dashboard",
+         "params": [
+          {
+           "name": "dashboard_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Dashboard identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "None"
+        },
+        "depth": 0
+       },
+       {
+        "name": "unpin_dashboard",
+        "kind": "method",
+        "summary": "Unpin a dashboard.",
+        "signature": {
+         "name": "unpin_dashboard",
+         "params": [
+          {
+           "name": "dashboard_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Dashboard identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "None"
+        },
+        "depth": 0
+       },
+       {
+        "name": "add_report_to_dashboard",
+        "kind": "method",
+        "summary": "Add a report to a dashboard.",
+        "signature": {
+         "name": "add_report_to_dashboard",
+         "params": [
+          {
+           "name": "dashboard_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Dashboard identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          },
+          {
+           "name": "bookmark_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Bookmark/report identifier to add.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "Dashboard"
+        },
+        "depth": 0
+       },
+       {
+        "name": "remove_report_from_dashboard",
+        "kind": "method",
+        "summary": "Remove a report from a dashboard.",
+        "signature": {
+         "name": "remove_report_from_dashboard",
+         "params": [
+          {
+           "name": "dashboard_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Dashboard identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          },
+          {
+           "name": "bookmark_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Bookmark/report identifier to remove.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "Dashboard"
+        },
+        "depth": 0
+       },
+       {
+        "name": "list_blueprint_templates",
+        "kind": "method",
+        "summary": "List available dashboard blueprint templates.",
+        "signature": {
+         "name": "list_blueprint_templates",
+         "params": [
+          {
+           "name": "include_reports",
+           "annotation": "bool",
+           "default": "False",
+           "description": "Whether to include report details.",
+           "values": [],
+           "kind": "keyword_only"
+          }
+         ],
+         "returns": "list[BlueprintTemplate]"
+        },
+        "depth": 0
+       },
+       {
+        "name": "create_blueprint",
+        "kind": "method",
+        "summary": "Create a dashboard from a blueprint template.",
+        "signature": {
+         "name": "create_blueprint",
+         "params": [
+          {
+           "name": "template_type",
+           "annotation": "str",
+           "default": null,
+           "description": "Blueprint template type identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "Dashboard"
+        },
+        "depth": 0
+       },
+       {
+        "name": "get_blueprint_config",
+        "kind": "method",
+        "summary": "Get the blueprint configuration for a dashboard.",
+        "signature": {
+         "name": "get_blueprint_config",
+         "params": [
+          {
+           "name": "dashboard_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Dashboard identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "BlueprintConfig"
+        },
+        "depth": 0
+       },
+       {
+        "name": "update_blueprint_cohorts",
+        "kind": "method",
+        "summary": "Update cohorts for blueprint configuration.",
+        "signature": {
+         "name": "update_blueprint_cohorts",
+         "params": [
+          {
+           "name": "cohorts",
+           "annotation": "list[dict[str, Any]]",
+           "default": null,
+           "description": "List of cohort configuration dicts.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "None"
+        },
+        "depth": 0
+       },
+       {
+        "name": "finalize_blueprint",
+        "kind": "method",
+        "summary": "Finalize a blueprint dashboard with cards.",
+        "signature": {
+         "name": "finalize_blueprint",
+         "params": [
+          {
+           "name": "params",
+           "annotation": "BlueprintFinishParams",
+           "default": null,
+           "description": "Blueprint finalization parameters.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "Dashboard"
+        },
+        "depth": 0
+       },
+       {
+        "name": "create_rca_dashboard",
+        "kind": "method",
+        "summary": "Create an RCA (Root Cause Analysis) dashboard.",
+        "signature": {
+         "name": "create_rca_dashboard",
+         "params": [
+          {
+           "name": "params",
+           "annotation": "CreateRcaDashboardParams",
+           "default": null,
+           "description": "RCA dashboard parameters.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "Dashboard"
+        },
+        "depth": 0
+       },
+       {
+        "name": "get_bookmark_dashboard_ids",
+        "kind": "method",
+        "summary": "Get dashboard IDs containing a bookmark/report.",
+        "signature": {
+         "name": "get_bookmark_dashboard_ids",
+         "params": [
+          {
+           "name": "bookmark_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Bookmark identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "list[int]"
+        },
+        "depth": 0
+       },
+       {
+        "name": "get_dashboard_erf",
+        "kind": "method",
+        "summary": "Get ERF data for a dashboard.",
+        "signature": {
+         "name": "get_dashboard_erf",
+         "params": [
+          {
+           "name": "dashboard_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Dashboard identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "dict[str, Any]"
+        },
+        "depth": 0
+       },
+       {
+        "name": "update_report_link",
+        "kind": "method",
+        "summary": "Update a report link on a dashboard.",
+        "signature": {
+         "name": "update_report_link",
+         "params": [
+          {
+           "name": "dashboard_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Dashboard identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          },
+          {
+           "name": "report_link_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Report link identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          },
+          {
+           "name": "params",
+           "annotation": "UpdateReportLinkParams",
+           "default": null,
+           "description": "Update parameters.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "None"
+        },
+        "depth": 0
+       },
+       {
+        "name": "update_text_card",
+        "kind": "method",
+        "summary": "Update a text card on a dashboard.",
+        "signature": {
+         "name": "update_text_card",
+         "params": [
+          {
+           "name": "dashboard_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Dashboard identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          },
+          {
+           "name": "text_card_id",
+           "annotation": "int",
+           "default": null,
+           "description": "Text card identifier.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          },
+          {
+           "name": "params",
+           "annotation": "UpdateTextCardParams",
+           "default": null,
+           "description": "Update parameters.",
+           "values": [],
+           "kind": "positional_or_keyword"
+          }
+         ],
+         "returns": "None"
+        },
+        "depth": 0
+       }
+      ]
+     }
+    ],
+    "referenced_types": [],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": [
+     {
+      "title": "complete method signatures organized by domain",
+      "url": "https://mixpanel.github.io/mixpanel-headless/api/workspace/index.md"
+     }
+    ]
+   }
+  },
+  {
+   "slug": "listing-exceptions",
+   "query": "exceptions",
+   "domain": null,
+   "entry": {
+    "kind": "listing",
+    "name": "exceptions",
+    "qualname": "exceptions",
+    "summary": "36 exceptions",
+    "doc": {
+     "summary": "",
+     "body": "",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [
+     {
+      "title": "Exceptions",
+      "items": [
+       {
+        "name": "MixpanelHeadlessError",
+        "kind": "exception",
+        "summary": "Base exception for all mixpanel_headless errors.",
+        "signature": null,
+        "depth": 0
+       },
+       {
+        "name": "APIError",
+        "kind": "exception",
+        "summary": "Base class for Mixpanel API HTTP errors.",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "AuthenticationError",
+        "kind": "exception",
+        "summary": "Authentication with Mixpanel API failed (HTTP 401).",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "QueryError",
+        "kind": "exception",
+        "summary": "Query execution failed (HTTP 400 or query-specific error).",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "RateLimitError",
+        "kind": "exception",
+        "summary": "Mixpanel API rate limit exceeded (HTTP 429).",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "ServerError",
+        "kind": "exception",
+        "summary": "Mixpanel server error (HTTP 5xx).",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "SessionReplayError",
+        "kind": "exception",
+        "summary": "Base class for session-replay-specific failures.",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "ReplayNotFoundError",
+        "kind": "exception",
+        "summary": "No CDN bytes found for a requested replay.",
+        "signature": null,
+        "depth": 3
+       },
+       {
+        "name": "SessionReplayAccessError",
+        "kind": "exception",
+        "summary": "Project has SESSION_RECORDING_SENSITIVE_DATA enabled and caller lacks access.",
+        "signature": null,
+        "depth": 3
+       },
+       {
+        "name": "SignedURLExpiredError",
+        "kind": "exception",
+        "summary": "Signed CDN URL passed to a fetch has expired (5-minute TTL).",
+        "signature": null,
+        "depth": 3
+       },
+       {
+        "name": "UnsupportedReplayFormatError",
+        "kind": "exception",
+        "summary": "Replay bytes are not in rrweb format.",
+        "signature": null,
+        "depth": 3
+       },
+       {
+        "name": "BookmarkValidationError",
+        "kind": "exception",
+        "summary": "Bookmark params failed validation.",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "BusinessContextValidationError",
+        "kind": "exception",
+        "summary": "Business context content failed client-side validation.",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "ConfigError",
+        "kind": "exception",
+        "summary": "Base for configuration-related errors.",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "AccountExistsError",
+        "kind": "exception",
+        "summary": "Account name already exists in configuration.",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "AccountInUseError",
+        "kind": "exception",
+        "summary": "Account is referenced by one or more targets and cannot be removed.",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "AccountNotFoundError",
+        "kind": "exception",
+        "summary": "Named account does not exist in configuration.",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "InvalidArgumentError",
+        "kind": "exception",
+        "summary": "Raised when a public API call combines mutually incompatible arguments.",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "ProjectNotFoundError",
+        "kind": "exception",
+        "summary": "Raised when a specified project is not accessible.",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "DateRangeTooLargeError",
+        "kind": "exception",
+        "summary": "Date range exceeds maximum allowed by Mixpanel API.",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "EventNotFoundError",
+        "kind": "exception",
+        "summary": "Event name not found in Mixpanel project.",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "HelpLookupError",
+        "kind": "exception",
+        "summary": "A ``mixpanel_headless.help()`` / ``reference.describe()`` query matched nothing.",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "HelpDomainError",
+        "kind": "exception",
+        "summary": "The ``domain=`` filter of a help query was rejected.",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "OAuthError",
+        "kind": "exception",
+        "summary": "OAuth authentication flow error.",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "RegionProbeError",
+        "kind": "exception",
+        "summary": "Raised when no region accepts the credential during region probing.",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "RegionProbeNetworkError",
+        "kind": "exception",
+        "summary": "Raised when every region probe attempt failed at the network layer.",
+        "signature": null,
+        "depth": 3
+       },
+       {
+        "name": "ParamTypeError",
+        "kind": "exception",
+        "summary": "A builder/facade argument guard rejected a value's type (registry-coded).",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "ParamValidationError",
+        "kind": "exception",
+        "summary": "A builder/facade argument guard rejected a value (registry-coded).",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "ReportLinkError",
+        "kind": "exception",
+        "summary": "Base class for report-link failures (045-report-links).",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "ReportLinkNotFoundError",
+        "kind": "exception",
+        "summary": "The slug, saved report, or shortlink does not exist in scope.",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "ReportLinkParseError",
+        "kind": "exception",
+        "summary": "The input string is not a recognizable Mixpanel report link.",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "ReportLinkScopeMismatchError",
+        "kind": "exception",
+        "summary": "The link names a project or region other than the active session.",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "ShortLinkResolutionError",
+        "kind": "exception",
+        "summary": "A ``/s/{code}`` shortlink could not be expanded to a full report URL.",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "UnsupportedReportLinkError",
+        "kind": "exception",
+        "summary": "The link was recognized but headless cannot resolve or run it.",
+        "signature": null,
+        "depth": 2
+       },
+       {
+        "name": "ResponseValidationError",
+        "kind": "exception",
+        "summary": "An API response failed Pydantic model validation.",
+        "signature": null,
+        "depth": 1
+       },
+       {
+        "name": "WorkspaceScopeError",
+        "kind": "exception",
+        "summary": "Scope resolution error (workspace or organization).",
+        "signature": null,
+        "depth": 1
+       }
+      ]
+     }
+    ],
+    "referenced_types": [],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": []
+   }
+  },
+  {
+   "slug": "listing-types-trimmed",
+   "query": "types",
+   "domain": null,
+   "entry": {
+    "kind": "listing",
+    "name": "types",
+    "qualname": "types",
+    "summary": "253 public types",
+    "doc": {
+     "summary": "",
+     "body": "",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [
+     {
+      "title": "models",
+      "items": [
+       {
+        "name": "AccountSummary",
+        "kind": "model",
+        "summary": "Read-only summary of a configured account for ``mp account list``.",
+        "signature": null,
+        "depth": 0
+       },
+       {
+        "name": "AccountTestResult",
+        "kind": "model",
+        "summary": "Outcome of ``mp account test NAME`` \u2014 captures the ``/me`` probe.",
+        "signature": null,
+        "depth": 0
+       }
+      ]
+     },
+     {
+      "title": "dataclasses",
+      "items": [
+       {
+        "name": "ActivityFeedResult",
+        "kind": "dataclass",
+        "summary": "Collection of user events from activity feed query.",
+        "signature": null,
+        "depth": 0
+       },
+       {
+        "name": "BookmarkInfo",
+        "kind": "dataclass",
+        "summary": "Metadata for a saved report (bookmark) from the Mixpanel Bookmarks API.",
+        "signature": null,
+        "depth": 0
+       }
+      ]
+     },
+     {
+      "title": "enums",
+      "items": [
+       {
+        "name": "AlertFrequencyPreset",
+        "kind": "enum",
+        "summary": "Preset frequency values for alert check intervals.",
+        "signature": null,
+        "depth": 0
+       },
+       {
+        "name": "CustomPropertyResourceType",
+        "kind": "enum",
+        "summary": "Resource type for custom properties.",
+        "signature": null,
+        "depth": 0
+       }
+      ]
+     },
+     {
+      "title": "literal aliases",
+      "items": [
+       {
+        "name": "AccountType",
+        "kind": "literal",
+        "summary": "Discriminator of the Account union and AccountSummary.type: service_account, oauth_browser, or oauth_token.",
+        "signature": null,
+        "depth": 0
+       },
+       {
+        "name": "BookmarkType",
+        "kind": "literal",
+        "summary": "Saved report type from the Bookmarks API (BookmarkInfo.type, list_bookmarks, list_bookmarks_v2, saved_report_link).",
+        "signature": null,
+        "depth": 0
+       }
+      ]
+     },
+     {
+      "title": "other aliases",
+      "items": [
+       {
+        "name": "Account",
+        "kind": "alias",
+        "summary": "Discriminated union over the three account variants, dispatched on the type field; build one from a dict with pydantic.TypeAdapter(Account).",
+        "signature": null,
+        "depth": 0
+       },
+       {
+        "name": "PropertySpec",
+        "kind": "alias",
+        "summary": "Any way of naming a property in a query parameter: a plain property name or a custom-property reference (Metric.property, GroupBy.property, and the Filter class-method property arguments).",
+        "signature": null,
+        "depth": 0
+       }
+      ]
+     },
+     {
+      "title": "protocols and plain classes",
+      "items": [
+       {
+        "name": "FlowEdge",
+        "kind": "class",
+        "summary": "Edge data in a flow query result.",
+        "signature": null,
+        "depth": 0
+       },
+       {
+        "name": "FlowStepNode",
+        "kind": "class",
+        "summary": "Node data in a flow query result.",
+        "signature": null,
+        "depth": 0
+       }
+      ]
+     }
+    ],
+    "referenced_types": [],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": []
+   }
+  },
+  {
+   "slug": "overview",
+   "query": null,
+   "domain": null,
+   "entry": {
+    "kind": "overview",
+    "name": "mixpanel_headless",
+    "qualname": "mixpanel_headless",
+    "summary": "0.3.0",
+    "doc": {
+     "summary": "mixpanel_headless - Python library for working with Mixpanel analytics data.",
+     "body": "import mixpanel_headless as mp\n\nEntry points:\n  mp.help(query)                     print reference text (this view)\n  mp.reference.describe(query)       structured HelpEntry\n  mp.reference.search(term)          structured SearchResult\n  mp.reference.render(entry, fmt)    text | markdown | json\n  mp help QUERY...                   CLI (no auth); also: python3 -m mixpanel_headless help\n\nQueries (mp.help('help') for the full table):\n  Workspace | Workspace.<method> | Workspace.<method>.<param>\n  <Type> | <Enum> | <LiteralAlias> | <Exception> | <function>\n  accounts | session | targets | types | exceptions | help\n  search <term>\n\nWorkspace domains (32 domains, 214 members; mp.help('Workspace', domain=...)):\n  session and switching (7)                annotations (7)\n  discovery (9)                            webhooks (5)\n  lexicon schemas (3)                      alerts (11)\n  streaming (2)                            lexicon governance (11)\n  legacy live queries (12)                 drop filters (5)\n  insights query (3)                       custom properties (6)\n  funnel query (3)                         custom events (4)\n  retention query (3)                      lookup tables (9)\n  flow query (3)                           tracking and history (4)\n  user query (3)                           schema registry (6)\n  report links (4)                         schema enforcement (5)\n  dashboards (22)                          data audit (2)\n  reports (9)                              volume anomalies (3)\n  cohorts (7)                              deletion requests (4)\n  feature flags (11)                       business context (4)\n  experiments (12)                         session replay (10)\n\nDocs index for agents: https://mixpanel.github.io/mixpanel-headless/llms.txt",
+     "args": [],
+     "returns": "",
+     "raises": [],
+     "example": "",
+     "notes": ""
+    },
+    "signature": null,
+    "bases": [],
+    "config": [],
+    "construction": [],
+    "fields": [],
+    "properties": [],
+    "methods": [],
+    "values": [],
+    "value": null,
+    "groups": [],
+    "referenced_types": [],
+    "used_by": [],
+    "domain": null,
+    "see_also": [],
+    "hints": []
+   }
+  }
+ ],
+ "search_results": [
+  {
+   "slug": "cohort",
+   "term": "cohort",
+   "limit": 8,
+   "result": {
+    "term": "cohort",
+    "hits": [
+     {
+      "category": "class",
+      "name": "RetentionCohortData",
+      "summary": "Cohort-level data in a retention query result.",
+      "matched_on": "name"
+     },
+     {
+      "category": "dataclass",
+      "name": "CohortBreakdown",
+      "summary": "Break down query results by cohort membership.",
+      "matched_on": "name"
+     },
+     {
+      "category": "dataclass",
+      "name": "CohortCriteria",
+      "summary": "A single atomic condition for cohort membership.",
+      "matched_on": "name"
+     },
+     {
+      "category": "dataclass",
+      "name": "CohortDefinition",
+      "summary": "A composed set of criteria combined with AND/OR logic.",
+      "matched_on": "name"
+     },
+     {
+      "category": "dataclass",
+      "name": "CohortInfo",
+      "summary": "Retention data for a single cohort.",
+      "matched_on": "name"
+     },
+     {
+      "category": "dataclass",
+      "name": "CohortMetric",
+      "summary": "Track cohort size over time as an event metric.",
+      "matched_on": "name"
+     },
+     {
+      "category": "dataclass",
+      "name": "SavedCohort",
+      "summary": "A saved cohort definition.",
+      "matched_on": "name"
+     },
+     {
+      "category": "literal",
+      "name": "CohortAggregationType",
+      "summary": "Aggregation over a numeric property in CohortCriteria.did_event (aggregation) cohort behavior criteria.",
+      "matched_on": "name"
+     }
+    ],
+    "suggestions": []
+   }
+  },
+  {
+   "slug": "enabled-member-tier",
+   "term": "enabled",
+   "limit": 6,
+   "result": {
+    "term": "enabled",
+    "hits": [
+     {
+      "category": "exception",
+      "name": "SessionReplayAccessError",
+      "summary": "Project has SESSION_RECORDING_SENSITIVE_DATA enabled and caller lacks access.",
+      "matched_on": "doc"
+     },
+     {
+      "category": "enum",
+      "name": "FeatureFlagStatus",
+      "summary": "member ENABLED = 'enabled'",
+      "matched_on": "member"
+     }
+    ],
+    "suggestions": []
+   }
+  },
+  {
+   "slug": "filtr-miss",
+   "term": "Filtr",
+   "limit": null,
+   "result": {
+    "term": "Filtr",
+    "hits": [],
+    "suggestions": [
+     "Filter",
+     "DropFilter",
+     "FilterOperator",
+     "FilterDateUnit",
+     "FrequencyFilter"
+    ]
+   }
+  }
+ ]
+}

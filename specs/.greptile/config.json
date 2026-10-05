@@ -1,0 +1,3 @@
+{
+  "instructions": "Files under specs/ are design documents (spec, plan, data model, contracts, tasks). Review them for internal consistency across the files of one feature, for contradictions with the current code, for payload shapes that would not round-trip, and for missing edge cases. Internal planning codes are normal in this folder."
+}

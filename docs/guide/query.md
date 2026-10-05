@@ -215,6 +215,99 @@ ws.query([
 ])
 ```
 
+### Metrics Over More Than One Event
+
+Pass a list of events to count them as one series. With `math="unique"`, a user who did any of the events counts once. With `math="total"`, the events of all of them add up:
+
+```python
+from mixpanel_headless import Filter, Metric
+
+# Users who signed in by any method, counted once
+result = ws.query(Metric(["Login", "SSO Login"], math="unique"))
+
+# Filters on the metric apply to every event
+result = ws.query(
+    Metric(
+        ["Login", "SSO Login"],
+        math="unique",
+        filters=[Filter.equals("platform", "iOS")],
+    )
+)
+```
+
+The series is named after the events (`"Login or SSO Login"`). To choose the name, or to give each event its own filters, use `SimpleBehavior`:
+
+```python
+from mixpanel_headless import Filter, FunnelStep, Metric, SimpleBehavior
+
+signed_in = SimpleBehavior(
+    ["Login", FunnelStep("SSO Login", filters=[Filter.equals("provider", "okta")])],
+    name="Signed in",
+)
+result = ws.query(Metric(signed_in, math="unique"))
+```
+
+Filters go on each event, as `FunnelStep` items with their own `filters`. The query server ignores filters on the behavior as a whole, so `SimpleBehavior` has none, and `Metric(filters=...)` cannot be combined with a `SimpleBehavior` (`MT3_FILTERS_WITH_BEHAVIOR`).
+
+A plain list of events takes event names and `CustomEventRef` items only. Any other item, for example a `FunnelStep`, raises `MT5_INVALID_EVENT_TYPE`. In a list, `Metric(filters=...)` applies to every event, so a step's own filters have no place there. Put the steps in a `SimpleBehavior` instead.
+
+A saved simple behavior works as the event too: `Metric(BehaviorRef(4410, "simple"), math="unique")`. The saved behavior sets the events, so `Metric(filters=...)` cannot be combined with it either.
+
+A funnel step and a retention event take one event each. `query_funnel()` and `query_retention()` refuse a list of events there, and the error names custom events as the fix.
+
+### Custom Events by ID
+
+A custom event is a saved union of events, with optional filters, under one name. Query it by ID with `CustomEventRef`:
+
+```python
+from mixpanel_headless import CustomEventRef, Metric
+
+result = ws.query(Metric(CustomEventRef(42), math="unique"))
+
+# A custom event can also be one of the events of a metric
+result = ws.query(Metric([CustomEventRef(42), "Purchase"], math="unique"))
+```
+
+Where only an event name is accepted, such as a `query_funnel()` step or a `query_retention()` event, use the name `"$custom_event:<id>"`:
+
+```python
+result = ws.query_funnel(["$custom_event:42", "Purchase"])
+```
+
+The ID is `CustomEvent.id` from `create_custom_event()`, or the `custom_event_id` of an entry of `list_custom_events()`.
+
+!!! warning "The display name of a custom event returns zero rows"
+    `ws.query("My Custom Event")` sends the display name as an event name. No event has that name, so the query returns zero rows, with no error. Use `CustomEventRef(id)` or `"$custom_event:<id>"`.
+
+### Funnel and Retention Metrics
+
+`FunnelMetric` and `RetentionMetric` put a funnel or a retention measurement in an Insights query, next to other metrics or inside a formula. `FunnelBehavior` and `RetentionBehavior` take the parameter names and the defaults of `query_funnel()` and `query_retention()`, so the same arguments give the same numbers:
+
+```python
+from mixpanel_headless import (
+    FunnelBehavior,
+    FunnelMetric,
+    Metric,
+    RetentionBehavior,
+    RetentionMetric,
+)
+
+checkout = FunnelBehavior(["Checkout", "Purchase"], conversion_window=7)
+returning = RetentionBehavior("Signup", "Login", retention_unit="day")
+
+result = ws.query([
+    Metric("Checkout", math="unique"),
+    FunnelMetric(checkout, label="Checkout conversion"),
+    RetentionMetric(returning, bucket_index=7, label="Day 7 retention"),
+])
+```
+
+- A funnel metric defaults to the unique conversion rate of the whole funnel. `step_index` measures one step.
+- A property math (`average`, `median`, `min`, `max`, the percentiles, `histogram`) needs `property`, as `query_funnel(math_property=...)` does. The query server also refuses a property math without a property.
+- A retention metric defaults to the retention rate. `bucket_index` picks the bucket that a line chart trends (0 is the first bucket).
+- `label` names the series. Without it, the server names a funnel after its first and last steps.
+- The behavior can be a saved one: `FunnelMetric(BehaviorRef(3120, "funnel"))` or `RetentionMetric(BehaviorRef(4410, "retention"))`. The saved behavior owns the steps and settings. A reference of another type raises `BH5_BEHAVIOR_REF_TYPE`.
+
 ## Filters
 
 ### Global Filters
@@ -469,7 +562,7 @@ result = ws.query(
 
 ## Formulas
 
-Compute derived metrics from multiple events. Letters A-Z reference events by their position in the list.
+Compute derived metrics from multiple events. Letters A-Z reference events by their position in the list, or the formula's own operands when it has them.
 
 ### Top-Level `formula` Parameter
 
@@ -503,6 +596,49 @@ result = ws.query([
 
 Both approaches produce identical results. Use whichever reads more naturally.
 
+### Formulas With Their Own Operands
+
+`Formula(expression, metrics=[...])` holds its own operands. The letters name the operands (A is the first, B the second, Z the 26th, then BA, BB), not the other metrics of the query. So the formula can be the whole query, and it hides no other metric:
+
+```python
+from mixpanel_headless import Formula, FunnelBehavior, FunnelMetric, Metric
+
+result = ws.query(
+    Formula(
+        "A / B",
+        label="Purchases per checkout",
+        metrics=[
+            Metric("Purchase", math="total"),
+            Metric("Checkout", math="total"),
+        ],
+    ),
+    last=30,
+)
+
+# Operands can be funnel and retention metrics too
+result = ws.query(
+    Formula(
+        "A * 100",
+        label="Checkout conversion %",
+        metrics=[FunnelMetric(FunnelBehavior(["Checkout", "Purchase"]))],
+    )
+)
+```
+
+An operand is a `Metric`, `CohortMetric`, `FunnelMetric`, `RetentionMetric`, or a `MetricRef` to a saved behavior metric, never a formula or a warehouse metric (the server accepts only behavior metrics as operands; run a warehouse metric alone by reference). A `MetricRef` operand is written as `{"type": "metric", "id": ...}` and takes no override. A bare `MetricRef(id)` keeps the default kind, so the library cannot detect a warehouse metric behind it; `SavedMetric.to_ref()` carries the kind. A saved formula stores this same form. The operands and the expression are checked when the `Formula` is built:
+
+| Code | Rule |
+|---|---|
+| `FM2_UNKNOWN_LETTER` | Each letter names an operand. |
+| `FM3_NESTED_FORMULA` | No operand is a formula or a reference to a saved formula. |
+| `MR2_OPERAND_OVERRIDE` | A `MetricRef` operand sets no override (the server ignores overrides on an operand). |
+| `FM7_WAREHOUSE_OPERAND` | No operand is a warehouse metric (`MetricRef(id, type="warehouse")`). |
+| `FM4_SYNTAX` | The expression uses `+ - * / ^`, unary minus, parentheses, numbers, and letters. Only a number, a letter, or a parenthesized expression can follow `^`: write `A ^ (-B)`, not `A ^ -B`. |
+| `FM5_UPPER_E` | A number uses a lowercase exponent (`1e5`, not `1E5`). |
+| `V16_FORMULA_SYNTAX` | The expression uses at least one letter. |
+
+A formula without operands keeps its checks: `V16_FORMULA_SYNTAX` and `V19_FORMULA_BOUNDS` first, then `FM4_SYNTAX` when both pass.
+
 ### Multi-Metric Comparison (No Formula)
 
 Compare multiple events side by side without a formula:
@@ -515,6 +651,97 @@ result = ws.query(
     last=30,
 )
 ```
+
+## Saved Metrics by Reference
+
+A saved metric is a project entity with a numeric id: a behavior metric, a saved formula, or a warehouse metric. `MetricRef` puts a saved metric into a query by id. Use it anywhere a `Metric` goes:
+
+```python
+import mixpanel_headless as mp
+
+# A saved metric as it is saved
+result = ws.query(mp.MetricRef(88999), last=30)
+
+# Saved and inline metrics side by side, with a formula over them
+result = ws.query(
+    [mp.MetricRef(88999), mp.Metric("Signup", math="unique")],
+    formula="A / B",
+)
+```
+
+The params keep the reference as `{"type": "metric", "id": 88999}`. The server replaces it with the saved definition when the query runs. So a report or a report link built from these params follows later edits to the saved metric, the same way a report built in the web app does.
+
+The default `type` is `"metric"`. The server corrects the kind of a top-level reference, so `MetricRef(id)` also works for a saved formula or a warehouse metric. Set `type="formula"` or `type="warehouse"` when you know the kind.
+
+A `SavedMetric` from `ws.list_metrics()` or `ws.get_metric()` works the same way: pass it as is, or call `saved.to_ref(...)` with overrides. It takes its kind from the saved metric. See [Saved Metrics and Behaviors](saved-metrics.md#query-by-reference).
+
+### Overrides
+
+The typed fields of `MetricRef` change the saved definition for one query only:
+
+| Field | Wire path |
+|---|---|
+| `label` | `name` (the series name) |
+| `math` | `measurement.math` (`"percentile"` becomes `"custom_percentile"`) |
+| `property` | `measurement.property` |
+| `per_user` | `measurement.perUserAggregation` |
+| `percentile_value` | `measurement.percentile` |
+| `segment_method` | `measurement.segmentMethod` |
+| `funnel_order` | `behavior.funnelOrder` |
+| `step_index` | `measurement.stepIndex` |
+| `bucket_index` | `measurement.retentionBucketIndex` |
+| `hidden` | `isHidden` |
+
+The library writes them into `overrides` on the clause, and the server deep-merges `overrides` into the expanded definition:
+
+```python
+result = ws.query(
+    mp.MetricRef(88999, segment_method="first", label="First purchase"),
+    group_by="$os",
+)
+# params["sections"]["show"][0] ==
+# {"type": "metric", "id": 88999,
+#  "overrides": {"name": "First purchase",
+#                "measurement": {"segmentMethod": "first"}}}
+```
+
+A dict value merges into the saved dict at the same path. So a `property` override keeps the keys of a saved custom property; to replace a saved custom property with a plain property, send the metric inline.
+
+`overrides=` takes a raw dict for any other path. It merges after the typed fields, so a raw value wins. A formula or warehouse reference takes `label`, `hidden`, and raw overrides only; the other fields change a behavior metric (`MR6_OVERRIDE_NOT_APPLICABLE`).
+
+### Filters are not an override
+
+The server merges lists in `overrides` item by item. A filter list in `overrides` would change the saved filters by position instead of adding to them. So `MetricRef` refuses any `filters` key in `overrides` (`MR1_FILTER_OVERRIDE`). To filter a saved metric:
+
+- Use report-level `where=`. It applies to every metric in the query.
+- Or send the metric inline as a `Metric` with its own `filters`.
+
+### Warehouse metrics
+
+The server runs a warehouse metric by saved id only, and it gives the warehouse series no breakdown and no filter. A query that pairs a warehouse reference with `group_by` or `where` still runs, and the library logs a `V28_WAREHOUSE_BREAKDOWN` warning.
+
+### Saved behaviors in funnels and retention
+
+A saved behavior is a reusable "what users did": a funnel, a retention pair, or a simple behavior. `BehaviorRef(id, type)`, or a `SavedBehavior` from `ws.list_behaviors()` or `ws.get_behavior()`, passes one to the funnel and retention engines in place of the steps or the events:
+
+```python
+# The saved funnel sets the steps, the window, the order, and the exclusions
+result = ws.query_funnel(mp.BehaviorRef(3120, "funnel"), last=90)
+
+# The saved retention behavior sets both events and the retention settings
+result = ws.query_retention(mp.BehaviorRef(4410, "retention"))
+```
+
+The behavior block becomes `{"type": "funnel", "id": 3120}`, and the server expands it at query time. The saved behavior owns its settings, so the engine arguments that change them must keep their defaults:
+
+- `query_funnel`: `conversion_window`, `conversion_window_unit`, `order`, `exclusions`, `holding_constant`, and `reentry_mode` (`F14_BEHAVIOR_REF_SETTINGS`).
+- `query_retention`: `return_event`, `retention_unit`, `alignment`, `bucket_sizes`, and `unbounded_mode` (`R15_BEHAVIOR_REF_SETTINGS`).
+
+The server expands a behavior id without checking its type, so the engines check it: a funnel query needs a `"funnel"` behavior (`F13_BEHAVIOR_REF_TYPE`) and a retention query needs a `"retention"` behavior (`R14_BEHAVIOR_REF_TYPE`).
+
+### Result labels
+
+A reference changes the series label. The series is named after the saved metric or behavior, with no math suffix such as `[Total Events]`, and `result.headers` is `["$event"]` for a metric reference. `result.df` puts the saved name in the `event` column.
 
 ## Time Ranges
 

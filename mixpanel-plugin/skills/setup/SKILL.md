@@ -1,172 +1,90 @@
 ---
 name: setup
-description: This skill installs mixpanel_headless, pandas, numpy, matplotlib, seaborn, networkx, anytree, scipy (and pyarrow on Python 3.11+), then verifies Mixpanel credentials. It should be invoked when setting up a new environment for Mixpanel data analysis, when dependencies are missing, or when configuring service account or OAuth credentials for the first time.
+description: Creates the plugin's own Python environment and installs or upgrades mixpanel_headless (0.3.0 or newer) with pandas, numpy, matplotlib, seaborn, networkx, anytree, scipy, and pyarrow (Python 3.11+ only) on Python 3.10+, then checks the imports, mp help, and the credentials. Use when setting up Mixpanel analysis, or when the plugin environment is missing or older than 0.3.0. Do not use for login or account changes (use auth).
 disable-model-invocation: true
-allowed-tools: Bash
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh ${CLAUDE_PLUGIN_DATA}/venv) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py *)
 ---
 
-# mixpanel-headless — Setup
+# mixpanel-headless setup
 
-Install dependencies and verify credentials for CodeMode analytics.
+Create the plugin environment, install the library and its analysis stack into
+it, then confirm that the plugin works.
 
-## Run Setup
+The plugin environment is a virtual environment at `${CLAUDE_PLUGIN_DATA}/venv`.
+The script installs nothing outside it, so it never changes the user's global
+or system Python. The environment stays in place when the plugin updates. All
+skills run Python as `${CLAUDE_PLUGIN_DATA}/venv/bin/python` and the CLI as
+`${CLAUDE_PLUGIN_DATA}/venv/bin/mp`.
 
-```bash
-bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh
-```
+## 1. Run the setup script
 
-This will:
-1. Verify Python 3.10+ is available
-2. Install `mixpanel_headless`, `pandas`, `numpy`, `matplotlib`, `seaborn`, `networkx>=3.0`, `anytree>=2.8.0`, `scipy`, and `pyarrow>=17.0` on Python 3.11+ (tries uv, pip in order)
-3. Verify all packages import successfully (including pyarrow on 3.11+, networkx, anytree, and scipy)
-4. Check for configured Mixpanel credentials (single schema — Account → Project → Workspace)
-
-## Check Credentials
-
-After installation, check the active session:
+Run this command exactly as written, because the pre-approved pattern matches
+this text:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/../mixpanelyst/scripts/auth_manager.py session
+bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh ${CLAUDE_PLUGIN_DATA}/venv
 ```
 
-Parse the JSON `state` field:
-- **`ok`** — credentials configured. Show `account.name` → project `project.id` and proceed to verification.
-- **`needs_account`** — no account configured. Read `next` for onboarding suggestions and follow "If Credentials Are Missing" below.
-- **`needs_project`** — account configured but no project pinned. Suggest `mp project list` then `mp project use <id>`.
-- **`error`** — show `error.message`. If `error.actionable` is true, the message names a concrete next command.
+The script does these steps:
 
-## If Credentials Are Missing
+1. Creates the environment with `uv venv`, or with `python3 -m venv` when `uv` is not available. It reuses an environment that already works.
+2. Installs `mixpanel-headless>=0.3.0` and the analysis packages into it. The version floor upgrades an older install, because the skills depend on `mp help`, which first shipped in 0.3.0.
+3. Imports every package and prints its version.
+4. Runs `mp help` once, offline, to confirm that the built-in API reference works.
+5. Checks the `mp` command inside the environment.
+6. Reports which credentials it finds.
+7. Prints the environment path.
 
-If no credentials are configured, guide the user to one of these methods:
+The script is safe to run again. It does not prompt for input.
 
-### Recommended: `mp login`
+## 2. Read the result
 
-The frictionless one-shot path. Tell the user to run:
+Read these lines in the output:
 
-```
-! mp login
-```
+| Line | Meaning |
+| --- | --- |
+| `✓ Plugin environment created` or `found` | The environment exists at the printed path. |
+| `✓ mixpanel-headless INSTALLED <version>` | The library was not present. The script installed it. |
+| `✓ mixpanel-headless UPGRADED <old> → <new>` | An older library was present. The script upgraded it. |
+| `✓ mixpanel-headless OK <version>` | The library already met the 0.3.0 floor. |
+| `✓ built-in help (mp help)` | The API reference works. The skills can look up API names. |
+| `✓ mp CLI: <path>` | The `mp` command exists in the environment. |
+| `✗ Usage: setup.sh <absolute-venv-path>` | The plugin data path was not filled in. Run `/mixpanel-headless:setup` again. |
+| `✗ Python 3.10+ required but not found` | Tell the user to install Python 3.10 or newer, or `uv` (https://docs.astral.sh/uv/). |
+| `✗ Could not create the virtual environment` | Show the explanation the script printed. On Debian and Ubuntu, the usual fix is `uv` or the `python3-venv` package. |
+| `✗ ... is not a virtual environment` | Something else uses that path. Tell the user to move it away. |
+| `✗ Package install failed` | Show the installer output. A network or package-index problem is the usual cause. |
+| `✗ Import verification failed` | Show the error. A partial install is the usual cause. Run setup again. |
+| `✗ built-in help (mp help) failed` | The installed library is older than 0.3.0. Show the install output. |
 
-`mp login` runs the right auth flow for the environment, derives the
-account name from `/me`, and pins a default project. For laptops with a
-usable browser, this opens the PKCE flow; for environments with
-`MP_USERNAME` + `MP_SECRET` set, it skips the browser and uses the
-service-account path; for `MP_OAUTH_TOKEN` set, it uses the static
-bearer.
+If the script printed `UPGRADED`, tell the user to restart any Python kernel or
+notebook that imported the old version.
 
-Region behavior:
-- `service_account` and `oauth_token` paths probe `us → eu → in` when
-  `--region` is omitted.
-- `oauth_browser` (the bare-`mp login` default) defaults to `us`. EU and
-  India browser users must pass `--region eu` or `--region in`.
+Tell the user the environment path from the last lines. They can run their own
+scripts with `${CLAUDE_PLUGIN_DATA}/venv/bin/python`.
 
-Useful flags: `--name NAME`, `--region us|eu|in`, `--project ID`,
-`--service-account`, `--token-env VAR`, `--no-browser`, `--secret-stdin`.
+## 3. Check the credentials
 
-### Alternative: Guided Setup (explicit account add)
-
-Tell the user to run `/mixpanel-headless:auth account add` for a
-step-by-step walkthrough. The slash command never prompts for secrets in
-conversation — it instructs the user to run `! mp account add ...`
-themselves so the secret is read with hidden input. Use this path when
-the user wants explicit control over the account name, region, and type
-at registration time.
-
-### Alternative: Service-Account Environment Variables (temporary)
-
-For quick testing, set all four variables in the shell — the resolver
-picks them up directly without account registration:
+Run the auth helper. It prints one JSON object:
 
 ```bash
-export MP_USERNAME="service-account-username"
-export MP_SECRET="service-account-secret"
-export MP_PROJECT_ID="12345"
-export MP_REGION="us"  # or "eu", "in"
+${CLAUDE_PLUGIN_DATA}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py session
 ```
 
-### Alternative: Raw OAuth Bearer Token (best for agents / CI)
+Switch on the `state` field:
 
-If the user has an OAuth 2.0 access token from another source, they can use
-it directly without the PKCE browser flow:
+- **`ok`** — show "`account.name` → project `project.id`". Go to step 4.
+- **`needs_account`**, **`needs_project`**, or **`error`** — hand the problem to the `auth` skill. Tell the user to run `/mixpanel-headless:auth`. That skill owns the login, account, project, and security flows. Do not repeat those flows here.
+
+## 4. Verify the connection
+
+Test the active account. Use `account.name` from step 3, because the script needs a name:
 
 ```bash
-export MP_OAUTH_TOKEN="<bearer-token>"
-export MP_PROJECT_ID="12345"
-export MP_REGION="us"  # or "eu", "in"
+${CLAUDE_PLUGIN_DATA}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py account test <account.name>
 ```
 
-This is the recommended mode for non-interactive contexts. The full
-service-account env-var set (`MP_USERNAME` + `MP_SECRET` + `MP_PROJECT_ID`
-+ `MP_REGION`) takes precedence when both sets are complete.
+The subcommand does not raise. Read `result.ok`:
 
-## Cowork Environment
-
-If running inside Claude Cowork (detected automatically), credentials work differently:
-
-- **OAuth login and interactive account setup are NOT available** (no browser, no host terminal access)
-- Credentials must be configured on the **host machine** before starting a Cowork session
-
-### If No Credentials Found in Cowork
-
-Tell the user:
-
-> No Mixpanel credentials found in this Cowork session.
->
-> On your **host machine** (outside Cowork), run:
-> ```
-> mp account export-bridge --to ~/.claude/mixpanel/auth.json
-> ```
-> This writes a v2 bridge file embedding your account record (and any
-> oauth_browser tokens) so the Cowork session can read your credentials
-> at startup.
->
-> Then **start a new Cowork session** — credentials will be available automatically.
-
-Do NOT suggest `/mixpanel-headless:auth account login`, `/mixpanel-headless:auth account add`, or interactive flows — these won't work inside Cowork.
-
-### If Bridge File Found But Token Expired
-
-The library will auto-refresh the OAuth token via the on-disk refresh
-token (no browser needed). If refresh fails:
-
-> Your OAuth session has expired and could not be refreshed.
-> On your host machine, run:
-> ```
-> mp login --name personal             # re-authenticate (or `mp account login personal`)
-> mp account export-bridge --to ~/.claude/mixpanel/auth.json
-> ```
-> Then start a new Cowork session.
-
-## Verify Everything Works
-
-```bash
-python3 ${CLAUDE_SKILL_DIR}/../mixpanelyst/scripts/auth_manager.py account test
-```
-
-The subcommand never raises — read `result.ok` to determine outcome.
-- `result.ok: true` → setup is complete; the user can ask analytics questions.
-- `result.ok: false` → suggest `/mixpanel-headless:auth account test` for detailed diagnostics.
-
-## Post-Setup: Explore Your Data
-
-Once authenticated, these slash commands help orient the user:
-
-- `/mixpanel-headless:auth project list` — discover all accessible projects via `/me`
-- `/mixpanel-headless:auth session` — see active account / project / workspace
-- `/mixpanel-headless:auth project use <id>` — switch to a different project
-- `/mixpanel-headless:auth target add NAME --account A --project P` — save a named cursor position
-
-The user can also construct a Workspace targeting a specific account / project /
-workspace directly:
-
-```python
-import mixpanel_headless as mp
-
-ws = mp.Workspace()                                  # default session
-ws = mp.Workspace(account="team")                    # named account
-ws = mp.Workspace(project="67890")                   # explicit project (active account)
-ws = mp.Workspace(account="team", project="67890")   # both axes
-ws.use(project="98765").events()                     # in-session switch (no re-auth)
-```
-
-_The mixpanelyst skill auto-triggers on analytics questions. For the analytical frameworks that guide investigations, see the [Exploratory Analysis Workflow](../mixpanelyst/SKILL.md#exploratory-analysis-workflow) in the mixpanelyst skill. For a condensed Python API overview, see the [mixpanel_headless API Reference](../mixpanelyst/SKILL.md)._
+- `result.ok: true` — setup is complete. The user can ask analytics questions. The `mixpanelyst` skill loads automatically for them.
+- `result.ok: false` — show `result.error`. Hand the problem to the `auth` skill (`/mixpanel-headless:auth account test <name>`).

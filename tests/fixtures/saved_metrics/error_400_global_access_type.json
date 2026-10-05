@@ -1,0 +1,56 @@
+{
+  "details": {
+    "data": null,
+    "path": [
+      "root"
+    ],
+    "schema": {
+      "additionalProperties": false,
+      "properties": {
+        "cumulative": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "multiAttribution": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CustomMultiAttribution"
+            },
+            {
+              "$ref": "#/definitions/PredefinedMultiAttribution"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        },
+        "rolling": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RollingMeasurement"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": ""
+        }
+      },
+      "title": "FormulaMeasurement",
+      "type": "object"
+    }
+  },
+  "error": "root: Additional properties are not allowed (&#x27;math&#x27; was unexpected){&#x27;type&#x27;: &#x27;metric&#x27;, &#x27;name&#x27;: &#x27;zz-probe-access-off&#x27;, &#x27;definition&#x27;: {&#x27;behavior&#x27;: {&#x27;type&#x27;: &#x27;event&#x27;, &#x27;name&#x27;: &#x27;document created&#x27;, &#x27;resourceType&#x27;: &#x27;events&#x27;, &#x27;filtersDeterminer&#x27;: &#x27;all&#x27;, &#x27;filters&#x27;: []}, &#x27;measurement&#x27;: {&#x27;math&#x27;: &#x27;total&#x27;}}, &#x27;global_access_type&#x27;: &#x27;off&#x27;} is not valid under any of the given schemas",
+  "status": "error"
+}

@@ -1,16 +1,13 @@
-"""Integration tests for the mixpanel-plugin auth_manager.py (T094, US9).
+"""Integration tests for the mixpanel-plugin auth_manager.py script.
 
 Each subcommand is exercised via subprocess against a fixture config in
-a tmp ``~/.mp/``. Tests assert the JSON output shape matches the
-contract in
-``specs/042-auth-architecture-redesign/contracts/plugin-auth-manager.md``.
+a tmp ``~/.mp/``. Tests assert the JSON output shape: one object per
+run, with ``schema_version: 1`` and a discriminated ``state``.
 
 Subprocess isolation is mandatory: ``auth_manager.py`` is shipped as a
 standalone script invoked from a Claude Code skill, so the
 publish-time invocation pattern is exactly ``python <path> <args>``
 with ``HOME`` pointing at a hermetic tmp dir.
-
-Reference: PR #126 review Cluster A2 (Phase 9 / US9, T094).
 """
 
 from __future__ import annotations
@@ -27,60 +24,102 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_AUTH_MANAGER = (
-    REPO_ROOT
-    / "mixpanel-plugin"
-    / "skills"
-    / "mixpanelyst"
-    / "scripts"
-    / "auth_manager.py"
+    REPO_ROOT / "mixpanel-plugin" / "skills" / "auth" / "scripts" / "auth_manager.py"
 )
 
 
-def _run(
-    *args: str,
-    tmp_home: Path,
-    env_extra: dict[str, str] | None = None,
-    stdin: str | None = None,
-) -> dict[str, Any]:
-    """Run ``auth_manager.py`` with ``args``; return parsed JSON from stdout.
+def _hermetic_env(tmp_home: Path, env_extra: dict[str, str] | None) -> dict[str, str]:
+    """Build the near-empty subprocess env shared by every test subprocess.
 
-    Hermetic: starts from a clean env containing only PATH/HOME-derived
-    essentials, sets ``HOME``/``MP_CONFIG_PATH`` to ``tmp_home``, then
-    layers in ``env_extra``. Asserts the process emitted exactly one JSON
-    object (the contract's invariant P1/P2 — schema_version + state must
-    always be present).
+    Starts from a near-empty env so MP_* leakage from the developer shell
+    cannot bleed into the subprocess. Keeps PATH (so ``python`` resolves)
+    and the venv-related vars so the subprocess reaches the same
+    ``mixpanel_headless`` install that the parent test process imported.
 
     Args:
-        *args: CLI args after the script path.
         tmp_home: Tmp ``$HOME`` containing isolated ``.mp/``.
-        env_extra: Extra env vars (e.g. ``MP_OAUTH_TOKEN`` for env-auth tests).
-        stdin: Optional stdin payload (used by ``account add --from-stdin``).
+        env_extra: Extra env vars layered on top, or ``None``.
 
     Returns:
-        Parsed JSON dict from stdout.
+        The env mapping for ``subprocess.run``.
     """
-    # Start from a near-empty env so MP_* leakage from the developer shell
-    # cannot bleed into the subprocess. Keep PATH (so ``python`` resolves)
-    # and a few VIRTUAL_ENV-related vars so uv-installed deps are visible.
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "HOME": str(tmp_home),
         "MP_CONFIG_PATH": str(tmp_home / ".mp" / "config.toml"),
         "PYTHONPATH": str(REPO_ROOT / "src"),
     }
-    # Preserve venv-related vars so the subprocess reaches the same
-    # ``mixpanel_headless`` install that the parent test process has imported.
     for key in ("VIRTUAL_ENV", "PYTHONUSERBASE", "PYTHONHOME"):
         if key in os.environ:
             env[key] = os.environ[key]
     if env_extra:
         env.update(env_extra)
+    return env
+
+
+_LIBRARY_SESSION_SNIPPET = """
+import json
+from mixpanel_headless._internal.auth.resolver import resolve_session
+from mixpanel_headless._internal.config import ConfigManager
+s = resolve_session(config=ConfigManager())
+print(json.dumps({
+    "account": s.account.name,
+    "project": s.project.id,
+    "workspace": s.workspace.id if s.workspace is not None else None,
+}))
+"""
+
+
+def _library_session(
+    tmp_home: Path, env_extra: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """Resolve the session with the library itself, in the same hermetic env.
+
+    Args:
+        tmp_home: Tmp ``$HOME`` containing isolated ``.mp/``.
+        env_extra: Extra env vars layered on top, or ``None``.
+
+    Returns:
+        ``{"account": name, "project": id, "workspace": id | None}`` as the
+        library's ``resolve_session`` reports it.
+    """
+    result = subprocess.run(
+        [sys.executable, "-c", _LIBRARY_SESSION_SNIPPET],
+        capture_output=True,
+        text=True,
+        env=_hermetic_env(tmp_home, env_extra),
+        check=True,
+    )
+    parsed: dict[str, Any] = json.loads(result.stdout)
+    return parsed
+
+
+def _run(
+    *args: str,
+    tmp_home: Path,
+    env_extra: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Run ``auth_manager.py`` with ``args``; return parsed JSON from stdout.
+
+    Hermetic: starts from a clean env containing only PATH/HOME-derived
+    essentials, sets ``HOME``/``MP_CONFIG_PATH`` to ``tmp_home``, then
+    layers in ``env_extra``. Asserts the process emitted exactly one JSON
+    object, and that every response carries ``schema_version`` and
+    ``state``.
+
+    Args:
+        *args: CLI args after the script path.
+        tmp_home: Tmp ``$HOME`` containing isolated ``.mp/``.
+        env_extra: Extra env vars (e.g. ``MP_OAUTH_TOKEN`` for env-auth tests).
+
+    Returns:
+        Parsed JSON dict from stdout.
+    """
     result = subprocess.run(
         [sys.executable, str(PLUGIN_AUTH_MANAGER), *args],
         capture_output=True,
         text=True,
-        input=stdin,
-        env=env,
+        env=_hermetic_env(tmp_home, env_extra),
         check=False,
     )
     if not result.stdout.strip():
@@ -94,11 +133,11 @@ def _run(
             f"auth_manager stdout is not valid JSON: {exc}\n"
             f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
         )
-    # P1: every response carries schema_version.
+    # Every response carries schema_version.
     assert payload.get("schema_version") == 1, (
         f"missing schema_version=1 in {payload!r}"
     )
-    # P2: every response carries a discriminated state.
+    # Every response carries a discriminated state.
     assert payload.get("state") in {
         "ok",
         "needs_account",
@@ -141,7 +180,7 @@ def populated_home(tmp_home: Path) -> Path:
 
 
 # =============================================================================
-# `session` — discriminated state contract
+# `session` — discriminated state
 # =============================================================================
 
 
@@ -154,20 +193,20 @@ class TestSessionSubcommand:
         assert payload["state"] == "needs_account"
         assert isinstance(payload.get("next"), list)
         assert payload["next"], "needs_account should suggest a next command"
-        # First suggestion must be a usable mp command per § 2.2. Post-043,
-        # ``mp login`` replaces the multi-step ``mp account add`` as the
-        # frictionless onboarding default.
+        # The first suggestion must be a usable mp command. ``mp login``
+        # is the one-shot onboarding default, ahead of the multi-step
+        # ``mp account add``.
         assert payload["next"][0]["command"].startswith("mp login")
 
     def test_populated_config_returns_ok(self, populated_home: Path) -> None:
         """A configured account + default_project yields ``state="ok"``."""
         payload = _run("session", tmp_home=populated_home)
         assert payload["state"] == "ok"
-        # P5: account always has {name, type, region}.
+        # The account always has {name, type, region}.
         assert payload["account"]["name"] == "team"
         assert payload["account"]["type"] == "service_account"
         assert payload["account"]["region"] == "us"
-        # P6: project always has {id} when present.
+        # The project always has {id} when present.
         assert payload["project"]["id"] == "3713224"
 
     def test_oauth_browser_without_project_returns_needs_project(
@@ -196,13 +235,31 @@ class TestSessionSubcommand:
         assert isinstance(payload.get("next"), list)
         assert payload["next"], "needs_project should suggest a next command"
 
+    def test_invalid_project_id_reports_error_not_onboarding(
+        self, populated_home: Path
+    ) -> None:
+        """A malformed ``MP_PROJECT_ID`` is reported as the config error it is.
+
+        The account resolves fine, so the answer must not be
+        ``needs_account`` onboarding; the user needs the resolver's own
+        message, which names the invalid variable.
+        """
+        payload = _run(
+            "session",
+            tmp_home=populated_home,
+            env_extra={"MP_PROJECT_ID": "abc"},
+        )
+        assert payload["state"] == "error"
+        assert "MP_PROJECT_ID" in payload["error"]["message"]
+        assert payload["error"]["actionable"] is True
+
     def test_env_only_auth_returns_ok_with_populated_axes(self, tmp_home: Path) -> None:
         """Env-only auth (no ``[active]``) MUST resolve to a fully populated ok.
 
         Regression: prior implementation returned ``state="ok"`` with
         ``account=None`` / ``project=None`` / ``workspace=None`` because it
-        bypassed the resolver and read ``[active]`` directly. Per § 2.1
-        of the contract, ``state="ok"`` requires populated account / project.
+        bypassed the resolver and read ``[active]`` directly.
+        ``state="ok"`` requires a populated account and project.
         """
         payload = _run(
             "session",
@@ -224,15 +281,17 @@ class TestSessionSubcommand:
         assert payload["source"]["project"] == "env"
         assert payload["source"]["workspace"] == "unset"
 
-    def test_bridge_only_auth_returns_ok(self, tmp_home: Path) -> None:
-        """A bridge-only Cowork VM (no ``[active]``) MUST resolve to ok.
+    def test_session_matches_library_resolution(self, tmp_home: Path) -> None:
+        """``session`` reports exactly what the library's resolver returns.
 
-        Regression: prior implementation returned ``state="needs_account"``
-        because ``[active].account`` was None and env vars were absent —
-        the bridge file was never consulted by ``cmd_session``.
+        The config has no ``[active]`` block and no MP_* credentials, so the
+        axes come from a source the script does not read itself (an auth
+        file named by ``MP_AUTH_FILE``). The script must still report
+        ``state="ok"`` with the same account / project / workspace as
+        ``resolve_session``.
         """
-        bridge_path = tmp_home / "bridge.json"
-        bridge_path.write_text(
+        auth_file = tmp_home / "auth.json"
+        auth_file.write_text(
             json.dumps(
                 {
                     "version": 2,
@@ -249,36 +308,31 @@ class TestSessionSubcommand:
             ),
             encoding="utf-8",
         )
-        bridge_path.chmod(0o600)
-        payload = _run(
-            "session",
-            tmp_home=tmp_home,
-            env_extra={"MP_AUTH_FILE": str(bridge_path)},
-        )
+        auth_file.chmod(0o600)
+        env_extra = {"MP_AUTH_FILE": str(auth_file)}
+        payload = _run("session", tmp_home=tmp_home, env_extra=env_extra)
+        expected = _library_session(tmp_home, env_extra)
         assert payload["state"] == "ok"
-        assert payload["account"]["name"] == "courier"
+        assert payload["account"]["name"] == expected["account"] == "courier"
         assert payload["account"]["type"] == "service_account"
-        assert payload["project"]["id"] == "3713224"
-        assert payload["workspace"]["id"] == 3448413
-        assert payload["source"]["account"] == "bridge"
-        assert payload["source"]["project"] == "bridge"
-        assert payload["source"]["workspace"] == "bridge"
+        assert payload["project"]["id"] == expected["project"] == "3713224"
+        assert payload["workspace"]["id"] == expected["workspace"] == 3448413
 
 
 # =============================================================================
-# `account list/add/use` — list & mutation contracts
+# `account list/add/use` — list and mutation responses
 # =============================================================================
 
 
 class TestAccountListSubcommand:
-    """``account list`` returns ``items: []`` (possibly empty) per P4."""
+    """``account list`` always returns an ``items`` list, possibly empty."""
 
     def test_empty_returns_items_empty(self, tmp_home: Path) -> None:
         """No accounts → ``items: []`` + onboarding suggestion."""
         payload = _run("account", "list", tmp_home=tmp_home)
         assert payload["state"] == "ok"
         assert payload["items"] == []
-        # Per § 3.1, empty list also surfaces onboarding hints.
+        # An empty list also surfaces onboarding hints.
         assert isinstance(payload.get("next"), list)
 
     def test_populated_returns_one_item_with_required_fields(
@@ -293,12 +347,12 @@ class TestAccountListSubcommand:
         assert item["type"] == "service_account"
         assert item["region"] == "us"
         assert item["is_active"] is True
-        # Per § 3.1, items also carry ``referenced_by_targets``.
+        # Items also carry ``referenced_by_targets``.
         assert item["referenced_by_targets"] == []
 
 
 class TestAccountUseSubcommand:
-    """``account use NAME`` switches active per § 4.3."""
+    """``account use NAME`` switches the active account."""
 
     def test_use_existing_account(self, populated_home: Path) -> None:
         """Switching to an existing account writes ``[active].account``."""
@@ -307,40 +361,49 @@ class TestAccountUseSubcommand:
         assert payload["active"]["account"] == "team"
 
     def test_use_missing_account_returns_error(self, tmp_home: Path) -> None:
-        """Unknown name → ``state="error"`` per § 2.4."""
+        """Unknown name → ``state="error"``."""
         payload = _run("account", "use", "ghost", tmp_home=tmp_home)
         assert payload["state"] == "error"
-        # P3: error response has {code, message, actionable}.
+        # An error response has {code, message, actionable}.
         assert payload["error"]["code"]  # non-empty class name
         assert payload["error"]["message"]
         assert isinstance(payload["error"]["actionable"], bool)
 
 
-class TestAccountAddSubcommand:
-    """``account add`` accepts the contracted JSON record via --from-stdin."""
+class TestErrorOutput:
+    """Failures outside a handler still print one JSON error with exit 0."""
 
-    def test_add_via_stdin(self, tmp_home: Path) -> None:
-        """Adding a service_account via stdin records it + auto-promotes (FR-045)."""
-        record = {
-            "name": "team",
-            "type": "service_account",
-            "region": "us",
-            "default_project": "3713224",
-            "username": "sa.user",
-            "secret": "supersecret",
-        }
-        payload = _run(
-            "account",
-            "add",
-            "--from-stdin",
-            tmp_home=tmp_home,
-            stdin=json.dumps(record),
+    def test_usage_error_is_json(self, tmp_home: Path) -> None:
+        """A missing positional argument yields a ``USAGE_ERROR`` envelope."""
+        payload = _run("account", "test", tmp_home=tmp_home)
+        assert payload["state"] == "error"
+        assert payload["error"]["code"] == "USAGE_ERROR"
+        assert "name" in payload["error"]["message"]
+        assert payload["error"]["actionable"] is False
+        assert payload["error"]["usage"].startswith("usage: auth_manager.py")
+
+    def test_account_add_is_not_a_subcommand(self, tmp_home: Path) -> None:
+        """``account add`` is gone: the script never handles account secrets."""
+        payload = _run("account", "add", tmp_home=tmp_home)
+        assert payload["state"] == "error"
+        assert payload["error"]["code"] == "USAGE_ERROR"
+
+    def test_missing_library_is_json(self, tmp_home: Path) -> None:
+        """An import failure yields an actionable error that names setup."""
+        shadow = tmp_home / "shadow" / "mixpanel_headless"
+        shadow.mkdir(parents=True)
+        (shadow / "__init__.py").write_text(
+            'raise ImportError("simulated missing library")\n', encoding="utf-8"
         )
-        assert payload["state"] == "ok"
-        assert payload["added"]["name"] == "team"
-        assert payload["added"]["type"] == "service_account"
-        # First account added auto-promotes to active (FR-045).
-        assert payload["added"]["is_active"] is True
+        payload = _run(
+            "session",
+            tmp_home=tmp_home,
+            env_extra={"PYTHONPATH": str(shadow.parent)},
+        )
+        assert payload["state"] == "error"
+        assert payload["error"]["code"] == "LIBRARY_NOT_INSTALLED"
+        assert payload["error"]["actionable"] is True
+        assert "/mixpanel-headless:setup" in payload["error"]["message"]
 
 
 # =============================================================================
@@ -349,10 +412,10 @@ class TestAccountAddSubcommand:
 
 
 class TestTargetSubcommand:
-    """``target list/add/use`` honors P4 + § 3.4."""
+    """``target list/add/use`` return list and mutation responses."""
 
     def test_list_empty_returns_items_empty(self, tmp_home: Path) -> None:
-        """No targets → empty items array (P4)."""
+        """No targets → empty items array."""
         payload = _run("target", "list", tmp_home=tmp_home)
         assert payload["state"] == "ok"
         assert payload["items"] == []
@@ -380,7 +443,7 @@ class TestTargetSubcommand:
         assert listing["items"][0]["project"] == "3713224"
 
     def test_use_target_writes_active(self, populated_home: Path) -> None:
-        """``target use ecom`` writes [active] atomically per § 4.3."""
+        """``target use ecom`` writes [active] atomically."""
         _run(
             "target",
             "add",
@@ -401,62 +464,12 @@ class TestTargetSubcommand:
 
 
 # =============================================================================
-# `bridge status` — Cowork bridge presence (per § 5)
-# =============================================================================
-
-
-class TestBridgeStatusSubcommand:
-    """``bridge status`` reflects bridge file presence."""
-
-    def test_bridge_absent(self, tmp_home: Path) -> None:
-        """No bridge → ``bridge: null`` per § 5.2."""
-        payload = _run("bridge", "status", tmp_home=tmp_home)
-        assert payload["state"] == "ok"
-        assert payload["bridge"] is None
-
-    def test_bridge_present(self, tmp_home: Path) -> None:
-        """A v2 bridge file at ``MP_AUTH_FILE`` is reflected in the response."""
-        bridge_path = tmp_home / "bridge.json"
-        bridge_path.write_text(
-            json.dumps(
-                {
-                    "version": 2,
-                    "account": {
-                        "type": "service_account",
-                        "name": "personal",
-                        "region": "us",
-                        "username": "u",
-                        "secret": "s",
-                    },
-                    "project": "3713224",
-                    "headers": {"X-Mixpanel-Cluster": "internal-1"},
-                }
-            ),
-            encoding="utf-8",
-        )
-        bridge_path.chmod(0o600)
-        payload = _run(
-            "bridge",
-            "status",
-            tmp_home=tmp_home,
-            env_extra={"MP_AUTH_FILE": str(bridge_path)},
-        )
-        assert payload["state"] == "ok"
-        assert payload["bridge"] is not None
-        assert payload["bridge"]["path"] == str(bridge_path)
-        assert payload["bridge"]["version"] == 2
-        assert payload["bridge"]["account"]["name"] == "personal"
-        assert payload["bridge"]["project"] == "3713224"
-        assert payload["bridge"]["headers"] == {"X-Mixpanel-Cluster": "internal-1"}
-
-
-# =============================================================================
 # Static guards — LoC budget + zero version branches
 # =============================================================================
 
 
 class TestStaticGuards:
-    """Per-T100 guards on the rewritten file."""
+    """Static guards on the script source."""
 
     def test_loc_budget_at_or_below_320(self) -> None:
         """``auth_manager.py`` body must stay ≤ 320 lines.

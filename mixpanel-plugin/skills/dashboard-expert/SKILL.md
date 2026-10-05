@@ -1,406 +1,181 @@
 ---
 name: dashboard-expert
 description: >-
-  Full CRUD and analysis for Mixpanel dashboards. Use when the user asks to
-  build, create, analyze, read, understand, explain, modify, update, enhance,
-  or manage dashboards, or asks about dashboard layout, text cards, or report
-  arrangement. Covers dashboard analysis (read + understand existing), creation
-  (new builds), modification (update existing), and explanation (data-driven
-  annotation).
-allowed-tools: Bash Read Write
+  Analyzes, builds, modifies, and adds explainer text cards to Mixpanel dashboards with the
+  mixpanel_headless Python library. It reads a dashboard's layout and runs
+  every report on it, creates dashboards with text cards and a grid layout,
+  edits cells and rows in place, and writes data-driven explainer cards. Use
+  when the user asks to analyze, summarize, explain, build, create, redesign,
+  update, reorganize, or clean up a Mixpanel dashboard; asks about dashboard
+  layout, rows, cell widths, text cards, or which chart type suits a board;
+  or wants to turn queries into reports placed on a dashboard. Do not use for
+  general analytics questions or one-off queries (use mixpanelyst), or for
+  what a specific user did in a session recording (use session-replay).
+allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/mp *) Bash(mp --version) Bash(mp help) Bash(mp help *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
 ---
 
 # Dashboard Expert
 
-Analyze, build, modify, and explain Mixpanel dashboards. Four modes — pick the one matching the user's intent.
+Analyze, build, modify, and explain Mixpanel dashboards with `mixpanel_headless`. A dashboard is a list of rows. Each row holds one to four cells on a 12-column grid. A cell is a report (owned by this dashboard), a report link (owned by another dashboard, read-only), or a text card (HTML).
 
-## Mode Selection
+Run code with the plugin's Python environment: `${CLAUDE_PLUGIN_DATA}/venv/bin/python script.py` or `${CLAUDE_PLUGIN_DATA}/venv/bin/python -c "..."`. Always write that full literal path, never a shell variable such as `$CLAUDE_PLUGIN_DATA`, because a variable expands to nothing in the shell and the command is denied.
 
-| User intent | Mode | Key actions |
+If that interpreter path fails, the environment is not set up. Do not check again with `ls`, `which`, or shell variables; those checks are denied and prompt the user. Instead:
+
+1. Ask the user to run `/mixpanel-headless:setup` before any analysis code.
+2. For look-ups until then, run the bare command `mp --version` on its own (the `mp` on `PATH`, not the plugin path).
+3. If it shows 0.3.0 or later, use the bare `mp help <query>` for look-ups only.
+
+A denial of some other command does not mean Bash is blocked, so still try the bare `mp --version`.
+
+Do not run analysis code with a Python or `mp` found on `PATH`, because its library version is unknown. The one other route is the user's own project: if it already has `mixpanel_headless` (for example a uv project), `uv run python` works.
+
+## Pick the mode
+
+| User intent | Mode | Steps |
 |---|---|---|
-| "analyze/understand/read/explore dashboard" | **Analyze** | Read structure, execute reports, summarize |
-| "build/create/make a new dashboard" | **Build** | Investigate data → plan → create with layout |
-| "modify/update/add to/fix/improve dashboard" | **Modify** | Read current state → plan changes → execute |
-| "explain/annotate/add insights to dashboard" | **Explain** | Analyze → generate data-driven text cards |
+| Analyze, read, understand, audit a dashboard | **Analyze** | Read the layout, run each report, summarize by section |
+| Build, create, make a new dashboard | **Build** | Check the data, plan the sections, create with rows in one call, pin |
+| Modify, add to, fix, reorganize a dashboard | **Modify** | Read the current state, plan the changes, apply them in the fixed order |
+| Explain a dashboard, add insights or explainer cards to it | **Explain** | Analyze, compute key numbers, insert explainer cards |
 
-## Quick Start: Analyze an Existing Dashboard
+The reading guide at the end says which reference to read for each mode. Show the user a plan before you create or change a dashboard. A dashboard is shared team state, and a wrong layout is slow to undo.
+
+## Quick start: analyze a dashboard
 
 ```python
-import json, re
+import datetime
+import re
 import mixpanel_headless as mp
 
 ws = mp.Workspace()
+end = datetime.date.today()
+start = end - datetime.timedelta(days=90)
 dash = ws.get_dashboard(DASHBOARD_ID)
 layout, contents = dash.layout, dash.contents
 
-# Extract structure: rows → cells → content items
+# Rows -> cells -> content items
 for row_id in layout["order"]:
-    row = layout["rows"][row_id]
-    for cell in row["cells"]:
+    for cell in layout["rows"][row_id]["cells"]:
         cid, ctype = str(cell["content_id"]), cell["content_type"]
         if ctype in ("report", "report-link"):
             info = contents["report"][cid]
-            print(f"  [{cell['width']}w] {info['name']} ({info['type']}) {'[linked]' if ctype == 'report-link' else ''}")
+            tag = " [linked]" if ctype == "report-link" else ""
+            print(f"[{cell['width']}w] {info['name']} ({info['type']}){tag}")
         elif ctype == "text":
             md = contents["text"][cid].get("markdown", "")
-            is_header = bool(re.search(r'<h2[\s>]', md, re.I))
-            print(f"  [{cell['width']}w] TEXT {'[SECTION]' if is_header else ''}: {md[:60]}...")
+            header = " [SECTION]" if re.search(r"<h2[\s>]", md, re.I) else ""
+            print(f"[{cell['width']}w] TEXT{header}: {md[:60]}")
 
-# Execute each report → DataFrame
+# Run each report -> DataFrame
 for cid, info in contents.get("report", {}).items():
     btype, bid = info["type"], info["id"]
     if btype == "flows":
         result = ws.query_saved_flows(bid)
+    elif btype == "funnels":
+        # Without dates, a saved funnel runs over the last 30 days.
+        result = ws.query_saved_report(
+            bid, bookmark_type="funnels", from_date=start.isoformat(), to_date=end.isoformat()
+        )
     else:
         result = ws.query_saved_report(bid, bookmark_type=btype)
-    df = result.df
-    print(f"{info['name']}: {len(df)} rows, columns={list(df.columns)}")
+    print(f"{info['name']}: {len(result.df)} rows, columns={list(result.df.columns)}")
 ```
 
-## Quick Start: Build a New Dashboard
+## Quick start: build a dashboard
 
 ```python
-from mixpanel_headless.types import CreateDashboardParams, DashboardRow, DashboardRowContent
 import json
+import mixpanel_headless as mp
+from mixpanel_headless.types import CreateDashboardParams, DashboardRow, DashboardRowContent
 
 ws = mp.Workspace()
 dau = ws.query("Login", math="dau", last=90)
+signups = ws.query("Sign Up", math="total", last=90)
+
 
 def text(html):
     return DashboardRowContent(content_type="text", content_params={"markdown": html})
+
 
 def report(name, btype, result):
-    return DashboardRowContent(content_type="report", content_params={
-        "bookmark": {"name": name, "type": btype, "params": json.dumps(result.params)}})
+    return DashboardRowContent(
+        content_type="report",
+        content_params={"bookmark": {
+            "name": name, "type": btype, "params": json.dumps(result.params),
+        }},
+    )
+
 
 dashboard = ws.create_dashboard(CreateDashboardParams(
-    title="Product Health", description="Core metrics.",
+    title="Product Health",
+    description="Core metrics.",
     rows=[
-        DashboardRow(contents=[text("<h2>Product Health</h2><p>Core metrics.</p>")]),
-        DashboardRow(contents=[report("DAU (90d)", "insights", dau)]),
-    ],
-))
-ws.pin_dashboard(dashboard.id)  # Make visible to team
-```
-
----
-
-## Mode: Analyze
-
-Read existing dashboards, execute their reports, and synthesize understanding.
-
-### Phase A1: Read Dashboard Structure
-
-```python
-dash = ws.get_dashboard(dashboard_id)
-layout, contents = dash.layout, dash.contents
-```
-
-Parse the response into a structured representation:
-
-- **`layout["order"]`** — ordered list of row IDs
-- **`layout["rows"][row_id]["cells"]`** — cells with `content_id`, `content_type`, `width`
-- **`contents["report"][str(content_id)]`** — report metadata: `id` (bookmark_id), `name`, `type`, `params`, `description`
-- **`contents["text"][str(content_id)]`** — text card: `markdown`
-
-**Classify each cell:**
-- `content_type == "report"` → owned, editable
-- `content_type == "report-link"` → linked from another dashboard, read-only
-- `content_type == "text"` → text card; detect section headers via `re.search(r'<h2[\s>]', md, re.I)`
-
-**Build a mental model:** Group reports by section (text cards with `<h2>` tags delimit sections). Note each report's chart type, width, and position.
-
-### Phase A2: Extract Report Details
-
-For deeper understanding, fetch full bookmark params:
-
-```python
-bookmark = ws.get_bookmark(bookmark_id)
-params = bookmark.params  # Full query definition dict
-```
-
-Key fields in params (Insights format):
-- `params["sections"]["show"]` — metrics with event names and math type
-- `params["sections"]["group"]` — breakdown properties
-- `params["sections"]["filter"]` — active filters
-- `params["sections"]["time"]` — date range
-- `params["displayOptions"]["chartType"]` — visualization type
-
-Note: `params` in `contents["report"][id]` may be a JSON string — parse with `json.loads()` if needed.
-
-### Phase A3: Execute and Summarize
-
-Execute each report to get live data:
-
-```python
-for cid, info in contents.get("report", {}).items():
-    bid, btype = info["id"], info["type"]
-    if btype == "flows":
-        result = ws.query_saved_flows(bid)
-    else:
-        result = ws.query_saved_report(bid, bookmark_type=btype)
-    df = result.df
-```
-
-**Summarize by report type:**
-
-| Type | Key metrics to extract |
-|---|---|
-| insights | Total, average, latest value, min, max, trend direction |
-| funnels | Step names, counts, per-step and overall conversion rate |
-| retention | Day 1, Day 7, Day 30 rates; stabilization point |
-| flows | Top paths, conversion rate, drop-off points |
-
-**Cross-correlate across reports:** Look for relationships — DAU trends vs. retention, funnel drop-off vs. feature adoption.
-
-### Phase A4: Present Analysis
-
-Structure findings as:
-1. **Dashboard overview** — title, purpose, section count, report count
-2. **Section-by-section breakdown** — what each section measures, key findings
-3. **Cross-metric insights** — correlations, anomalies, patterns
-4. **Suggestions** — missing metrics, better chart types, layout improvements
-
-### Multi-Dashboard Analysis
-
-When analyzing multiple dashboards, build a unified picture:
-
-```python
-dashboard_ids = [1001, 1002, 1003]
-all_data = {}
-for did in dashboard_ids:
-    dash = ws.get_dashboard(did)
-    for cid, info in dash.contents.get("report", {}).items():
-        result = ws.query_saved_report(info["id"], bookmark_type=info["type"])
-        all_data[f"{dash.title}/{info['name']}"] = result.df
-# Cross-dashboard: join DataFrames on date index, compute correlations
-```
-
----
-
-## Mode: Build
-
-Create new dashboards from scratch. Five phases.
-
-### Phase B1: Investigate
-
-Before building, discover the data. Never build reports for events with zero volume.
-
-```python
-ws = mp.Workspace()
-top = ws.top_events(limit=15)
-for t in top:
-    print(f"{t.event}: {t.count:,} ({t.percent_change:+.1%})")
-
-# Validate candidate events
-for event in candidate_events:
-    result = ws.query(event, from_date="2025-01-01", to_date="2025-03-31")
-    print(f"{event}: {result.df['count'].sum():,.0f} total")
-
-# Explore properties for breakdowns
-props = ws.properties(event="key_event")
-values = ws.property_values(event="key_event", property="platform", limit=20)
-```
-
-### Phase B2: Plan Structure
-
-Present a proposed structure before building. Choose a template from `references/dashboard-templates.md`.
-
-**A plan includes:** title + description, sections with text card headers, reports per section with chart type, grid layout.
-
-**Text cards use HTML** (not markdown). Every dashboard must have an intro text card and section headers.
-
-**Allowed HTML tags:** `<h1>`, `<h2>`, `<h3>`, `<p>`, `<strong>`, `<em>`, `<u>`, `<s>`, `<mark>`, `<code>`, `<blockquote>`, `<hr>`, `<br>`, `<ul>`, `<ol>`, `<li>`, `<a href="...">`
-
-**Forbidden (stripped):** `<div>`, `<span>`, `<b>` (use `<strong>`), `<i>` (use `<em>`), `<img>`, `<table>`
-
-**Critical:** Strip `\n` and collapse whitespace from HTML before sending. Each element renders as its own line.
-
-**Text card patterns:**
-```
-Intro:     <h2>Dashboard Title</h2><p>What and why. Time period: last 90 days.</p>
-Section:   <h2>Acquisition</h2><p>How users discover and sign up.</p>
-Explainer: <p>^ Signup conversion is <strong>23.4%</strong>, up 2.1pp.</p>
-```
-
-### Phase B3: Query and Build
-
-Query each metric, verify data, then create with layout in one call.
-
-```python
-def text(html):
-    return DashboardRowContent(content_type="text", content_params={"markdown": html})
-
-def report(name, btype, result, description=None):
-    params = {"bookmark": {"name": name, "type": btype, "params": json.dumps(result.params)}}
-    if description:
-        params["bookmark"]["description"] = description
-    return DashboardRowContent(content_type="report", content_params=params)
-
-dashboard = ws.create_dashboard(CreateDashboardParams(
-    title="Product Health Dashboard",
-    description="Key metrics for product health monitoring.",
-    rows=[
-        DashboardRow(contents=[text("<h2>Product Health</h2><p>Updated daily.</p>")]),
+        DashboardRow(contents=[text("<h2>Product Health</h2><p>Core metrics, last 90 days.</p>")]),
         DashboardRow(contents=[
             report("DAU (90d)", "insights", dau),
             report("Signups (90d)", "insights", signups),
-            report("Revenue (90d)", "insights", revenue),
         ]),
-        DashboardRow(contents=[text("<h2>Conversion</h2><p>Key funnels.</p>")]),
-        DashboardRow(contents=[report("Signup Funnel", "funnels", funnel)]),
     ],
 ))
+ws.pin_dashboard(dashboard.id)  # new dashboards are not visible to the team until pinned
 ```
 
-**On report failure**, substitute a fallback text card:
-```python
-try:
-    result = ws.query(event, math="total", last=90)
-    row_items.append(report(f"{event} Trend", "insights", result))
-except Exception as e:
-    row_items.append(text(f"<p><strong>Failed:</strong> {event} — {e}</p>"))
-```
+`rows` places every cell in one call, and the cells in a row share the 12 columns evenly. Check each result before you add it: skip a report whose `result.df` is empty, because an empty chart on a shared board looks like a bug.
 
-### Phase B4: Enhance
+## Mode steps in short
 
-- **Pin for team visibility:** `ws.pin_dashboard(dashboard.id)` — dashboards are invisible by default
-- **Favorite for personal use:** `ws.favorite_dashboard(dashboard.id)`
-- **Add explainer cards:** see Mode: Explain
-- **Adjust heights:** see `references/dashboard-reference.md` Section 3.4
+**Analyze.** Read the structure (quick start above). Group cells into sections: a text card with an `<h2>` starts a section. Run every report and extract the key numbers for its type. Look for links between reports, for example a DAU trend against a retention curve. Present an overview, a section-by-section summary, cross-report findings, and suggestions.
 
-### Phase B5: Verify
+**Build.** Check that each candidate event has volume. Pick a template from `references/templates.md` and map its placeholders to real events. Present the plan. Query each metric, then create the dashboard with `rows` in one call. Pin it. Open it and confirm every report renders.
 
-Open the dashboard and confirm all reports render with data, text cards display correctly, and layout matches the plan.
+**Modify.** Read the current state first and show it to the user. Classify each change. Apply the changes in the order in gotcha 3. Read the dashboard again between layout changes, because row and cell IDs change.
 
----
+**Explain.** Run the analyze steps. For each report, compute the latest value and the change against a baseline from `result.df`. Insert a short explainer card under the chart it explains. The card patterns and the HTML rules are in `references/text-cards.md`.
 
-## Mode: Modify
+## Gotchas
 
-Update existing dashboards. Read first, then apply changes in the correct order.
+These 14 rules come from failures against the live Mixpanel API. The library does not check most of them for you.
 
-### Phase M1: Read Current State
+1. **Send `content` and `layout` together to place a cell in an existing row.** Put both in one `UpdateDashboardParams`. With `content` alone, the new cell goes to a new full-width row at the bottom.
+2. **Redistribute widths when you add to a row.** A row with N cells gets N+1 cells of width `12 // (N + 1)`, because the widths in a row must sum to 12.
+3. **Apply updates in this order:** metadata, cell creates, row reorder (`rows_order`), cell updates, cell deletes, row deletes. A reorder before a create fails with an unknown row ID, and an early delete can leave gaps.
+4. **`per_user` needs `math_property`.** Without it, the query raises `BookmarkValidationError` before any network call. The same is true for `math="average"`, `"median"`, and the percentiles.
+5. **`CreateBookmarkParams.dashboard_id` is required, but it does not place the report on the dashboard.** Mixpanel requires every saved report to belong to a dashboard. Place a report with an inline bookmark content action or with `rows`.
+6. **`add_report_to_dashboard()` clones the report.** The copy gets a "Duplicate of ..." name and a new content ID. Prefer `rows` or an inline content action.
+7. **The GET layout and the PATCH layout differ.** GET returns `order` and `rows` as a dict keyed by row ID. PATCH takes `rows_order` and `rows` as a list with an `id` on each row. A patch with `order` does not reorder anything.
+8. **Leave `version` out of a layout PATCH.** GET returns `"version": "2.0.0"`, and the API rejects a patch that sends it back.
+9. **Remove newlines from text card HTML.** Call `.replace("\n", "").strip()` before you send it. With newlines, the editor in Mixpanel parses the HTML as markdown and garbles it.
+10. **Stay inside the limits:** title 255 characters, description 400, text card 2,000 (keep it under 500), 4 cells per row, 30 rows per dashboard.
+11. **An update cannot change `content_type`.** To turn a text card into a report, delete the cell, then create a new one.
+12. **Report-link cells are read-only.** A `report-link` cell shows a report that another dashboard owns. You can run it, but you cannot edit its params from this dashboard.
+13. **Pin a new dashboard.** A new dashboard is not visible to the team until you call `ws.pin_dashboard(dashboard.id)`.
+14. **The `markdown` field takes HTML only.** Markdown syntax such as `# Heading` or `**bold**` shows as literal text. Use `<h2>` and `<strong>`.
 
-Use Analyze Phase A1-A2 to understand the dashboard's structure. Present to user before making changes.
+## Look up the API before you write code
 
-### Phase M2: Plan Changes
+When the plugin environment exists, `mp` below means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`; run it with that full path. When it does not exist, use the bare-`mp` fallback near the top of this file.
 
-Classify each change and plan execution order. Operations **must** follow this sequence:
+The installed library documents itself, so do not guess a method name, a parameter, or a type field. Verify any signature with `mp help Workspace.<method>`, for example `mp help Workspace.update_dashboard`. Other useful look-ups:
 
-1. **Metadata** (title/description) — standalone PATCH
-2. **Cell creates** — add new content first
-3. **Row reorder** (`rows_order`) — after creates so temp IDs resolve
-4. **Cell updates** — modify existing content
-5. **Cell deletes** — remove content
-6. **Row deletes** — remove entire rows last
+- `mp help Workspace --domain dashboards` lists every dashboard method.
+- `mp help Workspace --domain reports` lists the saved-report (bookmark) methods.
+- `mp help CreateDashboardParams` and `mp help DashboardRow` show the fields and a worked example.
 
-### Phase M3: Execute Changes
+The full look-up loop is in the mixpanelyst skill. The same text is available as `${CLAUDE_PLUGIN_DATA}/venv/bin/python -m mixpanel_headless help <query>`.
 
-**Adding content to a specific existing row** — send `content` AND `layout` together:
+## Report links
 
-```python
-import copy
-dash = ws.get_dashboard(dashboard_id)
-layout = copy.deepcopy(dash.layout)
-target_row = layout["rows"][target_row_id]
+To read a report URL that the user pasted, call `ws.resolve_report_link(link)`. It returns the params and the report type, and `ws.query_report_link(link)` runs it. To give the user a URL for a report on a dashboard, call `ws.saved_report_link(bookmark_id, report_type="funnels")` with the report's type.
 
-# Redistribute widths
-new_count = len(target_row["cells"]) + 1
-cell_width = 12 // new_count
-for cell in target_row["cells"]:
-    cell["width"] = cell_width
-target_row["cells"].append({"temp_id": "-1", "width": cell_width})
+## Reading guide
 
-ws.update_dashboard(dashboard_id, UpdateDashboardParams(
-    content={"action": "create", "content_type": "report",
-             "content_params": {"bookmark": {"name": "New Report", "type": "insights",
-                                              "params": json.dumps(result.params)}}},
-    layout={"rows_order": layout["order"], "rows": layout["rows"]},
-))
-```
+Read a reference only when its condition is true. Each file stands alone.
 
-**Adding content as a new row** — content action alone (appends to bottom):
-
-```python
-ws.update_dashboard(dashboard_id, UpdateDashboardParams(
-    content={"action": "create", "content_type": "text",
-             "content_params": {"markdown": "<p>^ Explainer card.</p>"}},
-))
-```
-
-**Deleting content:**
-
-```python
-ws.update_dashboard(dashboard_id, UpdateDashboardParams(
-    content={"action": "delete", "content_type": "report", "content_id": content_id},
-))
-```
-
-**Cross-type updates** (e.g., text → report): API rejects changing `content_type` on update. Delete the old cell, then create the new one.
-
-See `references/dashboard-reference.md` Section 8 for temp ID resolution, operation ordering details, and report-link semantics.
-
----
-
-## Mode: Explain
-
-Combine analysis with targeted text card insertion.
-
-1. **Analyze** — run Mode: Analyze to extract structure and execute reports
-2. **Generate insights** — for each report, compute key metrics from the DataFrame:
-   ```python
-   latest = df.iloc[-1]["count"]
-   prev = df.iloc[-8]["count"]
-   trend = ((latest - prev) / prev) * 100
-   html = (f"<p>^ DAU is <strong>{latest:,.0f}</strong>, "
-           f"{'up' if trend > 0 else 'down'} <strong>{abs(trend):.1f}%</strong> "
-           f"vs. last week.</p>").replace("\n", "")
-   ```
-3. **Insert cards** — add as new rows below each report section:
-   ```python
-   ws.update_dashboard(dashboard_id, UpdateDashboardParams(
-       content={"action": "create", "content_type": "text",
-                "content_params": {"markdown": html}},
-   ))
-   ```
-
----
-
-## Critical Gotchas
-
-1. **Combined content+layout PATCH** — send both `content` and `layout` in the same `UpdateDashboardParams` to add cells to specific existing rows. Without `layout`, new content appends as a full-width row at the bottom.
-
-2. **Width auto-redistribution** — when adding to an existing row with N cells, set all cells (including new) to `12 // (N+1)` width.
-
-3. **Update operation ordering** — metadata → cell creates → rows_order → cell updates → cell deletes → row deletes. Wrong order causes failures.
-
-4. **`per_user` requires `math_property`** — using per-user aggregation without a numeric property raises `BookmarkValidationError`.
-
-5. **`CreateBookmarkParams(dashboard_id=X)` does NOT add to layout** — use `add_report_to_dashboard()` or inline content action.
-
-6. **`add_report_to_dashboard()` CLONES** — creates "Duplicate of..." copy. Use `rows` in `CreateDashboardParams` or inline content action instead.
-
-7. **GET `order` vs PATCH `rows_order`** — layout from GET uses `order`; PATCH expects `rows_order`.
-
-8. **Never include `version` in layout PATCH** — the API rejects it.
-
-9. **Strip `\n` and collapse whitespace** — call `.replace("\n", "").strip()` on text card HTML. Newlines cause TipTap to mangle content.
-
-10. **Limits** — title 255 chars, description 400 chars, text cards 2,000 chars, max 4 items/row, max 30 rows.
-
-11. **Cross-type cell updates require delete+create** — API rejects changing `content_type` on an update action.
-
-12. **Report-link cells are read-only** — `content_type: "report-link"` references a report owned by another dashboard. You can view but not edit its params.
-
-13. **Auto-pin after creation** — dashboards are invisible to the team by default. Call `ws.pin_dashboard(dashboard.id)`.
-
-14. **The `markdown` field accepts only HTML** — despite the name. Markdown syntax renders as literal text.
-
-## See Also
-
-- Report links — `ws.resolve_report_link(url_or_slug_or_shortlink)` turns a report URL a user pasted into its params and type (`ws.query_report_link(...)` runs it); `ws.saved_report_link(bookmark_id, report_type=...)` gives the URL for any report you add to a dashboard
-
-- `references/dashboard-reference.md` — Complete API reference, layout system, content actions, text card formatting, update operations, analysis patterns
-- `references/dashboard-templates.md` — 9 purpose-built dashboard templates with section layouts and report specs
-- `references/bookmark-pipeline.md` — End-to-end pipeline from typed query to dashboard report for all 4 engines
-- `references/chart-types.md` — Chart type selection guide with slugs, use cases, and width recommendations
+| Read | When |
+|---|---|
+| [references/content-and-layout.md](references/content-and-layout.md) | Before you analyze or modify a dashboard, and before any `update_dashboard` call that adds, moves, resizes, or deletes a cell or row. It covers content actions, the grid, the PATCH format, operation order, report-link semantics, time filters, and duplication. |
+| [references/text-cards.md](references/text-cards.md) | Before you write or change a text card, and in Explain mode. It covers the allowed HTML, the whitespace rule, and card patterns. |
+| [references/report-pipeline.md](references/report-pipeline.md) | Before you build a dashboard, or when you turn query results from any engine into reports on a dashboard. It covers the build steps and the query-to-report path for insights, funnels, retention, and flows. |
+| [references/templates.md](references/templates.md) | When you plan a new dashboard or a new section. It has nine templates with rows, widths, heights, text, and report specifications. Read the selection guide and "How to use these templates", then read only the chosen template's section. |
+| [references/chart-types.md](references/chart-types.md) | When you pick or check a chart type, or pick a width for a chart. |

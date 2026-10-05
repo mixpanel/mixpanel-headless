@@ -1,0 +1,54 @@
+{
+  "files": [
+    {
+      "path": "CLAUDE.md",
+      "description": "Project conventions: architecture, strict typing, docstring format, TDD, environment variables, and key design decisions"
+    },
+    {
+      "path": "docs/architecture/design.md",
+      "description": "Layered architecture and design reasons"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "description": "Contributor workflow and checks"
+    },
+    {
+      "path": "docs/guide/session-replay.md",
+      "description": "Session replay model and public surface: discovery, signed URLs, fetch and analysis (Workspace replay methods, Replay and ReplayBundle types, mp replays), rrweb analysis, labels",
+      "scope": [
+        "src/mixpanel_headless/_internal/replays/**",
+        "src/mixpanel_headless/_internal/services/replays.py",
+        "src/mixpanel_headless/replay_labels.py",
+        "src/mixpanel_headless/cli/commands/replays.py",
+        "src/mixpanel_headless/workspace.py",
+        "src/mixpanel_headless/types.py"
+      ]
+    },
+    {
+      "path": "docs/guide/unified-query-system.md",
+      "description": "Query contracts shared by insights, funnels, retention, flows, and user queries: the Workspace.query_* methods, their parameter and result types, the bookmark builders and validation, and mp query",
+      "scope": [
+        "src/mixpanel_headless/_internal/query/**",
+        "src/mixpanel_headless/_internal/bookmark_builders.py",
+        "src/mixpanel_headless/_internal/bookmark_enums.py",
+        "src/mixpanel_headless/_internal/bookmark_schema.py",
+        "src/mixpanel_headless/_internal/validation.py",
+        "src/mixpanel_headless/_internal/segfilter.py",
+        "src/mixpanel_headless/_internal/services/live_query.py",
+        "src/mixpanel_headless/cli/commands/query.py",
+        "src/mixpanel_headless/workspace.py",
+        "src/mixpanel_headless/types.py"
+      ]
+    },
+    {
+      "path": "docs/guide/report-links.md",
+      "description": "Report link semantics: URL parse and build, project and workspace scope, the Workspace report-link methods, ReportLink types, and mp reports",
+      "scope": [
+        "src/mixpanel_headless/_internal/report_links.py",
+        "src/mixpanel_headless/cli/commands/reports.py",
+        "src/mixpanel_headless/workspace.py",
+        "src/mixpanel_headless/types.py"
+      ]
+    }
+  ]
+}

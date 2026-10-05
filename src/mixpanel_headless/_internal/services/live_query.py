@@ -460,6 +460,14 @@ def _extract_funnel_steps_from_series(
     # to handle 10+ steps correctly (lexicographic sort would put "10." before "2.")
 
     def _step_sort_key(name: str) -> tuple[int, str]:
+        """Sort funnel step names by their numeric prefix.
+
+        Args:
+            name: Step name such as ``"2. Purchase"``.
+
+        Returns:
+            ``(prefix, name)``; names without a prefix sort last.
+        """
         m = _STEP_PREFIX_RE.match(name)
         return (int(m.group(1)), name) if m else (2**31, name)
 
@@ -467,6 +475,15 @@ def _extract_funnel_steps_from_series(
 
     # Helper to get a metric value for a step (handles "all" segment)
     def _get_val(metric: str, step_name: str) -> Any:
+        """Read one metric value for one step, unwrapping the ``"all"`` segment.
+
+        Args:
+            metric: Metric key in the funnel payload (e.g. ``"count"``).
+            step_name: Step name key inside that metric.
+
+        Returns:
+            The step's value, or ``0`` when it is missing or null.
+        """
         metric_data = funnel_data.get(metric, {})
         step_data = metric_data.get(step_name, {})
         if isinstance(step_data, dict):

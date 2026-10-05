@@ -135,6 +135,14 @@ def list_projects(
         projects = ws.projects(refresh=refresh)
 
     def _to_dict(p: Any) -> dict[str, Any]:
+        """Convert a project to a JSON record.
+
+        Args:
+            p: Project from ``Workspace.projects``.
+
+        Returns:
+            Record with the project fields and an ``is_active`` flag.
+        """
         return {
             "id": p.id,
             "name": p.name,
@@ -144,6 +152,14 @@ def list_projects(
         }
 
     def _render_table(items: Sequence[Any]) -> str:
+        """Render projects as a fixed-width table.
+
+        Args:
+            items: Projects to render.
+
+        Returns:
+            Table text; ``*`` marks the active project.
+        """
         if not items:
             return "(no projects accessible via /me)"
         lines = ["  ID              NAME                              ORG"]
