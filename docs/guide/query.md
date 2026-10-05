@@ -1061,6 +1061,8 @@ df = result.df
 leaves = df[(df[["auth", "status_code"]] != "$overall").all(axis=1)]
 ```
 
+When nothing matches, `result.df` has no rows but has the same columns that a non-empty result of the same query has. Code such as `df.groupby("segment")` or `df[["auth", "status_code"]]` works on an empty result too.
+
 ### Persisting as a Saved Report
 
 The generated bookmark params can be saved as a Mixpanel report:
