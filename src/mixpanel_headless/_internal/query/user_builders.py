@@ -149,9 +149,10 @@ def _number(op: str, value: FilterValue, code: str) -> str:
         The number formatted for the selector.
 
     Raises:
-        ParamValidationError: The value is not an int or float (*code*).
+        ParamValidationError: The value is not an int or float, or it is a
+            bool (*code*).
     """
-    if not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ParamValidationError(
             f"Expected int or float for {op!r} operator, got {type(value).__name__}",
             code=code,
@@ -174,7 +175,8 @@ def _number_pair(op: str, value: FilterValue) -> tuple[str, str]:
         ParamValidationError: The value is not a two-item list
             (``ES10_BETWEEN_EXPECTS_PAIR``), or its lower
             (``ES11_BETWEEN_LOWER_NOT_NUMBER``) or upper
-            (``ES12_BETWEEN_UPPER_NOT_NUMBER``) bound is not a number.
+            (``ES12_BETWEEN_UPPER_NOT_NUMBER``) bound is not a number. A
+            bool is not a number here.
     """
     if not isinstance(value, list) or len(value) != 2:
         raise ParamValidationError(
@@ -182,12 +184,12 @@ def _number_pair(op: str, value: FilterValue) -> tuple[str, str]:
             code="ES10_BETWEEN_EXPECTS_PAIR",
         )
     lo, hi = value[0], value[1]
-    if not isinstance(lo, (int, float)):
+    if isinstance(lo, bool) or not isinstance(lo, (int, float)):
         raise ParamValidationError(
             f"Expected int or float for lower bound, got {type(lo).__name__}",
             code="ES11_BETWEEN_LOWER_NOT_NUMBER",
         )
-    if not isinstance(hi, (int, float)):
+    if isinstance(hi, bool) or not isinstance(hi, (int, float)):
         raise ParamValidationError(
             f"Expected int or float for upper bound, got {type(hi).__name__}",
             code="ES12_BETWEEN_UPPER_NOT_NUMBER",
@@ -211,16 +213,21 @@ def _date_bounds(op: str, value: FilterValue) -> tuple[str, str]:
     Raises:
         ParamValidationError: A single-date value is not a string
             (``ES15_DATE_EXPECTS_STR``), a range is not a list of two
-            strings (``ES16_DATE_RANGE_EXPECTS_PAIR``), or a date is not a
+            strings (``ES16_DATE_RANGE_EXPECTS_PAIR``), a date is not a
             valid ``YYYY-MM-DD`` day (``V8_DATE_FORMAT`` /
-            ``V8_DATE_INVALID``, the codes the Filter factories use).
+            ``V8_DATE_INVALID``), or a range's first day is after its last
+            day (``FD2_DATE_ORDER``). These last three are the codes the
+            Filter factories use.
     """
     if op in ("was between", "was not between"):
         if isinstance(value, list) and len(value) == 2:
             first, last = value[0], value[1]
             if isinstance(first, str) and isinstance(last, str):
-                Filter._validate_date(first)
-                Filter._validate_date(last)
+                if Filter._validate_date(first) > Filter._validate_date(last):
+                    raise ParamValidationError(
+                        f"from_date must be before to_date (got '{first}' > '{last}')",
+                        code="FD2_DATE_ORDER",
+                    )
                 return first, last
         raise ParamValidationError(
             f"Expected a list of two YYYY-MM-DD date strings for {op!r} "
@@ -257,7 +264,7 @@ def _absolute_date_selector(op: str, prop: str, value: FilterValue) -> str:
 
     Raises:
         ParamValidationError: Propagated from :func:`_date_bounds`
-            (``ES15`` / ``ES16`` / ``V8``).
+            (``ES15`` / ``ES16`` / ``V8`` / ``FD2``).
     """
     first, last = _date_bounds(op, value)
     cast = f"datetime({prop})"
@@ -395,9 +402,11 @@ def filter_to_selector(f: Filter) -> str:
     selector syntax. Each operator maps to a specific selector pattern.
 
     Date operators cast the property with ``datetime()``. Absolute dates
-    (``on``, ``not_on``, ``before``, ``since``, ``date_between``,
-    ``date_not_between``) are whole days in the project timezone; ``before``
-    excludes its day and the others include theirs. Relative dates
+    are whole days in the project timezone. ``on`` and ``date_between``
+    match their days, endpoints included; ``since`` matches its day and
+    later. ``before`` matches days before its day. ``not_on`` and
+    ``date_not_between`` match a set value outside their days, so the named
+    day or both endpoint days are excluded. Relative dates
     (``in_the_last``, ``not_in_the_last``, ``in_the_next``) are rolling
     windows measured from the server's clock through the ``NOW`` macro, with
     7-day weeks and 30-day months, and span at most 50 years.
@@ -414,7 +423,8 @@ def filter_to_selector(f: Filter) -> str:
             (``ES1_PROPERTY_NOT_STRING``); its value has the wrong shape
             for the operator (``ES2``–``ES12``, ``ES15``–``ES20``, or the
             factories' ``V8_DATE_FORMAT`` / ``V8_DATE_INVALID`` for a bad
-            date string); it is ``Filter.starts_with()``,
+            date string and ``FD2_DATE_ORDER`` for a reversed date range);
+            it is ``Filter.starts_with()``,
             ``Filter.ends_with()``, or ``Filter.list_contains()``, which
             the Engage selector cannot express
             (``ES14_NO_SELECTOR_EQUIVALENT``); or the operator is unknown

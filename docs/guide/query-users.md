@@ -71,7 +71,9 @@ ws.query_user(
 | `equals`, `not_equals`, `contains`, `not_contains` | String comparisons. `contains` on a list property tests membership. |
 | `greater_than`, `less_than`, `at_least`, `at_most`, `between`, `not_between` | Number comparisons. `between` includes both bounds; `not_between` excludes them. |
 | `is_set`, `is_not_set`, `is_true`, `is_false` | Existence and boolean checks. |
-| `on`, `not_on`, `before`, `since`, `date_between`, `date_not_between` | Whole days in the project timezone. `before` excludes its day; the others include theirs. |
+| `on`, `since`, `date_between` | Whole days in the project timezone. `on` matches its day, `since` matches its day and later, and `date_between` matches its range with both endpoint days included. |
+| `before` | Days before the named day, in the project timezone. The named day is excluded. |
+| `not_on`, `date_not_between` | A set value outside the named day or range, in the project timezone. The named day, or both endpoint days, are excluded. |
 | `in_the_last`, `not_in_the_last`, `in_the_next` | Rolling windows from the server's clock (see below). |
 | `in_cohort` | One per query, sent as a cohort filter. |
 

@@ -334,7 +334,14 @@ may include API changes.
   `BookmarkValidationError`) whose message names the constructor and a
   workaround. New codes `ES15` to `ES20` reject a malformed value on a
   directly constructed date, relative-date, `at_least`, or `at_most`
-  `Filter`.
+  `Filter`. A directly constructed date range with its first day after
+  its last day fails with `FD2_DATE_ORDER`, as the `Filter.date_between`
+  and `Filter.date_not_between` factories do.
+- `query_user(where=...)` no longer accepts `True` or `False` as the
+  number in a number comparison (`greater_than`, `less_than`, `at_least`,
+  `at_most`, `between`, `not_between`). Before, the selector compared the
+  property with `True` or `False`. Now the filter fails with the
+  operator's number code.
 
 ## 0.3.0 — 2026-09-22
 

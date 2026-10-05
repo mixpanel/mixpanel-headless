@@ -16,6 +16,7 @@ from mixpanel_headless._internal.query.user_builders import (
     filter_to_selector,
     filters_to_selector,
 )
+from mixpanel_headless._literal_types import FilterOperatorInput
 from mixpanel_headless.exceptions import ParamValidationError
 from mixpanel_headless.types import CohortCriteria, CohortDefinition, Filter
 from tests.conftest import make_unchecked_filter
@@ -1041,6 +1042,48 @@ class TestCodedEngageSelectorCodes:
         with pytest.raises(ParamValidationError) as excinfo:
             filter_to_selector(f)
         assert excinfo.value.code == code
+
+    @pytest.mark.parametrize(
+        ("op", "value", "code"),
+        [
+            ("is greater than", True, "ES8_GT_EXPECTS_NUMBER"),
+            ("is less than", False, "ES9_LT_EXPECTS_NUMBER"),
+            ("is at least", True, "ES19_AT_LEAST_EXPECTS_NUMBER"),
+            ("is at most", False, "ES20_AT_MOST_EXPECTS_NUMBER"),
+            ("is between", [True, 10], "ES11_BETWEEN_LOWER_NOT_NUMBER"),
+            ("not between", [0, False], "ES12_BETWEEN_UPPER_NOT_NUMBER"),
+        ],
+    )
+    def test_number_operators_reject_bool(
+        self, op: FilterOperatorInput, value: object, code: str
+    ) -> None:
+        """A bool is not a number bound, although bool subclasses int."""
+        f = Filter("p", op, value)  # type: ignore[arg-type]
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == code
+
+    @pytest.mark.parametrize("op", ["was between", "was not between"])
+    def test_reversed_date_range_raises_factory_order_code(
+        self, op: FilterOperatorInput
+    ) -> None:
+        """A direct date range with its days reversed raises FD2_DATE_ORDER.
+
+        ``Filter.date_between()`` and ``Filter.date_not_between()`` reject a
+        reversed range; a directly constructed Filter gets the same check.
+        """
+        f = Filter("d", op, ["2026-09-30", "2026-09-01"])
+        with pytest.raises(ParamValidationError) as excinfo:
+            filter_to_selector(f)
+        assert excinfo.value.code == "FD2_DATE_ORDER"
+
+    def test_same_day_date_range_is_accepted(self) -> None:
+        """A direct date range whose first and last day match is valid."""
+        f = Filter("d", "was between", ["2026-09-01", "2026-09-01"])
+        assert filter_to_selector(f) == (
+            'datetime(properties["d"]) >= datetime("2026-09-01T00:00:00") '
+            'and datetime(properties["d"]) <= datetime("2026-09-01T23:59:59")'
+        )
 
 
 class TestUnsupportedFilterMessages:
