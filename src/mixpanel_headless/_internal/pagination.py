@@ -43,6 +43,10 @@ _BACKOFF_BASE: float = 1.0
 #: Maximum backoff delay in seconds.
 _BACKOFF_MAX: float = 60.0
 
+#: Maximum ``retry_after`` reported once retries run out. Mixpanel rate limits
+#: over a rolling one-hour window, so a legitimate wait is never longer.
+_RETRY_AFTER_MAX: float = 3600.0
+
 
 def _parse_retry_after(raw: str | None) -> float | None:
     """Parse a ``Retry-After`` header value into a safe number of seconds.
@@ -56,19 +60,28 @@ def _parse_retry_after(raw: str | None) -> float | None:
     HTTP-date form (RFC 9110) is not supported and is treated as unparseable,
     matching the delta-seconds-only behaviour this module has always had.
 
+    A value of only ASCII digits that is too long for a float (hundreds of
+    digits) is a very large delay, not garbage, so it reads as
+    ``_RETRY_AFTER_MAX``. The API client's parser reports the same value
+    for such a header.
+
     Args:
         raw: Raw header value, or ``None`` when the header is absent.
 
     Returns:
         The advertised delay in seconds, or ``None`` when the header is
-        absent, empty, unparseable, negative, NaN, or infinite. The value is
-        not capped — apply ``_BACKOFF_MAX`` at the point of sleeping.
+        absent, empty, unparseable, negative, NaN, or infinite. Apart from
+        the long digit string above, the value is not capped — apply
+        ``_BACKOFF_MAX`` at the point of sleeping and
+        ``_RETRY_AFTER_MAX`` before surfacing it as
+        ``RateLimitError.retry_after``.
 
     Example:
         ```python
         _parse_retry_after("30")    # 30.0
         _parse_retry_after("-1")    # None
         _parse_retry_after("inf")   # None
+        _parse_retry_after("9" * 400)  # 3600.0
         ```
     """
     if not raw:
@@ -77,6 +90,8 @@ def _parse_retry_after(raw: str | None) -> float | None:
         seconds = float(raw)
     except ValueError:
         return None
+    if math.isinf(seconds) and raw.isascii() and raw.isdigit():
+        return _RETRY_AFTER_MAX
     if not math.isfinite(seconds) or seconds < 0:
         return None
     return seconds
@@ -185,7 +200,13 @@ def paginate_all(
             if response.status_code == 429:
                 advertised = _parse_retry_after(response.headers.get("Retry-After"))
                 if attempt >= MAX_RATE_LIMIT_RETRIES:
-                    retry_after = None if advertised is None else int(advertised)
+                    # Report at most one hour (the rate-limit window): callers
+                    # are documented to ``time.sleep(e.retry_after or 60)``.
+                    retry_after = (
+                        None
+                        if advertised is None
+                        else int(min(advertised, _RETRY_AFTER_MAX))
+                    )
                     raise RateLimitError(
                         "Rate limit exceeded after max retries during pagination",
                         retry_after=retry_after,
