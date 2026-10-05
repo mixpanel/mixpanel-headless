@@ -103,6 +103,9 @@ _CAPABILITY_PATH_TABLE: tuple[tuple[str, str], ...] = (
     ("replay", "replays"),
     ("export", "streaming"),
     ("stream", "streaming"),
+    # Before "/me": a "/metrics" path contains "/me".
+    ("/metrics", "metrics"),
+    ("/behaviors", "behaviors"),
     ("/me", "auth"),
     ("oauth", "auth"),
     ("token", "auth"),

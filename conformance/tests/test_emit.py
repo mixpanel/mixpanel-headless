@@ -26,6 +26,7 @@ from conformance.record.capture import (
 )
 from conformance.record.emit import (
     EmitOptions,
+    _wire_capability,
     build_slug_map,
     emit_corpus,
     sort_unordered_groups,
@@ -932,3 +933,59 @@ def test_env_base_url_override_unset_capture_unaffected(tmp_path: Path) -> None:
     manifest = jsonlib.loads((tmp_path / "manifest.json").read_text("utf-8"))
     assert "env_base_url_override" not in manifest["exclusions"]
     assert "env_base_url_override" not in manifest["exclusion_details"]
+
+
+# ---------------------------------------------------------------------------
+# Wire capability table
+# ---------------------------------------------------------------------------
+
+
+def _interaction_at(path: str) -> RecordedInteraction:
+    """Build one 200-JSON GET interaction on ``https://mixpanel.com``.
+
+    Args:
+        path: The request path.
+
+    Returns:
+        The recorded interaction.
+    """
+    return RecordedInteraction(
+        seq=0,
+        request=RecordedRequest(
+            method="GET",
+            scheme_host="https://mixpanel.com",
+            path=path,
+            params={},
+            headers={"host": "mixpanel.com", "accept": "*/*"},
+            content=b"",
+        ),
+        response=RecordedResponse(
+            status=200,
+            headers={"content-type": "application/json"},
+            body_bytes=b'{"status": "ok", "results": {}}',
+        ),
+        span_index=0,
+        is_async=False,
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "capability"),
+    [
+        ("/api/app/projects/12345/metrics", "metrics"),
+        ("/api/app/projects/12345/metrics/7", "metrics"),
+        ("/api/app/projects/12345/behaviors", "behaviors"),
+        ("/api/app/projects/12345/behaviors/3", "behaviors"),
+        ("/api/app/me", "auth"),
+        ("/api/app/projects/12345/annotations/", "entities"),
+        ("/api/app/projects/12345/custom-events/", "data-governance"),
+    ],
+)
+def test_wire_capability_by_endpoint(path: str, capability: str) -> None:
+    """Saved metric and behavior endpoints get their own capability.
+
+    ``/metrics`` contains ``/me``, so before its own row a saved-metric
+    vector landed in ``auth``; saved behaviors fell back to ``entities``.
+    """
+    measured = _wire_capture("tests/unit/test_x.py::test_capability").entry_calls[0]
+    assert _wire_capability(measured, [_interaction_at(path)]) == capability
