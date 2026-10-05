@@ -801,6 +801,21 @@ class TestQueryResultEmptyDataFrame:
         assert len(df) == 0
         assert list(df.columns) == ["event", "segment", "count"]
 
+    @pytest.mark.parametrize(
+        ("headers", "segments"),
+        [
+            (["$event", "auth"], ["segment"]),
+            (["$event", "auth", "status_code"], ["auth", "status_code"]),
+        ],
+        ids=["one-level", "two-level"],
+    )
+    def test_empty_saved_metric_reference_keeps_segments(
+        self, headers: list[str], segments: list[str]
+    ) -> None:
+        """A ``MetricRef`` query's ``$event`` header still names its group-by levels."""
+        df = _empty_result("bar", headers).df
+        assert list(df.columns) == ["event", *segments, "count"]
+
     def test_empty_without_headers_first_entry_metric_has_no_segments(self) -> None:
         """Headers that do not start with ``$metric`` give no segment columns."""
         df = _empty_result("bar", ["h"]).df

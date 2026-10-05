@@ -11540,7 +11540,12 @@ class QueryResult(ResultWithDataFrame):
         if not rows:
             # No data to read the shape from: take it from the request.
             has_dates = _insights_chart_has_dates(self.params)
-            has_metric_header = bool(self.headers) and self.headers[0] == "$metric"
+            # headers[0] labels the metric: "$metric" for an inline metric,
+            # "$event" for a saved metric reference. The rest are group-bys.
+            has_metric_header = bool(self.headers) and self.headers[0] in (
+                "$metric",
+                "$event",
+            )
             empty_depth = len(self.headers) - 1 if has_metric_header else 0
             seg_cols = _segment_columns(self.headers, empty_depth)
 
