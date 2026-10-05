@@ -11395,8 +11395,8 @@ def _insights_chart_has_dates(params: dict[str, Any]) -> bool:
         params: Bookmark params sent with the query.
 
     Returns:
-        True for a line or column chart, and when ``displayOptions.chartType``
-        is missing (mode unknown, so the ``date`` column stays). False for
+        True for a line, column, stacked-line, or stacked-column chart, and
+        when ``displayOptions.chartType`` is missing (mode unknown, so the ``date`` column stays). False for
         every other chart type, such as ``bar``, ``pie``, or ``table``.
     """
     display = params.get("displayOptions")
@@ -11504,8 +11504,8 @@ class QueryResult(ResultWithDataFrame):
 
         An empty result (no matching data) has the same columns as a
         non-empty one. The segment columns come from ``headers``, and
-        ``date`` is present for a line or column chart. It is also
-        present when ``params`` has no ``displayOptions.chartType``.
+        ``date`` is present for a line, column, stacked-line, or
+        stacked-column chart. It is also present when ``params`` has no ``displayOptions.chartType``.
 
         Returns:
             Normalized DataFrame with one row per (date, metric, segment
