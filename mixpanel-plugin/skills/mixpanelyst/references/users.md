@@ -1,12 +1,13 @@
 # User profile queries: modes, aggregates, distribution shape, and point-in-time
 
-This file covers the analytical choices for `ws.query_user()`: profiles versus aggregate mode, the aggregate functions, `as_of`, and inline cohorts.
+This file covers the analytical choices for `ws.query_user()`: profiles versus aggregate mode, the aggregate functions, `where` filters, `as_of`, and inline cohorts.
 
 Look up the exact names first:
 
 ```text
 mp help Workspace.query_user
 mp help Workspace.query_user.aggregate
+mp help Workspace.query_user.where
 mp help UserQueryResult
 mp help CohortDefinition
 mp help CohortCriteria
@@ -46,6 +47,13 @@ for agg in ["count", "extremes", "percentile", "numeric_summary"]:
 `result.value` is the scalar for an unsegmented aggregate that returns one number, such as `count`. It is `None` when `aggregate_data` is a dict, for example with `extremes` or with `segment_by`. Read `result.aggregate_data` in those cases.
 
 For the median, use `aggregate="percentile", percentile=50`, not the mean from `numeric_summary`.
+
+## `where` filters: relative dates roll from the server clock
+
+Most `Filter` constructors work in `where`, including the date filters; `mp help Workspace.query_user.where` lists them. Two gotchas:
+
+- `in_the_last`, `not_in_the_last`, and `in_the_next` are rolling windows from the moment the query runs. Insights starts the same window at the start of a calendar day. So a profile count can differ from an Insights or Users report with the same filter. Say so when you compare the two numbers.
+- `starts_with`, `ends_with`, and `list_contains` have no profile-query form and fail before any request. Narrow the query with `contains`, fetch profiles, and finish the match on `result.df`.
 
 ## `as_of` shows the population at a past date
 

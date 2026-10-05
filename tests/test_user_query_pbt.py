@@ -18,13 +18,19 @@ Usage:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from mixpanel_headless._internal.query.user_builders import filter_to_selector
-from mixpanel_headless.types import Filter, UserQueryResult
+from mixpanel_headless.exceptions import (
+    CODED_GUARD_REGISTRY,
+    CODED_GUARD_TWIN_CODES,
+    ParamValidationError,
+)
+from mixpanel_headless.types import Filter, FilterDateUnit, UserQueryResult
 
 # =============================================================================
 # Custom Strategies
@@ -60,12 +66,32 @@ numeric_values: st.SearchStrategy[int | float] = st.one_of(
 )
 
 
+# ISO calendar dates (YYYY-MM-DD) across the whole representable range.
+iso_dates: st.SearchStrategy[str] = st.dates().map(lambda d: d.isoformat())
+
+# Relative date units accepted by Filter.in_the_last() and friends.
+date_units: st.SearchStrategy[FilterDateUnit] = st.sampled_from(
+    ["hour", "day", "week", "month"]
+)
+
+# Seconds per relative date unit: 7-day weeks and 30-day months.
+_UNIT_SECONDS: dict[str, int] = {
+    "hour": 3600,
+    "day": 86400,
+    "week": 604800,
+    "month": 2592000,
+}
+
+# Relative quantities that keep every unit inside the 50-year window.
+relative_quantities: st.SearchStrategy[int] = st.integers(min_value=1, max_value=600)
+
+
 @st.composite
 def filter_strategy(draw: st.DrawFn) -> Filter:
     """Generate random valid Filter objects across all supported operators.
 
-    Draws a property name and randomly selects one of the eleven
-    supported filter operators, constructing the Filter via the
+    Draws a property name and randomly selects one of the operators that
+    ``filter_to_selector()`` translates, constructing the Filter via the
     appropriate class method with valid argument types.
 
     Args:
@@ -89,9 +115,56 @@ def filter_strategy(draw: st.DrawFn) -> Filter:
                 "is_not_set",
                 "is_true",
                 "is_false",
+                "at_least",
+                "at_most",
+                "not_between",
+                "on",
+                "not_on",
+                "before",
+                "since",
+                "date_between",
+                "date_not_between",
+                "in_the_last",
+                "not_in_the_last",
+                "in_the_next",
             ]
         )
     )
+
+    number_factories: dict[str, Callable[..., Filter]] = {
+        "at_least": Filter.at_least,
+        "at_most": Filter.at_most,
+    }
+    date_factories: dict[str, Callable[..., Filter]] = {
+        "on": Filter.on,
+        "not_on": Filter.not_on,
+        "before": Filter.before,
+        "since": Filter.since,
+    }
+    range_factories: dict[str, Callable[..., Filter]] = {
+        "date_between": Filter.date_between,
+        "date_not_between": Filter.date_not_between,
+    }
+    relative_factories: dict[str, Callable[..., Filter]] = {
+        "in_the_last": Filter.in_the_last,
+        "not_in_the_last": Filter.not_in_the_last,
+        "in_the_next": Filter.in_the_next,
+    }
+    if op in number_factories:
+        return number_factories[op](prop, draw(numeric_values), resource_type="people")
+    if op == "not_between":
+        return Filter.not_between(
+            prop, draw(numeric_values), draw(numeric_values), resource_type="people"
+        )
+    if op in date_factories:
+        return date_factories[op](prop, draw(iso_dates), resource_type="people")
+    if op in range_factories:
+        first, second = sorted([draw(iso_dates), draw(iso_dates)])
+        return range_factories[op](prop, first, second, resource_type="people")
+    if op in relative_factories:
+        return relative_factories[op](
+            prop, draw(relative_quantities), draw(date_units), resource_type="people"
+        )
 
     if op == "equals":
         val = draw(
@@ -461,6 +534,156 @@ class TestFilterToSelectorPBT:
         result = filter_to_selector(f)
         assert " and " in result
         assert result.count("!=") == len(vals)
+
+    @given(prop=property_names, date=iso_dates)
+    @settings(max_examples=100)
+    def test_absolute_dates_use_project_time_day_bounds(
+        self, prop: str, date: str
+    ) -> None:
+        """Absolute date filters bound the day at 00:00:00 and 23:59:59.
+
+        ``on()`` must open at the start of the given day and close at its
+        last second, so the whole day matches and no other day does.
+        """
+        result = filter_to_selector(Filter.on(prop, date))
+        assert f'>= datetime("{date}T00:00:00")' in result
+        assert f'<= datetime("{date}T23:59:59")' in result
+
+    @given(prop=property_names, quantity=relative_quantities, unit=date_units)
+    @settings(max_examples=100)
+    def test_relative_window_offset_is_quantity_times_unit(
+        self, prop: str, quantity: int, unit: FilterDateUnit
+    ) -> None:
+        """Relative windows offset the NOW macro by quantity x unit seconds."""
+        seconds = quantity * _UNIT_SECONDS[unit]
+        last = filter_to_selector(Filter.in_the_last(prop, quantity, unit))
+        following = filter_to_selector(Filter.in_the_next(prop, quantity, unit))
+        assert f"datetime(NOW - {seconds})" in last
+        assert f"datetime(NOW + {seconds})" in following
+
+
+# =============================================================================
+# Invariant 1b: every public Filter constructor translates or fails coded
+# =============================================================================
+
+#: Every public ``Filter`` factory classmethod, by name.
+PUBLIC_FILTER_CONSTRUCTORS: tuple[str, ...] = (
+    "equals",
+    "not_equals",
+    "contains",
+    "not_contains",
+    "greater_than",
+    "less_than",
+    "between",
+    "not_between",
+    "at_least",
+    "at_most",
+    "is_set",
+    "is_not_set",
+    "starts_with",
+    "ends_with",
+    "is_true",
+    "is_false",
+    "in_cohort",
+    "not_in_cohort",
+    "on",
+    "not_on",
+    "before",
+    "since",
+    "in_the_last",
+    "not_in_the_last",
+    "date_between",
+    "date_not_between",
+    "in_the_next",
+    "list_contains",
+)
+
+# Any text, including quotes, backslashes, and control characters.
+any_text: st.SearchStrategy[str] = st.text(max_size=20)
+any_property_names: st.SearchStrategy[str] = st.text(min_size=1, max_size=20)
+
+
+@st.composite
+def people_filter_calls(draw: st.DrawFn) -> tuple[str, Callable[[], Filter]]:
+    """Draw one public Filter constructor call with well-typed arguments.
+
+    Arguments are well typed but otherwise unconstrained: date ranges may be
+    reversed and relative quantities may be zero, negative, or longer than
+    the 50-year window, so constructor guards and translation guards both
+    get exercised.
+
+    Args:
+        draw: Hypothesis draw function for composing strategies.
+
+    Returns:
+        The constructor name and a zero-argument callable that builds the
+        Filter with ``resource_type="people"`` where the constructor takes it.
+    """
+    name = draw(st.sampled_from(PUBLIC_FILTER_CONSTRUCTORS))
+    prop = draw(any_property_names)
+    factory = getattr(Filter, name)
+    people: dict[str, Any] = {"resource_type": "people"}
+    args: tuple[Any, ...]
+    if name in ("equals", "not_equals"):
+        args = (prop, draw(st.one_of(any_text, st.lists(any_text, max_size=3))))
+    elif name in ("contains", "not_contains", "starts_with", "ends_with"):
+        args = (prop, draw(any_text))
+    elif name in ("greater_than", "less_than", "at_least", "at_most"):
+        args = (prop, draw(numeric_values))
+    elif name in ("between", "not_between"):
+        args = (prop, draw(numeric_values), draw(numeric_values))
+    elif name in ("is_set", "is_not_set", "is_true", "is_false"):
+        args = (prop,)
+    elif name in ("in_cohort", "not_in_cohort"):
+        # The cohort constructors take no resource_type.
+        args = (draw(st.integers(min_value=-1, max_value=10**6)),)
+        people = {}
+    elif name in ("on", "not_on", "before", "since"):
+        args = (prop, draw(iso_dates))
+    elif name in ("date_between", "date_not_between"):
+        args = (prop, draw(iso_dates), draw(iso_dates))
+    elif name in ("in_the_last", "not_in_the_last", "in_the_next"):
+        quantity = draw(st.integers(min_value=-2, max_value=10**6))
+        args = (prop, quantity, draw(date_units))
+    else:  # list_contains
+        brand = draw(any_text)
+        return name, lambda: Filter.list_contains(
+            prop, Brand=brand, resource_type="people"
+        )
+    return name, lambda: factory(*args, **people)
+
+
+class TestEveryPublicFilterConstructorPBT:
+    """Each public Filter constructor gives a selector or a coded error.
+
+    ``query_user(where=...)`` must never fail with an uncoded exception:
+    a people filter either translates to an Engage selector string or
+    raises a ``ParamValidationError`` whose code is registered.
+    """
+
+    def test_constructor_list_is_complete(self) -> None:
+        """The strategy covers every public Filter classmethod."""
+        public = {
+            name
+            for name, member in vars(Filter).items()
+            if isinstance(member, classmethod) and not name.startswith("_")
+        }
+        assert public == set(PUBLIC_FILTER_CONSTRUCTORS)
+
+    @given(call=people_filter_calls())
+    @settings(max_examples=300)
+    def test_selector_or_coded_error(
+        self, call: tuple[str, Callable[[], Filter]]
+    ) -> None:
+        """Building and translating a people filter never raises uncoded."""
+        name, build = call
+        try:
+            result = filter_to_selector(build())
+        except ParamValidationError as exc:
+            assert exc.code in CODED_GUARD_REGISTRY | CODED_GUARD_TWIN_CODES, name
+        else:
+            assert isinstance(result, str)
+            assert "properties[" in result
 
 
 # =============================================================================
