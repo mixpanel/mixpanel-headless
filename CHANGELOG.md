@@ -318,6 +318,30 @@ may include API changes.
   the CLI prints it. Before, the exception held only the generic text (for
   example, `Server error: 500`), and the server's support text and Error
   ID were lost. When both keys are present, `error` wins.
+- `Workspace.query_user(where=...)` now accepts the date filters
+  (`Filter.on`, `not_on`, `before`, `since`, `date_between`,
+  `date_not_between`, `in_the_last`, `not_in_the_last`, `in_the_next`)
+  and `Filter.at_least`, `at_most`, and `not_between`. Before, these
+  failed with `Unsupported filter operator`. Absolute dates are whole
+  days in the project timezone, as in Insights. Relative dates are
+  rolling windows measured from the server's clock when the query runs,
+  not calendar days, so a count near the start of the window can differ
+  from Insights; a window can span at most 50 years.
+- `Filter.starts_with`, `ends_with`, and `list_contains` still cannot be
+  used in `query_user(where=...)`, because the Engage profile selector
+  has no form for them. They now fail with a `ParamValidationError`
+  (code `ES14_NO_SELECTOR_EQUIVALENT`, wrapped in
+  `BookmarkValidationError`) whose message names the constructor and a
+  workaround. New codes `ES15` to `ES20` reject a malformed value on a
+  directly constructed date, relative-date, `at_least`, or `at_most`
+  `Filter`. A directly constructed date range with its first day after
+  its last day fails with `FD2_DATE_ORDER`, as the `Filter.date_between`
+  and `Filter.date_not_between` factories do.
+- `query_user(where=...)` no longer accepts `True` or `False` as the
+  number in a number comparison (`greater_than`, `less_than`, `at_least`,
+  `at_most`, `between`, `not_between`). Before, the selector compared the
+  property with `True` or `False`. Now the filter fails with the
+  operator's number code.
 
 ## 0.3.0 — 2026-09-22
 
