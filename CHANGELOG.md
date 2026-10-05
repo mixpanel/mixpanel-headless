@@ -306,6 +306,16 @@ may include API changes.
 
 ### Fixed
 
+- **`RateLimitError.retry_after` is capped at one hour.** When a request
+  still got HTTP 429 after its last retry, the error reported the server's
+  `Retry-After` value as sent, with no upper bound. Code that follows the
+  documented `time.sleep(e.retry_after or 60)` pattern could be told to wait
+  for days. A value with hundreds of digits also crashed the retry loop with
+  `OverflowError` before any retry ran. Mixpanel rate limits over a rolling
+  one-hour window, so every retry path (queries, App API calls, event export,
+  shortlink resolution, and App API pagination) now reports at most 3600
+  seconds. Values of an hour or less are reported unchanged. The client's own
+  wait between retries is still capped at 60 seconds.
 - Plugin: examples and parameter names that no longer matched the
   library are corrected (for example, `query_user()` takes `where=`, not
   `filters=`).
