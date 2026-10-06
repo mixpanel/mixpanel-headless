@@ -5,6 +5,10 @@
       "description": "Project conventions: architecture, strict typing, docstring format, TDD, environment variables, and key design decisions"
     },
     {
+      "path": "REVIEW.md",
+      "description": "Review priorities, repository invariants, evidence bar, severity, and what not to comment on"
+    },
+    {
       "path": "docs/architecture/design.md",
       "description": "Layered architecture and design reasons"
     },

@@ -1,7 +1,13 @@
 name: "Copilot Setup Steps"
 
-# Automatically run the setup steps when they are changed to allow for easy validation, and
-# allow manual testing through the repository's "Actions" tab
+# Environment for Copilot code review AND the Copilot cloud agent.
+# Copilot code review runs these steps before each review (unless a
+# .github/workflows/copilot-code-review.yml exists), then uses uv, pytest,
+# and `mp help` from this environment. Do not delete this file because the
+# cloud agent is idle.
+#
+# The push and pull_request triggers run the steps when this file changes, so
+# a broken setup shows up in CI. workflow_dispatch allows a manual run.
 on:
   workflow_dispatch:
   push:
@@ -12,18 +18,17 @@ on:
       - .github/workflows/copilot-setup-steps.yml
 
 jobs:
-  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
+  # The job MUST be named `copilot-setup-steps`. Copilot honors only steps,
+  # permissions, runs-on, services, snapshot, and timeout-minutes (max 59).
   copilot-setup-steps:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
-    # Set the permissions to the lowest permissions possible needed for your steps.
-    # Copilot will be given its own token for its operations.
+    # Copilot gets its own token for its operations. The checkout below needs
+    # only read access.
     permissions:
-      # If you want to clone the repository as part of your setup steps, for example to install dependencies, you'll need the `contents: read` permission. If you don't clone the repository in your setup steps, Copilot will do this for you automatically after the steps complete.
       contents: read
 
-    # You can define any steps you want, and they will run before the agent starts.
-    # If you do not check out your code, Copilot will do this for you.
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -38,3 +43,8 @@ jobs:
 
       - name: Sync dependencies
         run: uv sync --all-extras
+
+      # Copilot continues after a failed setup step, so make a broken install
+      # fail here with a clear line in the log.
+      - name: Verify install
+        run: uv run mp --version
