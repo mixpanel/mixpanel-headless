@@ -845,9 +845,10 @@ PHASE1_TARGETS: tuple[FuzzTarget, ...] = (
 # bridges must produce the same `{class, code}` (R5.4), so error branches
 # are fuzzed, not avoided. The R10.9 "every error branch" item is closed
 # EXACTLY by `_harvested_family_edges`: one recorded corpus probe per
-# Phase-2 guard code (all 81 — completeness asserted by the unit tests and
-# the checked-in `phase2-edge-coverage.json`) plus one probe per `types.*`
-# api (all 44).
+# Phase-2 guard code (all 88 — completeness asserted by the unit tests and
+# the checked-in `phase2-edge-coverage.json`; two more registry codes that no
+# `types.*` api raises are listed in `_PHASE2_CODES_WITHOUT_A_TYPES_SEAM`)
+# plus one probe per `types.*` api (all 44).
 # ============================================================================
 
 CODEC_ROUNDTRIP_API = "codec.roundtrip"
@@ -891,6 +892,25 @@ _PHASE2_GUARD_PREFIXES = frozenset(
 """Alphabetic code-prefix families raisable from Phase-2 constructors
 (phase2-design C9: the error-branch edge set is one example per code in
 ``CODED_GUARD_REGISTRY`` belonging to a C7/C6-d family)."""
+
+_PHASE2_CODES_WITHOUT_A_TYPES_SEAM: Mapping[str, str] = {
+    "FM6_OPERAND_ATTRIBUTION": (
+        "raised by the saved-metric write check that Workspace.create_metric "
+        "and Workspace.update_metric run, not by a types.* constructor"
+    ),
+    "MT4_INVALID_INDEX": (
+        "raised by the FunnelMetric and RetentionMetric constructors, which "
+        "the recorder does not register as fuzz targets"
+    ),
+}
+"""Phase-2-family registry codes that no recorded ``types.*`` api raises.
+
+Each code has a Phase-2 family prefix, but only code outside the fuzz
+targets raises it, so no corpus vector can probe it.
+:func:`phase2_guard_codes` leaves these codes out. A row is stale when its
+code leaves the registry (:func:`phase2_guard_codes` raises) or when a
+``types.*`` vector starts to carry it (:func:`harvested_edges` raises);
+delete the row then."""
 
 _API_FAMILY_PREFIXES: tuple[tuple[str, str], ...] = (
     ("types.Filter", "filter_family"),
@@ -976,15 +996,28 @@ def phase2_guard_codes() -> tuple[str, ...]:
 
     Returns:
         Every ``CODED_GUARD_REGISTRY`` code whose alphabetic prefix is a
-        Phase-2 family prefix.
+        Phase-2 family prefix, except the codes in
+        ``_PHASE2_CODES_WITHOUT_A_TYPES_SEAM``.
+
+    Raises:
+        ValueError: If an exempt code is not in the registry (a stale row).
     """
     payload = json.loads(
         (_CONFORMANCE_DIR / "contract" / "error-codes.json").read_text(encoding="utf-8")
     )
     registry: list[str] = payload["coded_guard_registry"]
+    stale = sorted(set(_PHASE2_CODES_WITHOUT_A_TYPES_SEAM) - set(registry))
+    if stale:
+        raise ValueError(
+            f"stale Phase-2 exemptions {stale}: the codes are not in the "
+            "coded guard registry — delete the rows"
+        )
     return tuple(
         sorted(
-            code for code in registry if _code_prefix(code) in _PHASE2_GUARD_PREFIXES
+            code
+            for code in registry
+            if _code_prefix(code) in _PHASE2_GUARD_PREFIXES
+            and code not in _PHASE2_CODES_WITHOUT_A_TYPES_SEAM
         )
     )
 
@@ -1037,12 +1070,15 @@ def harvested_edges() -> tuple[HarvestedEdge, ...]:
 
     Raises:
         ValueError: If any Phase-2 guard code has no corpus vector (the
-            P2-1 coverage-closure invariant — a re-extraction regression).
+            P2-1 coverage-closure invariant — a re-extraction regression),
+            or if a ``types.*`` vector carries an exempt code (a stale
+            ``_PHASE2_CODES_WITHOUT_A_TYPES_SEAM`` row).
     """
     wanted_codes = set(phase2_guard_codes())
     picked: dict[str, tuple[str, str, str | None, dict[str, Any]]] = {}
     seen_codes: set[str] = set()
     seen_apis: set[str] = set()
+    exempt_seen: set[str] = set()
     for path in sorted((_CONFORMANCE_DIR / "vectors").rglob("*.jsonl")):
         for line in path.read_text(encoding="utf-8").splitlines():
             line = line.strip()
@@ -1056,6 +1092,8 @@ def harvested_edges() -> tuple[HarvestedEdge, ...]:
             error = (body.get("expect") or {}).get("error") or {}
             code = error.get("code")
             code = code if isinstance(code, str) else None
+            if code is not None and code in _PHASE2_CODES_WITHOUT_A_TYPES_SEAM:
+                exempt_seen.add(code)
             new_code = code in wanted_codes and code not in seen_codes
             new_api = api not in seen_apis
             if not (new_code or new_api):
@@ -1071,6 +1109,11 @@ def harvested_edges() -> tuple[HarvestedEdge, ...]:
             if new_code and code is not None:
                 seen_codes.add(code)
             seen_apis.add(api)
+    if exempt_seen:
+        raise ValueError(
+            f"stale Phase-2 exemptions {sorted(exempt_seen)}: a types.* "
+            "vector now carries the codes — delete the rows"
+        )
     missing = sorted(wanted_codes - seen_codes)
     if missing:
         raise ValueError(

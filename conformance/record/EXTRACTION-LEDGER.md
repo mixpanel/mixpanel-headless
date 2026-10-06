@@ -8,6 +8,219 @@ recommendations R1/R2/R3 (`context/phase1/audit/GATE-VERDICT.md` §8).
 a prose snapshot of the committed extraction run.
 
 
+## 2026-10-05 re-pin: stamp `c7906bc` → `496fc50` (release 0.4.0: saved metrics and saved behaviors)
+
+The once-per-release re-pin for 0.4.0 (README, "When to re-pin"). The
+stamp is the release commit, `496fc50ccf86100e083709c3e752eccda2e0a45f`
+(PR #272). These PRs reached `main` after the `c7906bc` re-pin (#253):
+
+- PR #263 `ci(conformance): own workflow, drift reported, re-pin once
+  per release` → `aa4e414` (tooling only)
+- PR #264 `refactor(query): move show-clause emission into
+  metric_builders` → `b869be2`
+- PR #265 `feat(metrics): list, get, and delete saved metrics and saved
+  behaviors` → `faac267`
+- PR #266 `feat(query): query saved metrics and saved behaviors by
+  reference` → `cb8a678`
+- PR #267 `feat(query): metrics over several events, funnel and
+  retention metrics, formulas with operands` → `4c5604d`
+- PR #269 `feat(metrics): create and update saved metrics and saved
+  behaviors` → `6deea7c`
+- PR #271 `test(fixtures): shorter probe entity names so conformance
+  recording accepts them` → `c49fc64`
+- PR #270 `fix(query): translate date and inclusive-number filters in
+  query_user(where=...)` → `6d0938c`
+- PR #260 `fix(types): flatten multi-level group_by in QueryResult.df`
+  → `6f6c94f`
+- PR #247 `fix(api-client): cap RateLimitError.retry_after at the
+  one-hour rate-limit window` → `b4cf46e`
+- PR #261 `fix(types): give an empty QueryResult.df the columns of a
+  non-empty one` → `4500327`
+- PR #272 `Release 0.4.0` → `496fc50`
+
+PR #273 `fix(conformance): recorder fixes for the 0.4.0 re-pin` →
+`7c72cbf` merged before this PR. It changes `conformance/record/` and
+its tests only.
+
+### Why `496fc50` is the honest stamp
+
+`git diff --quiet 496fc50 origin/main -- src tests pyproject.toml
+uv.lock` passes: after the release, only PR #273 reached `main`, and it
+changes `conformance/` only. So `496fc50` names the exact library code
+and locked dependencies that this corpus was recorded from. Interpreter
+and `tool_versions` are unchanged from the committed manifest.
+
+### Recorder fixes the first extraction needed (PR #273)
+
+The first extraction at `496fc50` had two problems, which PR #273 fixed:
+
+1. **Capability buckets.** The endpoint table matched `"/me"` inside
+   `/metrics`, so the saved-metric wire vectors went to `auth`, and the
+   saved-behavior vectors went to the `entities` fallback. New rows send
+   them to the new `metrics` and `behaviors` capabilities.
+2. **17 vectors that the runner could not replay:**
+   - 8 tests change an object after construction (a `FunnelStep` put
+     into a `Metric`'s event list, an inline cohort forced into a
+     `CohortMetric`), so the constructor refuses the recorded fields.
+   - 1 test passes a tuple date range to a `"was between"` filter. JSON
+     has no tuple type, and the library refuses the tuple but accepts
+     the list that replay passes.
+   - 8 `update_metric` vectors lost stored display keys, because the
+     encoder wrote every `MetricDisplay` field and the display merge
+     reads which fields the caller set.
+
+   The recorder now decodes each input once at record time. It excludes
+   a capture as `unserializable_input` when the constructor refuses the
+   fields, or when a rebuilt dataclass or model differs from the recorded
+   value. A model that holds undeclared keys always differs, because the
+   encoder does not write them. A `MetricDisplay` in input position now
+   carries only its set fields, so the 8 `update_metric` vectors stay and
+   replay.
+
+The rebuild check excludes 13 tests:
+
+- the 8 changed-object tests and the tuple date-range test;
+- 3 tests in `test_workspace_metric_refs.py::TestSavedEntitiesAsQueryInputs`
+  that pass a `SavedMetric` built from a server response. The model keeps
+  the undeclared server keys `allow_staff_override` and `is_superadmin`,
+  which the encoder does not write;
+- `test_user_builders.py::TestCodedEngageSelectorCodes::test_es1_seam_raises_coded_error`.
+  This vector was in the `c7906bc` corpus: its test passes a tuple
+  property, and replay passed a list, which the library refuses with the
+  same `ES1_PROPERTY_NOT_STRING`. It leaves the corpus here, and
+  `ES1_PROPERTY_NOT_STRING` stays covered by
+  `test_es1_direct_raises_coded_error`.
+
+### Invocation
+
+```bash
+just conformance-record \
+  --mp-record-date=2026-10-05 \
+  --mp-record-commit=496fc50ccf86100e083709c3e752eccda2e0a45f
+uv run python -m conformance.record.gen_help_vectors \
+  --commit 496fc50ccf86100e083709c3e752eccda2e0a45f
+uv run python -m conformance.contract.generate_contract \
+  --generated-from 496fc50ccf86100e083709c3e752eccda2e0a45f
+```
+
+The other three authored generators (`gen_b0_vectors`,
+`gen_replay_analyze_vectors`, `gen_replay_mobile_vectors`) produce the
+committed bundles byte for byte apart from the stamp, so those bundles
+keep their stamps. The contract ran after the help bundle was written.
+
+Record run: **11,581 passed, 1 skipped, 580 deselected, 0 failed**
+(9,982 → 11,581). The recorder wrote 3,709 vectors in 196 bundles, and
+no stale bundle file was left behind.
+
+### Headline counts (manifest `counts`)
+
+| Field | `c7906bc` | `496fc50` | Δ |
+|---|---:|---:|---:|
+| `total` (extracted) | 3,237 | 3,709 | +472 |
+| `by_kind.builder` / `wire` / `validation-error` | 1,894 / 1,278 / 65 | 2,150 / 1,468 / 91 | +256 / +190 / +26 |
+| `with_setup` | 121 | 139 | +18 |
+| bundles (extracted) | 171 | 196 | +25 |
+| authored bundle files | 17 | 17 | 0 |
+| authored vectors | 417 | 417 | 0 |
+
+By capability: `metrics` 0 → 126 and `behaviors` 0 → 42 are new;
+`bookmarks` +64, `validation` +87, `engage` +78, `funnels` +21,
+`retention` +15, `filters` +14, `discovery` +11, `entities` +5,
+`pagination` +5, `cohorts` +3, `streaming` +1; the other capabilities do
+not change.
+
+Exclusions: `no_seam_hit` 4,151 → 4,998 (+847), `wire_call_no_transport`
+787 → 863 (+76), `cli` 641 → 713 (+72), `hypothesis` 591 → 644 (+53),
+`unserializable_input` 22 → 35 (+13, the rebuild check above),
+`uncoded_raise` 50 → 51 (+1). The other buckets do not change. The new
+offline tests, CLI tests, and property tests of the 0.4.0 PRs account
+for the growth.
+
+### What changed
+
+- **25 new extracted bundles.** `metrics/` and `behaviors/` (4 bundles
+  each) hold the saved metric and saved behavior client, workspace, and
+  recorded-response vectors. 17 more bundles under `bookmarks/`,
+  `cohorts/`, `entities/`, `filters/`, `funnels/`, `retention/`, and
+  `validation/` hold the inline metric, metric reference, and metric
+  builder vectors of #264, #266, #267, and #269.
+- **Existing bundles with new or changed vectors:**
+  - `engage/test_user_builders.jsonl`: +79 from #270 (date and
+    inclusive-number filters, ES codes), −1 (the `ES1` seam vector above).
+  - `discovery/test_api_client.jsonl`: +11, from #265 (the error text
+    falls back to the `message` key) and #247 (the `retry_after` cap).
+  - `pagination/test_pagination.jsonl` +5, `entities/test_api_client.jsonl`
+    +2, `streaming/test_api_client.jsonl` +1: the #247 `retry_after` cap.
+  - `bookmarks/test_query_params.jsonl` (3),
+    `bookmarks/test_build_cohort_params.jsonl` (1), and
+    `bookmarks/test_workspace_cohort.jsonl` (1): a `Formula` input now
+    encodes the new `metrics` field (`null` here), from #267.
+- **Authored `help/reference.jsonl`:** the two `help.match_domain` error
+  vectors list two new domains, "saved metrics" and "saved behaviors".
+- **Contract:**
+  - `error-codes.json`: the coded guard registry grows from 126 to 164
+    codes, and the twin codes from 9 to 14.
+  - `literal-aliases.json`: 39 → 41 aliases (`WarehouseAggregation`,
+    `WarehouseSyncInterval`).
+  - `model-coverage.json`: 126 → 135 models. The 9 new saved metric and
+    saved behavior models and params all have corpus evidence.
+  - `tag-universe.json`: 85 → 106 observed tags, 80 → 101 rich tags.
+  - `help-registry.json`: 32 → 34 Workspace domains, 209 → 222 methods,
+    24 → 26 reference hints (two for `guide/saved-metrics.md`).
+  - `coverage_overrides.json`: the `CohortCreator` row is deleted. The
+    saved metric vectors now carry that type, so the generator refused
+    the row as stale.
+- **Fuzz coverage:** `phase2-edge-coverage.json` adds 7 new guard codes
+  (`FM2`–`FM5`, `FM7`, `MT3`, `MT5`), each with a `types.*` probe. The
+  first probe for `types.Formula` and `types.Metric` moves to a new
+  bundle that sorts first. Two new registry codes have a Phase-2 family
+  prefix, but no recorded `types.*` api raises them:
+  `FM6_OPERAND_ATTRIBUTION` (the saved-metric write check) and
+  `MT4_INVALID_INDEX` (the `FunnelMetric` and `RetentionMetric`
+  constructors, which the recorder does not register).
+  `_PHASE2_CODES_WITHOUT_A_TYPES_SEAM` in
+  `conformance/differential/strategies.py` lists them with these
+  reasons. A row fails loudly when its code leaves the registry or gets
+  a `types.*` vector.
+- **Census tests** in `conformance/tests/test_generate_contract.py` move
+  to the new counts above.
+- **Smoke patch S05** moves to the new location of the percentile
+  mapping (see Verification).
+- **`api-index.json`** adds the new client and workspace methods.
+- **Every other extracted bundle** changes only its `source_commit` /
+  `extraction_date` stamp (163 bundle headers plus the manifest).
+
+### Verification
+
+- `uv run pytest conformance/tests -o addopts="" -q` → 643 passed.
+- `uv run pytest conformance/runner -o addopts="" -q` → 4,126 passed
+  (3,709 extracted + 417 authored).
+- `just conformance-stamps` → `stamp check: CLEAN (all stamps reachable
+  from main; stamp moved with content)`.
+- CI drift command (re-extract to `/tmp/re-extract` with the committed
+  stamps and `HYPOTHESIS_PROFILE=ci`, then `conformance.record.diff`) →
+  record run `11,581 passed, 1 skipped, 580 deselected`; `drift check:
+  CLEAN (byte-identical within D8 scope)`.
+- `uv run mypy conformance/`, `ruff check`, `ruff format --check`, and
+  `interrogate` pass.
+- `just conformance-smoke` → control clean, 13 of 14 sabotage patches
+  caught, and S05 an error: `git apply` refused it, because #264 moved
+  the percentile-to-`custom_percentile` mapping from `workspace.py` into
+  `build_metric_measurement` in `_internal/query/metric_builders.py`.
+  `conformance/smoke/patches/S05.patch` now makes the same sabotage at
+  the new location. `just conformance-smoke --skip-control --patches
+  S05` → caught, 4 failing vectors, first
+  `bookmarks/workspace.build_params/test_query_params-testpercentileparams-test_maps_to_custom_percentile`
+  (the same first vector as in the committed `last-run.json`). The
+  committed `last-run.json` is not rewritten, as at earlier re-pins.
+
+After this PR merges, the TypeScript port sets
+`conformance-runner/corpus.config.json` `sourceCommit` to
+`496fc50ccf86100e083709c3e752eccda2e0a45f` and runs `npm run
+sync:corpus`. The port does not have the 0.4.0 types yet, so the new
+`metrics`, `behaviors`, and inline-metric vectors fail there until the
+port catches up.
+
 ## 2026-09-23 re-pin: stamp `6b23b75` → `c7906bc` (PR #249 help conformance + PR #250 mobile analyzer vectors, with #246, #251, #252)
 
 Step 2 of the two-step protocol (README, "Which SHA to stamp") for the

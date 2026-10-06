@@ -505,7 +505,7 @@ class TestPhase2StrategyTable:
     def test_harvest_covers_every_phase2_guard_code_and_api(self) -> None:
         """The corpus harvest closes the R10.9 "every error branch" item.
 
-        One probe per Phase-2 guard code (all 81 per the generated
+        One probe per Phase-2 guard code (all 88 per the generated
         registry artifact) and one per `types.*` api (all 44 per the
         api-index) — the completeness the checked-in coverage artifact
         records.
@@ -523,6 +523,81 @@ class TestPhase2StrategyTable:
         types_apis = sorted(api for api in REGISTRY_BY_API if api.startswith("types."))
         assert sorted(report["apis"]) == types_apis
         assert len(types_apis) == 44
+
+    def test_exempt_codes_are_registry_codes_outside_the_harvest(self) -> None:
+        """Each exempt code is a registered Phase-2-family code with no probe.
+
+        Raises:
+            AssertionError: If an exempt row names an unknown code, a code
+                outside the Phase-2 families, or a code the harvest covers.
+        """
+        from conformance.differential import strategies
+
+        artifact = Path(strategies.__file__).resolve().parents[1] / "contract"
+        registry = json.loads(
+            (artifact / "error-codes.json").read_text(encoding="utf-8")
+        )["coded_guard_registry"]
+        exempt = set(strategies._PHASE2_CODES_WITHOUT_A_TYPES_SEAM)
+        assert exempt == {"FM6_OPERAND_ATTRIBUTION", "MT4_INVALID_INDEX"}
+        assert exempt <= set(registry)
+        assert all(
+            strategies._code_prefix(code) in strategies._PHASE2_GUARD_PREFIXES
+            for code in exempt
+        )
+        assert exempt.isdisjoint(strategies.phase2_guard_codes())
+        assert exempt.isdisjoint(
+            edge.guard_code for edge in strategies.harvested_edges()
+        )
+
+    def test_exempt_code_missing_from_registry_is_stale(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An exempt row whose code left the registry fails loudly.
+
+        Args:
+            monkeypatch: pytest fixture that swaps the exemption table.
+
+        Raises:
+            AssertionError: If the stale row is accepted.
+        """
+        from conformance.differential import strategies
+
+        monkeypatch.setattr(
+            strategies,
+            "_PHASE2_CODES_WITHOUT_A_TYPES_SEAM",
+            {"MT99_NOT_A_CODE": "test row"},
+        )
+        with pytest.raises(ValueError, match="MT99_NOT_A_CODE"):
+            strategies.phase2_guard_codes.__wrapped__()
+
+    def test_exempt_code_with_a_types_vector_is_stale(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An exempt row whose code a ``types.*`` vector carries fails loudly.
+
+        Args:
+            monkeypatch: pytest fixture that swaps the exemption table.
+
+        Raises:
+            AssertionError: If the stale row is accepted.
+        """
+        from conformance.differential import strategies
+
+        covered = next(
+            edge.guard_code
+            for edge in strategies.harvested_edges()
+            if edge.guard_code is not None
+        )
+        monkeypatch.setattr(
+            strategies, "_PHASE2_CODES_WITHOUT_A_TYPES_SEAM", {covered: "test row"}
+        )
+        monkeypatch.setattr(
+            strategies,
+            "phase2_guard_codes",
+            strategies.phase2_guard_codes.__wrapped__,
+        )
+        with pytest.raises(ValueError, match=covered):
+            strategies.harvested_edges.__wrapped__()
 
     def test_checked_in_coverage_artifact_is_in_sync(self) -> None:
         """`phase2-edge-coverage.json` matches a fresh report build.
