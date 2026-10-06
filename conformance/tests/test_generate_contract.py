@@ -153,8 +153,8 @@ class TestErrorCodesArtifact:
         twins = error_codes["coded_guard_twin_codes"]
         assert registry == sorted(exceptions_module.CODED_GUARD_REGISTRY)
         assert twins == sorted(exceptions_module.CODED_GUARD_TWIN_CODES)
-        assert len(registry) == 126
-        assert len(twins) == 9
+        assert len(registry) == 164
+        assert len(twins) == 14
 
     def test_registry_keeps_all_code_families(
         self, error_codes: dict[str, Any]
@@ -194,10 +194,12 @@ class TestLiteralAliasesArtifact:
     """Shape and content locks for ``literal-aliases.json`` (design C2)."""
 
     def test_alias_and_enum_census(self, literal_aliases: dict[str, Any]) -> None:
-        """39 distinct Literal aliases and 8 Enum classes are captured.
+        """41 distinct Literal aliases and 8 Enum classes are captured.
 
-        37 at the TS-port pin, plus ``ReportLinkType`` (045-report-links) and
-        ``HelpDomainReason`` from the built-in help feature.
+        37 at the TS-port pin, plus ``ReportLinkType`` (045-report-links),
+        ``HelpDomainReason`` from the built-in help feature, and
+        ``WarehouseAggregation`` and ``WarehouseSyncInterval`` from saved
+        warehouse metrics (0.4.0).
 
         Args:
             literal_aliases: The artifact body.
@@ -205,7 +207,7 @@ class TestLiteralAliasesArtifact:
         Raises:
             AssertionError: If the census drifts.
         """
-        assert len(literal_aliases["literal_aliases"]) == 39
+        assert len(literal_aliases["literal_aliases"]) == 41
         assert len(literal_aliases["enums"]) == 8
 
     def test_alias_members_spot_checks(self, literal_aliases: dict[str, Any]) -> None:
@@ -326,7 +328,11 @@ class TestTagUniverseArtifact:
         assert collect_tag_counts(DEFAULT_VECTORS_DIR) == independent
 
     def test_ground_truth_census(self, tag_universe: dict[str, Any]) -> None:
-        """85 observed tags, 80 rich; ``date`` registered-but-unexercised.
+        """106 observed tags, 101 rich; ``date`` registered-but-unexercised.
+
+        85 and 80 before 0.4.0, which adds 21 rich tags: the saved metric
+        and saved behavior models and params, the metric and behavior
+        definition types, the reference types, and ``CohortCreator``.
 
         Args:
             tag_universe: The artifact body.
@@ -337,8 +343,8 @@ class TestTagUniverseArtifact:
         """
         tags = tag_universe["tags"]
         observed = [tag for tag, count in tags.items() if count > 0]
-        assert len(observed) == 85
-        assert len(tag_universe["rich_tags"]) == 80
+        assert len(observed) == 106
+        assert len(tag_universe["rich_tags"]) == 101
         assert sorted(tag_universe["built_in_tags"]) == sorted(BUILTIN_TAGS)
         assert tags["date"] == 0
         assert tags["datetime"] > 0
@@ -421,9 +427,10 @@ class TestModelCoverageArtifact:
     """Locks for ``model-coverage.json`` (design C5 item 5)."""
 
     def test_covers_all_exported_models(self, model_coverage: dict[str, Any]) -> None:
-        """All 126 exported Pydantic models are accounted for.
+        """All 135 exported Pydantic models are accounted for.
 
-        125 at the TS-port pin plus ``BookmarkUrl`` (045-report-links).
+        125 at the TS-port pin, plus ``BookmarkUrl`` (045-report-links), plus
+        9 saved metric and saved behavior models and params (0.4.0).
 
         Args:
             model_coverage: The artifact body.
@@ -431,8 +438,8 @@ class TestModelCoverageArtifact:
         Raises:
             AssertionError: If the census or row shape drifts.
         """
-        assert model_coverage["model_count"] == 126
-        assert len(model_coverage["models"]) == 126
+        assert model_coverage["model_count"] == 135
+        assert len(model_coverage["models"]) == 135
         for name, row in model_coverage["models"].items():
             assert row["status"] in (
                 "corpus_tag",
@@ -531,7 +538,7 @@ class TestCoverageOverrides:
         """
         overrides = load_coverage_overrides()
         assert overrides["deferrals"] == {}
-        assert len(overrides["authored_fixtures"]) == 32
+        assert len(overrides["authored_fixtures"]) == 31
         for name, path in overrides["authored_fixtures"].items():
             assert path.endswith(".test.ts"), name
 
@@ -661,7 +668,7 @@ class TestHelpRegistryArtifact:
         assert exports["Account"] == "alias"
         assert exports["accounts"] == "module"
         members = dict(help_registry["workspace_members"])
-        assert sum(kind == "method" for kind in members.values()) == 209
+        assert sum(kind == "method" for kind in members.values()) == 222
         assert (
             sorted(n for n, k in members.items() if k == "property")
             == (help_registry["workspace_properties"])
@@ -721,7 +728,7 @@ class TestHelpRegistryArtifact:
         assert all(url.startswith(base) for url in urls.values())
 
     def test_workspace_domains_census(self, help_registry: dict[str, Any]) -> None:
-        """32 ordered domains list 209 methods, each exactly once.
+        """34 ordered domains list 222 methods, each exactly once.
 
         Args:
             help_registry: The artifact body.
@@ -732,9 +739,9 @@ class TestHelpRegistryArtifact:
         from mixpanel_headless._internal.help.registry import WORKSPACE_DOMAINS
 
         domains = help_registry["workspace_domains"]
-        assert len(domains) == 32
+        assert len(domains) == 34
         methods = [name for _title, names in domains for name in names]
-        assert len(methods) == 209
+        assert len(methods) == 222
         assert len(set(methods)) == len(methods)
         assert domains == [[title, list(names)] for title, names in WORKSPACE_DOMAINS]
         assert domains[0][0] == "session and switching"
@@ -769,7 +776,7 @@ class TestHelpRegistryArtifact:
         """
         docs = Path(__file__).resolve().parents[2] / "docs"
         hints = help_registry["reference_hints"]
-        assert len(hints) == 24
+        assert len(hints) == 26
         rows = [help_registry["workspace_hint"], *hints]
         for row in rows:
             assert not row["path"].startswith("http"), row
