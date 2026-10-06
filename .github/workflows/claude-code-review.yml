@@ -51,8 +51,8 @@ jobs:
             - REVIEW.md: what matters most, repository invariants, the evidence
               a finding needs, severity, and what not to comment on.
             - Each file in .github/instructions/ whose `applyTo` globs match a
-              changed file. Each one names the folder guide (a CLAUDE.md in
-              that folder) to read first.
+              changed file. If the file names a folder guide (a CLAUDE.md in
+              that folder), read the guide first. Not every area has one.
 
             Follow REVIEW.md for priorities, evidence, severity, and exclusions.
             Never run tests under tests/live/ or with `-m live`.
