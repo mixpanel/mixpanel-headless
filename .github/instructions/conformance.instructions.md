@@ -6,10 +6,14 @@ applyTo: "conformance/**"
 The conformance corpus records the behavior of `mixpanel_headless` for other
 language ports. It is maintainer tooling and is not part of `just check`.
 
-- Recorded vectors (`conformance/vectors/`), golden JSON files
-  (`conformance/goldens/`), differential JSON files, and
-  `conformance/contract/` are generated. Library PRs do not edit them. The
-  corpus is recorded again once per release.
+- Library PRs do not edit `conformance/vectors/` or
+  `conformance/contract/`. A maintainer records them again once per
+  release, in a conformance-only re-pin PR.
+- The rrweb golden files (`conformance/goldens/rrweb/`) follow the
+  analyzer. A PR that changes analyzer behavior regenerates them with
+  `conformance/goldens/rrweb/generate.py` in the same PR.
+- The differential JSON files under `conformance/differential/` are
+  generated. Do not edit them by hand.
 - Review the hand-written tooling (runner, record, contract,
   referee_bookmark_parser, smoke, tests, oracle_py, the differential
   harness, and `goldens/rrweb/generate.py`) as normal code.

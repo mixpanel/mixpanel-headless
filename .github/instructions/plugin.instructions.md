@@ -12,6 +12,7 @@ applyTo: "mixpanel-plugin/**"
   environment, never into a system or user Python.
 - Code examples in skill Markdown files catch `mp.MixpanelHeadlessError`
   or a specific subclass, not `Exception`. Scripts follow the library rule:
-  a broad catch needs a `# noqa: BLE001` comment with the reason.
+  a broad catch that swallows the error needs a `# noqa: BLE001` comment
+  with the reason.
 - Shell snippets keep stderr visible. Do not redirect it to `/dev/null`.
 - Feature PRs do not change the plugin version.
