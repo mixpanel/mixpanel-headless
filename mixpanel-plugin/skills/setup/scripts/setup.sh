@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create or reuse the plugin's own virtual environment, install
-# mixpanel_headless (0.3.0 or newer) and the analysis stack into it, then
+# mixpanel_headless (0.4.0 or newer) and the analysis stack into it, then
 # verify the imports, the built-in API reference (mp help), and credentials.
 #
 # Usage: setup.sh <venv-path>
@@ -111,10 +111,11 @@ python_ok "$venv_python" || { echo "✗ $venv_python does not run Python 3.10+."
 read -r _ venv_minor <<<"$(python_version "$venv_python")"
 echo "✓ Python $("$venv_python" -c 'import platform; print(platform.python_version())')"
 
-# The floor matters: `mp help` (the built-in API reference the skills rely
-# on) first shipped in 0.3.0, and a bare package name never upgrades an
-# older install.
-MIXPANEL_HEADLESS_PKG="mixpanel-headless>=0.3.0"
+# The floor matters: the skills look up every API name with `mp help`
+# (first shipped in 0.3.0), and they teach saved metrics, saved behaviors,
+# and metric references (first shipped in 0.4.0). A bare package name never
+# upgrades an older install.
+MIXPANEL_HEADLESS_PKG="mixpanel-headless>=0.4.0"
 DEPS=(pandas numpy matplotlib seaborn 'networkx>=3.0' 'anytree>=2.8.0' scipy)
 
 # pyarrow is only needed on Python 3.11+ (for pandas 3.x Arrow-backed dtypes)
@@ -181,11 +182,12 @@ else
   echo "✓ mixpanel-headless OK $new_version"
 fi
 
-# The skills look up every API name with `mp help`; confirm it runs offline.
-if "$venv_python" -m mixpanel_headless help -f json Workspace.query >/dev/null; then
+# The skills look up every API name with `mp help`; confirm that it runs
+# offline and knows the saved-metric methods, which first shipped in 0.4.0.
+if "$venv_python" -m mixpanel_headless help -f json Workspace.list_metrics >/dev/null; then
   echo "✓ built-in help (mp help)"
 else
-  echo "✗ built-in help (mp help) failed — mixpanel-headless $new_version may be older than 0.3.0"
+  echo "✗ built-in help (mp help) failed — mixpanel-headless $new_version may be older than 0.4.0"
   exit 1
 fi
 

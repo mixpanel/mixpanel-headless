@@ -32,7 +32,7 @@ This installs the `mixpanel-headless` plugin, which teaches Claude how to be a M
 /mixpanel-headless:setup
 ```
 
-This creates a private Python environment for the plugin at `~/.claude/plugins/data/mixpanel-headless-<source>/venv` (with `uv` when available, else `python3 -m venv`). It installs the `mixpanel_headless` package (version 0.3.0 or later) and all analysis dependencies (pandas, matplotlib, networkx, etc.) into that environment only, never into your system or user Python. If the environment already exists, setup upgrades it, because the skills use the built-in reference (`mp help`) that first shipped in 0.3.0. The environment survives plugin updates. It takes about a minute.
+This creates a private Python environment for the plugin at `~/.claude/plugins/data/mixpanel-headless-<source>/venv` (with `uv` when available, else `python3 -m venv`). It installs the `mixpanel_headless` package (version 0.4.0 or later) and all analysis dependencies (pandas, matplotlib, networkx, etc.) into that environment only, never into your system or user Python. If the environment already exists, setup upgrades it, because the skills use the built-in reference (`mp help`) that first shipped in 0.3.0 and the saved-metric methods that first shipped in 0.4.0. The environment survives plugin updates. It takes about a minute.
 
 At the end, setup prints the environment path (`Plugin environment: ...`) and the command to run your own scripts with it. You can also install `mixpanel-headless` in your own project.
 

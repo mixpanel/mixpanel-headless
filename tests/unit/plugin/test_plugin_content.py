@@ -17,7 +17,7 @@ reason) in one assertion message.
 | Links | A relative link is broken, crosses skills, or a reference is orphaned. |
 | Frontmatter | Skill frontmatter breaks the name, length, or key rules. |
 | Forbidden text | Shipped text carries removed names, Cowork, plan codes, or all-caps rules. |
-| Version floor | ``setup.sh`` pins a floor below the version that added ``mp help``. |
+| Version floor | ``setup.sh`` pins a floor below the version the skills need, or shipped text names another minimum version. |
 | Plugin Python environment | A skill grants or runs the system Python or a bare ``mp``, or a ``!`` line uses a shell variable. |
 
 Scanners live in ``_content.py`` and have their own tests in
@@ -53,11 +53,16 @@ from tests.unit.plugin._content import (
     shipped_text_files,
     skill_dirs,
     system_python_violations,
+    version_floor_violations,
     workspace_call_violations,
 )
 
-HELP_FLOOR = (0, 3, 0)
-"""The ``mixpanel_headless`` version that introduced ``mp help``."""
+LIBRARY_FLOOR = (0, 4, 0)
+"""The ``mixpanel_headless`` version that the skills need.
+
+``mp help`` shipped in 0.3.0. Saved metrics, saved behaviors, and metric
+references, which the ``mixpanelyst`` skill teaches, shipped in 0.4.0.
+"""
 
 ANY_SKILL_MAX_LINES = 500
 """Line budget for any ``SKILL.md``."""
@@ -351,20 +356,36 @@ class TestForbiddenText:
 
 
 class TestVersionFloor:
-    """``setup.sh`` installs a library that has ``mp help``."""
+    """``setup.sh`` installs the library version that the skills need."""
 
     def test_setup_floor(self) -> None:
-        """The ``mixpanel-headless>=`` floor in ``setup.sh`` is at least 0.3.0."""
+        """The ``mixpanel-headless>=`` floor in ``setup.sh`` is at least 0.4.0."""
         script = SKILLS_ROOT / "setup" / "scripts" / "setup.sh"
         floor = parse_version_floor(read(script))
-        expected = ".".join(map(str, HELP_FLOOR))
+        expected = ".".join(map(str, LIBRARY_FLOOR))
         assert floor is not None, (
             f"Version floor: {rel(script)} does not pin mixpanel-headless>={expected}"
         )
-        assert floor >= HELP_FLOOR, (
+        assert floor >= LIBRARY_FLOOR, (
             f"Version floor: {rel(script)} pins "
             f">={'.'.join(map(str, floor))}, needs >={expected}"
         )
+
+    def test_version_mentions_match_setup_floor(self) -> None:
+        """Every minimum-version phrase in shipped text names the setup floor.
+
+        Phrases such as "0.4.0 or later", "older than 0.4.0", and "the 0.4.0
+        floor" tell users and agents which library the skills need, so they
+        must agree with the pin in ``setup.sh``.
+        """
+        floor = parse_version_floor(
+            read(SKILLS_ROOT / "setup" / "scripts" / "setup.sh")
+        )
+        assert floor is not None
+        violations: list[str] = []
+        for path in shipped_text_files():
+            violations.extend(version_floor_violations(path, read(path), floor))
+        assert not violations, report("Version mentions", violations)
 
 
 def _skill_markdown() -> list[Path]:

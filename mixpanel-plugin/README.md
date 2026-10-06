@@ -24,7 +24,7 @@ The plugin has five skills: analysis, session replay, dashboards, authentication
 | `session-replay` | Automatic on session replay questions | Find, fetch, and analyze session recordings for web and mobile (rage clicks, rage taps, dead clicks, errors, action timelines) |
 | `dashboard-expert` | Automatic on dashboard requests | Read, explain, build, and change dashboards, text cards, and layouts |
 | `auth` | `/mixpanel-headless:auth` | Show the session; add, log in, and switch accounts, projects, workspaces, and targets |
-| `setup` | `/mixpanel-headless:setup` | Create or upgrade the plugin's private Python environment with `mixpanel_headless` (0.3.0 or later), verify it, and check for credentials |
+| `setup` | `/mixpanel-headless:setup` | Create or upgrade the plugin's private Python environment with `mixpanel_headless` (0.4.0 or later), verify it, and check for credentials |
 
 `setup` runs only when you call it. The other skills also load when your request matches their description.
 
@@ -100,11 +100,11 @@ From GitHub:
 /plugin install mixpanel-headless@mixpanel-headless-marketplace
 ```
 
-Then run `/mixpanel-headless:setup`. The skills need `mixpanel_headless` 0.3.0 or later, because `mp help` first shipped in 0.3.0.
+Then run `/mixpanel-headless:setup`. The skills need `mixpanel_headless` 0.4.0 or later, because they look up the API with `mp help`, which first shipped in 0.3.0, and teach saved metrics and saved behaviors, which first shipped in 0.4.0.
 
 ### The plugin's Python environment
 
-Setup creates a private Python environment at `~/.claude/plugins/data/mixpanel-headless-<source>/venv`. It uses `uv venv` when uv is installed, and `python3 -m venv` otherwise. With uv, a Python 3.10 or later on your `PATH` is optional, because uv can supply one. Setup installs `mixpanel-headless` 0.3.0 or later and the analysis packages into that environment only. It never installs into your system or user Python. Run setup again at any time; it reuses the environment and upgrades the packages.
+Setup creates a private Python environment at `~/.claude/plugins/data/mixpanel-headless-<source>/venv`. It uses `uv venv` when uv is installed, and `python3 -m venv` otherwise. With uv, a Python 3.10 or later on your `PATH` is optional, because uv can supply one. Setup installs `mixpanel-headless` 0.4.0 or later and the analysis packages into that environment only. It never installs into your system or user Python. Run setup again at any time; it reuses the environment and upgrades the packages.
 
 - The skills run that environment's `python` and `mp`, not the ones on your `PATH`.
 - The environment survives plugin updates, because its folder name has no version.

@@ -10,7 +10,7 @@ Answer questions about Mixpanel data. Write and run Python that uses the `mixpan
 
 Installed in the plugin environment: !`${CLAUDE_PLUGIN_DATA}/venv/bin/python -m mixpanel_headless --version 2>&1 || echo "plugin environment not set up; run /mixpanel-headless:setup"`
 
-!`${CLAUDE_PLUGIN_DATA}/venv/bin/mp help 2>/dev/null | grep -A 30 "^Workspace domains" || echo "Domain list unavailable (needs mixpanel_headless 0.3.0 or later); run /mixpanel-headless:setup"`
+!`${CLAUDE_PLUGIN_DATA}/venv/bin/mp help 2>/dev/null | grep -A 30 "^Workspace domains" || echo "Domain list unavailable (needs mixpanel_headless 0.4.0 or later); run /mixpanel-headless:setup"`
 
 ## Run code in the plugin environment
 
@@ -18,10 +18,10 @@ The plugin keeps its own Python environment. The "Installed" line above already 
 
 Run Python with `${CLAUDE_PLUGIN_DATA}/venv/bin/python`: add `-c "..."` for a quick look, or a script path for multi-step work. When the plugin environment exists, `mp` in this skill means `${CLAUDE_PLUGIN_DATA}/venv/bin/mp`. Run it with that full path. The examples keep the short form `mp help <query>`.
 
-If the "Installed" line says that the environment is not set up, or shows a version older than 0.3.0:
+If the "Installed" line says that the environment is not set up, or shows a version older than 0.4.0:
 
 1. Run the bare command `mp --version` on its own (the `mp` on `PATH`, not the plugin path).
-2. If it shows 0.3.0 or later, use the bare `mp help <query>` for look-ups. The look-up loop below still works.
+2. If it shows 0.4.0 or later, use the bare `mp help <query>` for look-ups. The look-up loop below still works.
 3. Ask the user to run `/mixpanel-headless:setup` before you run any analysis code. Do not run analysis code with a Python found on `PATH`, because its library version is unknown.
 
 When the user's own project already has mixpanel_headless (for example, a uv project), `uv run python` also works.
@@ -63,7 +63,7 @@ Look up each name once per session and reuse the answer. Add `-f json` only when
 
 A "Tip" line at the end of `mp help` output points to a hosted guide. Fetch it with WebFetch when you need a tutorial rather than a signature.
 
-If `mp help` reports `No such command`, the library in the plugin environment is older than 0.3.0, so ask the user to run `/mixpanel-headless:setup`.
+If `mp help` reports `No such command`, the library in the plugin environment predates `mp help` (first shipped in 0.3.0), so ask the user to run `/mixpanel-headless:setup`.
 
 ## Choose the parameters on purpose
 
