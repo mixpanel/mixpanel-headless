@@ -10,8 +10,10 @@ Other instruction files:
 - `REVIEW.md`: what matters in a review of this repository, the evidence a
   finding needs, and what not to comment on.
 - `.github/instructions/*.instructions.md`: notes for one area of the tree.
-  Each file names the folder guide (a `CLAUDE.md` in that folder) to read
-  first.
+  If a file names a folder guide (a `CLAUDE.md` in that folder), read the
+  guide first. Not every area has one.
+- `.github/skills/code-review/SKILL.md`: the review procedure, including how
+  to check a finding before you post it.
 
 ## Environment
 
