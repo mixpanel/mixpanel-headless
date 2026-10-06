@@ -46,21 +46,16 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
-            - Type safety and annotation completeness
-            - Documentation (docstring sections per the "Documentation (STRICT)" rules in CLAUDE.md, comments where non-obvious)
-            - Architecture compliance (layer boundaries, no _internal leakage)
-            - Error handling patterns (using proper exception hierarchy)
-            - Consistency with existing code style and patterns
+            Review this pull request. Before you review, read:
+            - CLAUDE.md: code standards, architecture, docstrings, TDD.
+            - REVIEW.md: what matters most, repository invariants, the evidence
+              a finding needs, severity, and what not to comment on.
+            - Each file in .github/instructions/ whose `applyTo` globs match a
+              changed file. Each one names the folder guide (a CLAUDE.md in
+              that folder) to read first.
 
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
-
-            Do not flag what ruff, mypy --strict, or interrogate (docstring presence) already enforce.
+            Follow REVIEW.md for priorities, evidence, severity, and exclusions.
+            Never run tests under tests/live/ or with `-m live`.
 
             Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
 
