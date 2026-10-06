@@ -405,7 +405,7 @@ The plugin ships five skills:
 
 | Skill | Trigger | What It Does |
 |-------|---------|--------------|
-| **mixpanelyst** | Auto-loads on analytics questions | Analysis workflow, query-engine choice, gotchas, and a live `mp help` lookup for method signatures, types, and allowed values. |
+| **mixpanelyst** | Auto-loads on analytics questions | Analysis workflow, query-engine choice, the team's saved metrics first, gotchas, and a live `mp help` lookup for method signatures, types, and allowed values. |
 | **session-replay** | Auto-loads on session replay questions | Finds, fetches, and analyzes session recordings for web and mobile (rage clicks, rage taps, dead clicks, errors, action timelines). |
 | **dashboard-expert** | Auto-loads on dashboard questions | Four-mode workflow (Analyze, Build, Modify, Explain) for Mixpanel dashboards, with 9 design templates, chart-type selection, and layout reference. |
 | **auth** | `/mixpanel-headless:auth` | Guided wrapper around `mp account / project / workspace / target / session` for managing credentials without leaving the conversation. |

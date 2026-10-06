@@ -1,6 +1,6 @@
 ---
 name: mixpanelyst
-description: Analyzes Mixpanel data with Python, the mixpanel_headless library, and pandas. Use when the user asks about their Mixpanel data, such as event trends, DAU/WAU/MAU, funnels, retention and churn, user paths, user profiles, cohorts, a user's tracked event history (activity feed), segment comparisons, revenue, feature adoption, or experiment results. Also use to explore a project's events and properties, build a custom property or cohort, share a query as a report link, read or write business context, or manage entities such as cohorts, feature flags, experiments, alerts, annotations, webhooks, Lexicon definitions, and other governance objects, or when code runs mixpanel_headless queries or `mp query` / `mp inspect`. Do not use for adding tracking to an app's source code, for what a specific user did on screen (use session-replay), for building or editing dashboards (use dashboard-expert), for logging in, credentials, or switching accounts (use auth), or for installing the library (run /mixpanel-headless:setup).
+description: Analyzes Mixpanel data with Python, mixpanel_headless, and pandas. Use when the user asks about their Mixpanel data, such as event trends, DAU/WAU/MAU, funnels, retention and churn, user paths, user profiles, cohorts, a user's event history (activity feed), segment comparisons, revenue, feature adoption, or experiment results. Also use to explore a project's events and properties, use or manage saved metrics and behaviors, build a custom property or cohort, share a query as a report link, read or write business context, or manage entities such as feature flags, experiments, alerts, annotations, webhooks, Lexicon, and other governance objects, or when code runs mixpanel_headless or `mp query` / `mp inspect`. Do not use for adding tracking to an app's source code, for what a specific user did on screen (use session-replay), for building or editing dashboards (use dashboard-expert), for logging in, credentials, or switching accounts (use auth), or for installing the library (run /mixpanel-headless:setup).
 allowed-tools: Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python *) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/mp *) Bash(mp --version) Bash(mp help) Bash(mp help *) Bash(uv run *) Read Write Edit WebFetch(domain:mixpanel.github.io)
 ---
 
@@ -38,15 +38,18 @@ When the user's own project already has mixpanel_headless (for example, a uv pro
 | What paths do users take? | `ws.query_flow()` |
 | Who are the users, and how many match? | `ws.query_user()` |
 
+Saved metrics and saved behaviors are the team's own definitions of a number or a behavior. `ws.list_metrics()` and `ws.list_behaviors()` find them, and a query takes them by reference in place of an inline metric or funnel.
+
 Every result has `.df` (a pandas DataFrame) and `.params` (the report definition that Mixpanel ran). A flow result also has `.graph` (a networkx graph). Each engine has a `build_*_params` twin that returns params without a network call, and a `run_*_params` twin that runs edited params. Beyond queries, `ws` also covers discovery, streaming, entity management (dashboards, reports, cohorts, flags, experiments, Lexicon, and more), business context, and session replay. The domain list above names every area.
 
 ## Workflow
 
-1. **Ground in the schema.** Confirm that each event carries each property that you plan to filter or break down. Reason: a filter on a property that the event does not carry returns zeros, not an error. When the question names one or two known events, use `ws.properties("<event>")`. For an unfamiliar project, run `ws.schema_graph(include_density=True)` once, then `schema.properties_for_event("<event>")`. Use `ws.events()` and `ws.property_values("<property>", event="<event>")` to confirm exact names and values.
-2. **Look up the API.** Use the look-up loop below for each method or type that you did not look up in this session.
-3. **Write and run.** Use `-c "..."` with the plugin interpreter for one quick look. Write a `.py` file for multi-step work and run it with the same interpreter, so that you can edit and run it again.
-4. **Check before you present.** Look at the row count and the date range. Treat an empty or all-zero result as a question, not an answer. Compare the magnitude with a simple total (`ws.query("<event>", mode="total")`). Look for gaps in a time series.
-5. **Share when asked.** When the user wants to share or open the result in Mixpanel, pass the result to `ws.create_report_link(result, name="...")` and give them `link.url`. Each call stores a new record on the server, so do not create links that nobody asked for.
+1. **Use the team's definitions.** When the question names a business number (activation, conversion, revenue, active users), look for a saved metric first, and query it by reference. Reason: an inline rebuild can differ from the number that the team sees in Mixpanel. Read [saved-metrics.md](references/saved-metrics.md).
+2. **Ground in the schema.** Confirm that each event carries each property that you plan to filter or break down. Reason: a filter on a property that the event does not carry returns zeros, not an error. When the question names one or two known events, use `ws.properties("<event>")`. For an unfamiliar project, run `ws.schema_graph(include_density=True)` once, then `schema.properties_for_event("<event>")`. Use `ws.events()` and `ws.property_values("<property>", event="<event>")` to confirm exact names and values.
+3. **Look up the API.** Use the look-up loop below for each method or type that you did not look up in this session.
+4. **Write and run.** Use `-c "..."` with the plugin interpreter for one quick look. Write a `.py` file for multi-step work and run it with the same interpreter, so that you can edit and run it again.
+5. **Check before you present.** Look at the row count and the date range. Treat an empty or all-zero result as a question, not an answer. Compare the magnitude with a simple total (`ws.query("<event>", mode="total")`). Look for gaps in a time series.
+6. **Share when asked.** When the user wants to share or open the result in Mixpanel, pass the result to `ws.create_report_link(result, name="...")` and give them `link.url`. Each call stores a new record on the server, so do not create links that nobody asked for.
 
 ## The look-up loop: check the API before you write code
 
@@ -87,6 +90,8 @@ Each of these returns a plausible but wrong answer, or fails in a way that looks
 - **`mode="total"` returns one value for the whole range.** A change to `unit` does not change a plain count in this mode. Use `mode="timeseries"` for a trend.
 - **`rolling` reduces the number of points.** A 30-day rolling window over 59 days gives about 30 points, not 59, because the early periods have no full window.
 - **A `FrequencyFilter` counts per `unit` bucket, not over the whole range.** With the default `unit="day"`, "at least 3 times" means 3 times in one day. An empty series can be the correct answer. Choose the `unit` that matches the period that the user means.
+- **A custom event's display name gives zeros, not an error.** `ws.query("My Custom Event")` looks for an event with that name, and none exists. Use `CustomEventRef(<id>)` in `ws.query()`, and the name `"$custom_event:<id>"` as a funnel step or a retention event. The id is the `custom_event_id` of an entry of `ws.list_custom_events()`.
+- **A funnel step and a retention event take one event each.** For "did A or B" as one step, use a custom event. In `ws.query()`, a `Metric` with a list of events counts them as one series: with `math="unique"`, a user who did any of them counts once.
 - **A missing property gives zeros, not an error.** A filter or breakdown on a property that the event does not carry returns an empty or zero result. Check the schema first (workflow step 1).
 - **In event queries, a filter on a user profile property needs `resource_type="people"`.** The default is `"events"`, which looks for an event property of the same name and usually matches nothing. `ws.query_user()` filters are profile filters already.
 - **`ws.query_user()` returns a count by default.** Its default `mode` is `"aggregate"` and its default `limit` is 1. For profile rows, pass `mode="profiles"` and a `limit`.
@@ -105,7 +110,7 @@ Read a reference file only when its condition applies. Each file holds judgment 
 
 | Read | When |
 | --- | --- |
-| [insights.md](references/insights.md) | Before you write a `ws.query()` that uses non-default math, `per_user`, a property sum, formulas, or rolling windows |
+| [insights.md](references/insights.md) | Before you write a `ws.query()` that uses non-default math, `per_user`, a property sum, formulas, rolling windows, or a metric over several events |
 | [funnels.md](references/funnels.md) | Before you write a funnel query |
 | [retention.md](references/retention.md) | Before you write a retention query |
 | [flows.md](references/flows.md) | Before you write a flow query |
@@ -114,7 +119,8 @@ Read a reference file only when its condition applies. Each file holds judgment 
 | [segmentation.md](references/segmentation.md) | When a breakdown needs derived values, a behavioral population (inline cohort), or a frequency threshold |
 | [custom-property-formulas.md](references/custom-property-formulas.md) | Before you write any formula for a custom property (inline or saved) |
 | [business-context.md](references/business-context.md) | When the user asks to read, write, audit, or seed business context |
-| [entities.md](references/entities.md) | Before you create, update, or delete a Mixpanel entity (reports, cohorts, flags, experiments, alerts, Lexicon, and so on; for dashboards, use the `dashboard-expert` skill) |
+| [saved-metrics.md](references/saved-metrics.md) | When the question names a business number that the team may define (activation, conversion, revenue, active users), or names a saved metric or a saved behavior |
+| [entities.md](references/entities.md) | Before you create, update, or delete a Mixpanel entity (reports, cohorts, saved metrics, saved behaviors, flags, experiments, alerts, Lexicon, and so on; for dashboards, use the `dashboard-expert` skill) |
 | The `session-replay` skill | When the user asks what a specific user did on screen, or about rage clicks, dead clicks, or recordings |
 | The `dashboard-expert` skill | When the user asks to build, change, or explain a dashboard |
 | The `auth` skill | When `mp.Workspace()` raises `ConfigError` or `AuthenticationError`, or reports no account or no project |
@@ -137,16 +143,21 @@ from mixpanel_headless import Filter
 
 ws = mp.Workspace()
 
-# 1. Ground in the schema: confirm that each step event carries "platform".
+# 1. Use the team's definitions: look for a saved signup-to-purchase metric.
+for m in ws.list_metrics(name_contains="purchase", viewable_only=True):
+    print(m.id, m.verified, m.name, m.behavior_type)
+# In this project none is a signup-to-purchase funnel, so build it inline.
+
+# 2. Ground in the schema: confirm that each step event carries "platform".
 for event in ["Sign Up", "Purchase"]:
     print(event, "platform" in ws.properties(event))
 print(ws.property_values("platform", event="Sign Up"))  # exact value, e.g. "iOS"
 
-# 2. Look-ups done before this code:
+# 3. Look-ups done before this code:
 #    mp help Workspace.query_funnel
 #    mp help Filter.equals
 
-# 3. Run the funnel. A one-day window matches "within a day".
+# 4. Run the funnel. A one-day window matches "within a day".
 result = ws.query_funnel(
     ["Sign Up", "Purchase"],
     conversion_window=1,
@@ -157,7 +168,7 @@ result = ws.query_funnel(
 print(result.df)
 print(f"Overall conversion: {result.overall_conversion_rate:.1%}")
 
-# 4. Check: compare with a wider window before you present.
+# 5. Check: compare with a wider window before you present.
 wide = ws.query_funnel(
     ["Sign Up", "Purchase"],
     conversion_window=7,
@@ -167,9 +178,9 @@ wide = ws.query_funnel(
 )
 print(f"7-day window: {wide.overall_conversion_rate:.1%}")
 
-# 5. The user asked for a link, so share the query as a report link.
+# 6. The user asked for a link, so share the query as a report link.
 link = ws.create_report_link(result, name="iOS signup to purchase, 1-day window")
 print(link.url)
 ```
 
-Report the one-day rate as the answer. Mention the 7-day rate as context, and give the user the link.
+Report the one-day rate as the answer. Mention the 7-day rate as context, say that the project has no saved metric for this conversion, and give the user the link.

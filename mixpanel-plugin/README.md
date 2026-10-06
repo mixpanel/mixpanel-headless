@@ -20,7 +20,7 @@ The plugin has five skills: analysis, session replay, dashboards, authentication
 
 | Skill | Invocation | Use |
 |-------|------------|-----|
-| `mixpanelyst` | Automatic on analytics questions | Insights, funnels, retention, flows, and user queries; schema exploration; entity management; business context |
+| `mixpanelyst` | Automatic on analytics questions | Insights, funnels, retention, flows, and user queries; the team's saved metrics and saved behaviors; schema exploration; entity management; business context |
 | `session-replay` | Automatic on session replay questions | Find, fetch, and analyze session recordings for web and mobile (rage clicks, rage taps, dead clicks, errors, action timelines) |
 | `dashboard-expert` | Automatic on dashboard requests | Read, explain, build, and change dashboards, text cards, and layouts |
 | `auth` | `/mixpanel-headless:auth` | Show the session; add, log in, and switch accounts, projects, workspaces, and targets |
@@ -72,12 +72,13 @@ Each result has a `.df` property that returns a pandas DataFrame. Run `mp help <
 The library also creates, reads, updates, and deletes Mixpanel entities through the App API:
 
 - Dashboards, reports (bookmarks), and cohorts
+- Saved metrics and saved behaviors: the team's definitions of a number or a behavior, which queries use by reference
 - Feature flags and experiments
 - Alerts, annotations, and webhooks
 - Data governance: Lexicon definitions, drop filters, custom properties, custom events, lookup tables, and schemas
 - Business context: the markdown documentation that grounds AI assistants, at organization and project scope
 
-Entity methods need a workspace ID. The library resolves it on the first call that needs it (`ws.resolve_workspace_id()`). Business context belongs to the project and the organization, so it needs a project only.
+Entity methods need a workspace ID. The library resolves it on the first call that needs it (`ws.resolve_workspace_id()`). Business context belongs to the project and the organization, so it needs a project only. Saved metrics and saved behaviors belong to the project, so they need a project only too.
 
 ## Authentication
 

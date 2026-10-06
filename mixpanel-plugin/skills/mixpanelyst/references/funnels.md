@@ -11,6 +11,7 @@ This file covers the analytical choices for `ws.query_funnel()`: the conversion 
 - [Hold a property constant](#hold-a-property-constant)
 - [Exclusions](#exclusions)
 - [Per-step filters and global filters](#per-step-filters-and-global-filters)
+- [One event per step](#one-event-per-step)
 - [Session windows](#session-windows)
 - [Result shape](#result-shape)
 
@@ -115,6 +116,12 @@ for order in ["loose", "any"]:
 ## Per-step filters and global filters
 
 `FunnelStep("Purchase", filters=[mp.Filter.greater_than("amount", 50)])` limits which Purchase events count. It does not filter the other steps. A global `where` filters all steps. Filter the population with `where`. Filter the definition of one step with per-step filters.
+
+## One event per step
+
+A step takes one event, and `query_funnel()` refuses a list of events as a step. For "did A or B" as one step, use a custom event: the name `"$custom_event:<id>"` works as a step. The id is the `custom_event_id` of an entry of `ws.list_custom_events()`. The display name of a custom event matches no event, so it gives zeros. When no custom event exists, a new one is an entity write, so confirm it with the user first.
+
+A saved funnel behavior replaces the steps. Pass it to `query_funnel()` to run the team's funnel with its own window and order.
 
 ## Session windows
 
