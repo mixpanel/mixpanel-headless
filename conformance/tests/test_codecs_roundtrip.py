@@ -10,6 +10,7 @@ against exactly these shapes.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import json
 import math
@@ -740,3 +741,24 @@ def test_metric_display_keeps_every_field_in_expect_position() -> None:
     assert encoded["prefix"] == "#"
     assert "precision" in encoded
     assert encoded["precision"] is None
+
+
+@dataclasses.dataclass(frozen=True)
+class _UnresolvableHint:
+    """A dataclass whose annotation names a type that does not resolve."""
+
+    graph: NotImportable  # type: ignore[name-defined]  # noqa: F821
+
+
+def test_dataclass_with_unresolvable_annotations_is_unencodable() -> None:
+    """A dataclass whose field annotations do not resolve does not encode.
+
+    Some result types import a type for type checking only (for example
+    ``FlowQueryResult`` and networkx). Decode reads the annotations to
+    restore tuple fields, so it could never rebuild such a value.
+
+    Raises:
+        AssertionError: If the value encodes or raises another error.
+    """
+    with pytest.raises(UnencodableValueError, match="_UnresolvableHint"):
+        encode_input_value(_UnresolvableHint(graph=None))

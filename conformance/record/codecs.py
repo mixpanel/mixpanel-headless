@@ -243,12 +243,18 @@ def _reject_undeclared_tuples(value: object) -> None:
 
     Raises:
         UnencodableValueError: If a field holds a tuple and its annotation
-            is not a tuple.
+            is not a tuple, or if the field annotations do not resolve
+            (decode reads them too, so it could not rebuild the value).
     """
     if not dataclasses.is_dataclass(value) or isinstance(value, type):
         return
     cls: type = type(value)
-    declared = _tuple_fields(cls)
+    try:
+        declared = _tuple_fields(cls)
+    except (NameError, TypeError) as exc:
+        raise UnencodableValueError(
+            f"the field annotations of {cls.__name__} do not resolve: {exc}"
+        ) from exc
     for field in dataclasses.fields(value):
         if field.name not in declared and isinstance(getattr(value, field.name), tuple):
             raise UnencodableValueError(
