@@ -12,9 +12,9 @@ scale, and what not to comment on. This skill is the procedure to apply it.
 
 1. Read the PR description. List the changed areas: library, CLI, tests,
    conformance, replays, specs, plugin, docs, workflows.
-2. For each changed area, read its file in `.github/instructions/`. That
-   file names the folder guide (a `CLAUDE.md` in the folder) to read first.
-   Read the folder guide too.
+2. For each changed area, read its file in `.github/instructions/`. If that
+   file names a folder guide (a `CLAUDE.md` in the folder), read the guide
+   too. Not every area has one.
 3. Read `REVIEW.md`.
 
 ## 2. Check each finding before you post it
