@@ -38,7 +38,7 @@ For service accounts, you'll also need your **Mixpanel Project ID**, which you c
 
 ## Part 1: Install the Package
 
-The `mixpanel_headless` package installs both the Python library and the `mp` command-line tool. The Claude plugin does not use this installation: its setup skill installs version 0.3.0 or later into a private environment of its own (see Part 6). Install the package here to use the library and CLI yourself.
+The `mixpanel_headless` package installs both the Python library and the `mp` command-line tool. The Claude plugin does not use this installation: its setup skill installs version 0.4.0 or later into a private environment of its own (see Part 6). Install the package here to use the library and CLI yourself.
 
 ### Option A: Install with pip
 
@@ -365,7 +365,7 @@ This will:
 
 1. Create a private environment at `~/.claude/plugins/data/mixpanel-headless-<source>/venv`, or reuse it if it exists. Setup uses `uv venv` when uv is installed (uv can supply a Python 3.10+), and `python3 -m venv` with your Python 3.10+ otherwise
 2. Confirm that the environment runs Python 3.10 or later
-3. Install `mixpanel_headless` 0.3.0 or later and its dependencies (pandas, numpy, matplotlib, networkx, etc.) into that environment only, never into your system or user Python
+3. Install `mixpanel_headless` 0.4.0 or later and its dependencies (pandas, numpy, matplotlib, networkx, etc.) into that environment only, never into your system or user Python
 4. Verify that your Mixpanel credentials are configured
 5. Print the environment path and report the status of your connection
 
@@ -405,11 +405,11 @@ The plugin ships five skills:
 
 | Skill | Trigger | What It Does |
 |-------|---------|--------------|
-| **mixpanelyst** | Auto-loads on analytics questions | Analysis workflow, query-engine choice, gotchas, and a live `mp help` lookup for method signatures, types, and allowed values. |
+| **mixpanelyst** | Auto-loads on analytics questions | Analysis workflow, query-engine choice, the team's saved metrics first, gotchas, and a live `mp help` lookup for method signatures, types, and allowed values. |
 | **session-replay** | Auto-loads on session replay questions | Finds, fetches, and analyzes session recordings for web and mobile (rage clicks, rage taps, dead clicks, errors, action timelines). |
 | **dashboard-expert** | Auto-loads on dashboard questions | Four-mode workflow (Analyze, Build, Modify, Explain) for Mixpanel dashboards, with 9 design templates, chart-type selection, and layout reference. |
 | **auth** | `/mixpanel-headless:auth` | Guided wrapper around `mp account / project / workspace / target / session` for managing credentials without leaving the conversation. |
-| **setup** | `/mixpanel-headless:setup` (manual only) | Creates or upgrades the plugin's private Python environment with `mixpanel_headless` (0.3.0 or later) and the analysis dependencies, verifies it, and checks for credentials. |
+| **setup** | `/mixpanel-headless:setup` (manual only) | Creates or upgrades the plugin's private Python environment with `mixpanel_headless` (0.4.0 or later) and the analysis dependencies, verifies it, and checks for credentials. |
 
 The skills do not copy the API. Claude looks up each name with `mp help` (for example `mp help Workspace.query_funnel`), so the answer always matches the installed library.
 

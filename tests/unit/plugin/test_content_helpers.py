@@ -27,6 +27,7 @@ from tests.unit.plugin._content import (
     parse_version_floor,
     split_markdown,
     system_python_violations,
+    version_floor_violations,
     workspace_call_violations,
 )
 
@@ -405,6 +406,40 @@ class TestParseVersionFloor:
         assert (
             parse_version_floor('MIXPANEL_HEADLESS_PKG="mixpanel-headless"\n') is None
         )
+
+
+class TestVersionFloorViolations:
+    """``version_floor_violations`` flags minimum-version phrases off the floor."""
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "The skills need `mixpanel_headless` 0.3.0 or later.",
+            "installs mixpanel_headless (0.3.0 or newer) with pandas",
+            "If the version is older than 0.3.0, run setup.",
+            "| `✓ mixpanel-headless OK <version>` | The library met the 0.3.0 floor. |",
+            'MIXPANEL_HEADLESS_PKG="mixpanel-headless>=0.3.0"',
+        ],
+    )
+    def test_phrase_below_floor(self, line: str) -> None:
+        """Each minimum-version phrase that names another version is flagged."""
+        found = version_floor_violations(SAMPLE, f"intro\n{line}\n", (0, 4, 0))
+        assert len(found) == 1
+        assert found[0].startswith("sample.md:2: ")
+        assert "0.3.0" in found[0]
+
+    def test_phrase_at_floor(self) -> None:
+        """Phrases that name the floor pass."""
+        text = (
+            "Needs 0.4.0 or later. Upgrade when older than 0.4.0.\n"
+            'pin "mixpanel-headless>=0.4.0"; the 0.4.0 floor\n'
+        )
+        assert version_floor_violations(SAMPLE, text, (0, 4, 0)) == []
+
+    def test_history_is_not_a_floor(self) -> None:
+        """A release fact such as "first shipped in 0.3.0" is not a floor."""
+        text = "`mp help` first shipped in 0.3.0, and 0.4.0 added saved metrics.\n"
+        assert version_floor_violations(SAMPLE, text, (0, 4, 0)) == []
 
 
 # =============================================================================

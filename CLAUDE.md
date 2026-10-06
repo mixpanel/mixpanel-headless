@@ -299,7 +299,7 @@ Suppressing stderr causes silent failures and makes it impossible to diagnose is
 
 ## mixpanel-headless Plugin
 
-This project includes a Claude Code plugin in `mixpanel-plugin/`. The plugin's skills teach Mixpanel analysis judgment on top of the `mixpanel_headless` library; for API facts (signatures, types, allowed values) they point at the library's built-in reference (`mp help` / `mp.help()`) instead of copying it. The skills need `mixpanel_headless` 0.3.0 or later, and they run it from a plugin-owned venv: setup creates `${CLAUDE_PLUGIN_DATA}/venv` (`~/.claude/plugins/data/mixpanel-headless-<source>/venv`; `uv venv` when uv exists, else `python3 -m venv`) and installs there only, never into the system or user Python. The skills call `${CLAUDE_PLUGIN_DATA}/venv/bin/python` and `.../bin/mp` by full path, and the venv survives plugin updates. `setup.sh` takes the venv path as its required first argument (`bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh ${CLAUDE_PLUGIN_DATA}/venv`); it checks `mp help` and `<venv>/bin/mp`, then prints the venv path. User-run `!` commands use the full CLI path (`${CLAUDE_PLUGIN_DATA}/venv/bin/mp login`), because `mp` is often not on `PATH`.
+This project includes a Claude Code plugin in `mixpanel-plugin/`. The plugin's skills teach Mixpanel analysis judgment on top of the `mixpanel_headless` library; for API facts (signatures, types, allowed values) they point at the library's built-in reference (`mp help` / `mp.help()`) instead of copying it. The skills need `mixpanel_headless` 0.4.0 or later, and they run it from a plugin-owned venv: setup creates `${CLAUDE_PLUGIN_DATA}/venv` (`~/.claude/plugins/data/mixpanel-headless-<source>/venv`; `uv venv` when uv exists, else `python3 -m venv`) and installs there only, never into the system or user Python. The skills call `${CLAUDE_PLUGIN_DATA}/venv/bin/python` and `.../bin/mp` by full path, and the venv survives plugin updates. `setup.sh` takes the venv path as its required first argument (`bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh ${CLAUDE_PLUGIN_DATA}/venv`); it checks `mp help` and `<venv>/bin/mp`, then prints the venv path. User-run `!` commands use the full CLI path (`${CLAUDE_PLUGIN_DATA}/venv/bin/mp login`), because `mp` is often not on `PATH`.
 
 ### Plugin Components
 
@@ -309,7 +309,7 @@ This project includes a Claude Code plugin in `mixpanel-plugin/`. The plugin's s
 | **Skill** | `session-replay` | Auto-triggered on session replay questions (web and mobile recordings) |
 | **Skill** | `dashboard-expert` | Auto-triggered on dashboard analysis, creation, modification |
 | **Skill** | `auth` | `/mixpanel-headless:auth` (also auto-triggered on credential questions) — manage credentials, accounts, OAuth |
-| **Skill** | `setup` | `/mixpanel-headless:setup` — create or upgrade the plugin venv (0.3.0 floor), verify it and credentials (user-invoked only) |
+| **Skill** | `setup` | `/mixpanel-headless:setup` — create or upgrade the plugin venv (0.4.0 floor), verify it and credentials (user-invoked only) |
 | **Script** | `auth_manager.py` | `${CLAUDE_PLUGIN_DATA}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py session` — session status JSON (also `account`, `project`, `workspace`, `target`) |
 
 ### Usage

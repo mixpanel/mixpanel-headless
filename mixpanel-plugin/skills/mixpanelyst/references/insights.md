@@ -8,6 +8,7 @@ This file covers the analytical choices for `ws.query()`: which math to use, wha
 - [Prefer medians to averages](#prefer-medians-to-averages)
 - [Per-user aggregation changes the unit of analysis](#per-user-aggregation-changes-the-unit-of-analysis)
 - [Sweep the math to see an event from several angles](#sweep-the-math-to-see-an-event-from-several-angles)
+- [One metric over several events](#one-metric-over-several-events)
 - [Defaults and rules that change a result](#defaults-and-rules-that-change-a-result)
 - [Result shape](#result-shape)
 
@@ -18,6 +19,8 @@ mp help Workspace.query
 mp help Workspace.query.math        # allowed MathType values
 mp help PerUserAggregation
 mp help Metric
+mp help SimpleBehavior
+mp help CustomEventRef
 ```
 
 ## Math is the main choice
@@ -91,6 +94,21 @@ for label, kwargs in sweeps:
     print(f"{label:>13}: {result.df['count'].iloc[0]:>14,.2f}")
 ```
 
+## One metric over several events
+
+"Users who did A or B" is one metric, not two. Pass a list of events to one `Metric`. With `math="unique"`, a user who did any of the events counts once, so the result is lower than the sum of the separate counts. With `math="total"`, the event counts add up.
+
+```python
+import mixpanel_headless as mp
+
+ws = mp.Workspace()
+signed_in = ws.query(mp.Metric(["Login", "SSO Login"], math="unique"), last=30)  # real names
+```
+
+- `Metric(filters=[...])` applies to every event in the list. For a filter on one event only, put the events in a `SimpleBehavior` with `FunnelStep` items that carry their own filters.
+- A saved custom event works as one of the events: `mp.CustomEventRef(<id>)`. Its display name does not work as an event name.
+- `FunnelMetric` and `RetentionMetric` put a funnel conversion rate or a retention rate in the same chart as other metrics.
+
 ## Defaults and rules that change a result
 
 - **`math_property` with count math is an error.** A top-level `math_property` with `unique`, `dau`, `wau`, or `mau` raises `BookmarkValidationError` before the query runs. The same applies to `Metric(..., property=...)`. Only `total` accepts a property as an option.
@@ -100,7 +118,7 @@ for label, kwargs in sweeps:
 - **`unit` has no effect when `mode="total"`.** A total is one number for the whole range.
 - **`last=` is always a number of days**, whatever the `unit`. To query a calendar month, use `from_date` and `to_date`.
 - **A breakdown is capped.** The default segment cap is 3,000. For a high-cardinality `group_by`, raise `limit` and check `result.meta["is_segmentation_limit_hit"]`.
-- **A formula needs two or more events.** `formula="(B / A) * 100"` refers to events by their position (A, B, C …).
+- **A top-level `formula` refers to the other events by position.** `formula="(B / A) * 100"` needs two or more events in the query (A, B, C …). `Formula(expression, metrics=[...])` holds its own operands instead, so it can be the whole query, and its operands can be saved metrics (`MetricRef`).
 
 ## Result shape
 

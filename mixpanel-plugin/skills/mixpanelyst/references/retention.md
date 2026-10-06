@@ -92,6 +92,7 @@ Both answer "did the user ever come back?". Both distort a standard retention cu
 
 - `unit` (the date aggregation) accepts `day`, `week`, or `month`. `hour` is not supported for retention.
 - `last=` is always a number of days.
+- The born event and the return event take one event each. For "any of these events", use a custom event, written `"$custom_event:<id>"`. Find its id as for a funnel step: a positive `custom_event_id`, confirmed with the user. A saved retention behavior replaces both events: pass it to `query_retention()`.
 
 ## Result shape
 

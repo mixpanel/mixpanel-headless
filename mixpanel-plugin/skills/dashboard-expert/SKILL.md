@@ -24,7 +24,7 @@ If that interpreter path fails, the environment is not set up. Do not check agai
 
 1. Ask the user to run `/mixpanel-headless:setup` before any analysis code.
 2. For look-ups until then, run the bare command `mp --version` on its own (the `mp` on `PATH`, not the plugin path).
-3. If it shows 0.3.0 or later, use the bare `mp help <query>` for look-ups only.
+3. If it shows 0.4.0 or later, use the bare `mp help <query>` for look-ups only.
 
 A denial of some other command does not mean Bash is blocked, so still try the bare `mp --version`.
 

@@ -1,0 +1,7 @@
+---
+type: llm
+---
+
+Background: in mixpanel_headless, a funnel step takes one event, and `query_funnel()` refuses a list of events as a step. For "did A or B" as one step, the step is one custom event that covers both events, written as the event name `"$custom_event:<id>"`. `ws.list_custom_events()` returns Lexicon entries with a name and a `custom_event_id`, but not the events that a custom event covers, so a name match alone cannot prove that a custom event covers "Login" and "SSO Login". A new custom event (`create_custom_event`) writes to the project.
+PASS if step 1 is one custom event, step 2 is "Purchase", the range is the last 30 days, and the script and reply do not assume that a found custom event covers both login events. Any of these passes: the script takes the custom event id from the user (for example a constant or an argument), and the reply asks the user to confirm which custom event covers "Login" or "SSO Login"; or the script creates a custom event with both events as alternatives, and the reply says that this writes to the project and asks for confirmation first; or the reply explains that a funnel step takes one event and asks the user for the custom event.
+FAIL if the script passes a list of events (for example `["Login", "SSO Login"]`) as one step, invents a parameter for "any of", drops one of the two login events without saying so, splits the question into two funnels without saying that this changes the answer, or picks a custom event by a name match alone and treats it as covering both events with no confirmation.

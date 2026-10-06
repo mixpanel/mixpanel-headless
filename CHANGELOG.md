@@ -5,6 +5,42 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
+## Unreleased
+
+### Added
+
+- Plugin: three offline evals check the new guidance: `saved-metric-first`
+  (a business number "as the team defines it" uses a saved metric by
+  reference), `custom-event-by-id` (a custom event runs by id, not by its
+  display name), and `funnel-any-of-events` (an "A or B" funnel step is one
+  custom event, not a list of events).
+- Plugin: a repository guard checks that every minimum-version phrase in
+  the shipped plugin text ("0.4.0 or later", "older than 0.4.0", a `>=`
+  pin) names the version that setup installs.
+
+### Changed
+
+- Plugin: the skills need `mixpanel_headless` 0.4.0 or later. Setup pins
+  `mixpanel-headless>=0.4.0`, and its offline check now reads
+  `mp help Workspace.list_metrics`, so a 0.3.x environment upgrades.
+- Plugin: when a question names a business number such as activation,
+  conversion, or revenue, the `mixpanelyst` skill looks for the team's
+  saved metric first, reads its definition, and queries it by reference.
+  A new reference file covers how to find, read, and query saved metrics
+  and saved behaviors, and the entity rules cover their creates, updates,
+  copies, and deletes.
+- Plugin: the skills explain how to count "users who did A or B": one
+  `Metric` with a list of events in Insights, and a custom event
+  (`"$custom_event:<id>"`) as a funnel step or a retention event. They warn
+  that the display name of a custom event returns zero rows with no error.
+- Plugin: the dashboard report pipeline builds a report for a number that
+  the team defines from its saved metric, so the board follows later edits.
+
+### Fixed
+
+- Plugin: the insights reference no longer says that a formula needs two or
+  more events. `Formula(expression, metrics=[...])` holds its own operands.
+
 ## 0.4.0 — 2026-10-05
 
 Minor release: saved metrics and saved behaviors become first-class

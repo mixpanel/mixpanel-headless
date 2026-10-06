@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Creates the plugin's own Python environment and installs or upgrades mixpanel_headless (0.3.0 or newer) with pandas, numpy, matplotlib, seaborn, networkx, anytree, scipy, and pyarrow (Python 3.11+ only) on Python 3.10+, then checks the imports, mp help, and the credentials. Use when setting up Mixpanel analysis, or when the plugin environment is missing or older than 0.3.0. Do not use for login or account changes (use auth).
+description: Creates the plugin's own Python environment and installs or upgrades mixpanel_headless (0.4.0 or newer) with pandas, numpy, matplotlib, seaborn, networkx, anytree, scipy, and pyarrow (Python 3.11+ only) on Python 3.10+, then checks the imports, mp help, and the credentials. Use when setting up Mixpanel analysis, or when the plugin environment is missing or older than 0.4.0. Do not use for login or account changes (use auth).
 disable-model-invocation: true
 allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh ${CLAUDE_PLUGIN_DATA}/venv) Bash(${CLAUDE_PLUGIN_DATA}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/skills/auth/scripts/auth_manager.py *)
 ---
@@ -28,9 +28,9 @@ bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh ${CLAUDE_PLUGIN_DATA}/venv
 The script does these steps:
 
 1. Creates the environment with `uv venv`, or with `python3 -m venv` when `uv` is not available. It reuses an environment that already works.
-2. Installs `mixpanel-headless>=0.3.0` and the analysis packages into it. The version floor upgrades an older install, because the skills depend on `mp help`, which first shipped in 0.3.0.
+2. Installs `mixpanel-headless>=0.4.0` and the analysis packages into it. The version floor upgrades an older install, because the skills depend on `mp help`, which first shipped in 0.3.0, and on the saved-metric methods, which first shipped in 0.4.0.
 3. Imports every package and prints its version.
-4. Runs `mp help` once, offline, to confirm that the built-in API reference works.
+4. Runs `mp help` once, offline, to confirm that the built-in API reference works and knows the saved-metric methods.
 5. Checks the `mp` command inside the environment.
 6. Reports which credentials it finds.
 7. Prints the environment path.
@@ -46,7 +46,7 @@ Read these lines in the output:
 | `✓ Plugin environment created` or `found` | The environment exists at the printed path. |
 | `✓ mixpanel-headless INSTALLED <version>` | The library was not present. The script installed it. |
 | `✓ mixpanel-headless UPGRADED <old> → <new>` | An older library was present. The script upgraded it. |
-| `✓ mixpanel-headless OK <version>` | The library already met the 0.3.0 floor. |
+| `✓ mixpanel-headless OK <version>` | The library already met the 0.4.0 floor. |
 | `✓ built-in help (mp help)` | The API reference works. The skills can look up API names. |
 | `✓ mp CLI: <path>` | The `mp` command exists in the environment. |
 | `✗ Usage: setup.sh <absolute-venv-path>` | The plugin data path was not filled in. Run `/mixpanel-headless:setup` again. |
@@ -55,7 +55,7 @@ Read these lines in the output:
 | `✗ ... is not a virtual environment` | Something else uses that path. Tell the user to move it away. |
 | `✗ Package install failed` | Show the installer output. A network or package-index problem is the usual cause. |
 | `✗ Import verification failed` | Show the error. A partial install is the usual cause. Run setup again. |
-| `✗ built-in help (mp help) failed` | The installed library is older than 0.3.0. Show the install output. |
+| `✗ built-in help (mp help) failed` | The install met the 0.4.0 floor, but `mp help` could not look up `Workspace.list_metrics`. Show the error above that line. A broken or partial install is the usual cause, so run setup again. |
 
 If the script printed `UPGRADED`, tell the user to restart any Python kernel or
 notebook that imported the old version.

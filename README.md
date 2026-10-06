@@ -399,7 +399,7 @@ The plugin is built around the 5-engine query taxonomy — `query()`, `query_fun
 
 **Installation:**
 
-Add the plugin from the `mixpanel-plugin/` directory, then restart Claude Code. Run `/mixpanel-headless:setup` once; it creates a private Python environment for the plugin at `~/.claude/plugins/data/mixpanel-headless-<source>/venv` and installs `mixpanel_headless` 0.3.0 or later there (never into your system or user Python). The skills run that environment's `python` and `mp`, and the environment survives plugin updates.
+Add the plugin from the `mixpanel-plugin/` directory, then restart Claude Code. Run `/mixpanel-headless:setup` once; it creates a private Python environment for the plugin at `~/.claude/plugins/data/mixpanel-headless-<source>/venv` and installs `mixpanel_headless` 0.4.0 or later there (never into your system or user Python). The skills run that environment's `python` and `mp`, and the environment survives plugin updates.
 
 **What you get:**
 
