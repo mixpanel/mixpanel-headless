@@ -1068,21 +1068,23 @@ class _OpenModel(BaseModel):
     name: str
 
 
-def test_rebuilt_alike_ignores_undeclared_model_keys() -> None:
-    """A model's undeclared keys do not count; the encoder never writes them.
+def test_rebuilt_alike_counts_undeclared_model_keys() -> None:
+    """A model that holds undeclared keys does not match its rebuild.
 
-    ``SavedMetric`` keeps server keys such as ``is_superadmin``. A test
-    that passes one to ``build_params`` replays the same way without them.
+    The encoder does not write undeclared keys, and some library code
+    reads them (``goal_to_wire`` writes a ``MetricGoal``'s extra keys
+    into the request), so such an input cannot replay faithfully.
 
     Raises:
-        AssertionError: If the comparison counts undeclared keys or misses
-            a declared difference.
+        AssertionError: If the comparison ignores undeclared keys or a
+            declared difference.
     """
     from conformance.record.plugin import _rebuilt_alike
 
     recorded = _OpenModel.model_validate({"name": "a", "is_superadmin": True})
-    assert _rebuilt_alike([_OpenModel(name="a")], [recorded])
-    assert not _rebuilt_alike(_OpenModel(name="b"), recorded)
+    assert not _rebuilt_alike([_OpenModel(name="a")], [recorded])
+    assert _rebuilt_alike([_OpenModel(name="a")], [_OpenModel(name="a")])
+    assert not _rebuilt_alike(_OpenModel(name="b"), _OpenModel(name="a"))
 
 
 def test_rebuilt_alike_sequences() -> None:

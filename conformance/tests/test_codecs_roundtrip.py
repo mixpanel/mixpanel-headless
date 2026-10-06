@@ -718,3 +718,21 @@ def test_metric_display_keeps_every_field_in_expect_position() -> None:
     assert encoded["prefix"] == "#"
     assert "precision" in encoded
     assert encoded["precision"] is None
+
+
+def test_unresolvable_annotations_raise_unrebuildable() -> None:
+    """A dataclass whose annotations do not resolve cannot be rebuilt.
+
+    Decode reads the annotations to restore tuple fields.
+    ``FlowQueryResult`` names networkx, which it imports for type checking
+    only, so decode can never rebuild it. The error is a constructor-side
+    refusal, so the recorder excludes such an input instead of keeping a
+    vector that the runner cannot replay.
+
+    Raises:
+        AssertionError: If decode raises another error type.
+    """
+    from conformance.record.codecs import UnrebuildableValueError
+
+    with pytest.raises(UnrebuildableValueError, match="FlowQueryResult"):
+        decode_value({"$type": "FlowQueryResult"})

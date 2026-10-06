@@ -576,7 +576,7 @@ def _decode_dataclass(cls: type, payload: Mapping[str, Any]) -> Any:
     Raises:
         UndecodableValueError: If the payload carries unknown fields.
         UnrebuildableValueError: If the constructor rejects the decoded
-            values.
+            values, or if the field annotations of ``cls`` do not resolve.
     """
     field_names = {field.name for field in dataclasses.fields(cls)}
     extra = set(payload) - field_names - {"$type"}
@@ -584,7 +584,15 @@ def _decode_dataclass(cls: type, payload: Mapping[str, Any]) -> Any:
         raise UndecodableValueError(
             f"unknown fields {sorted(extra)} for $type {cls.__name__}"
         )
-    tuple_fields = _tuple_fields(cls)
+    try:
+        tuple_fields = _tuple_fields(cls)
+    except (NameError, TypeError) as exc:
+        # An annotation names a type that the module imports for type
+        # checking only (FlowQueryResult and networkx), so no payload of
+        # this class can ever be rebuilt.
+        raise UnrebuildableValueError(
+            f"the field annotations of {cls.__name__} do not resolve: {exc}"
+        ) from exc
     kwargs: dict[str, Any] = {}
     for name in field_names & set(payload):
         decoded = decode_value(payload[name])

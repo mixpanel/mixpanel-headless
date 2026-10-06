@@ -324,12 +324,13 @@ def _is_rich(value: object) -> bool:
 def _same_rich_value(rebuilt: object, original: object) -> bool:
     """Compare two values inside a dataclass or model, field by field.
 
-    This is the objects' own ``==`` with one change: a model compares its
-    declared fields only. The encoder never writes undeclared keys (for
-    example the server keys that ``SavedMetric`` keeps), so they cannot
-    count. Inside an object a tuple and a list differ, because a class
-    such as ``Filter`` keeps its value as given and the library can treat
-    the two differently.
+    This follows the objects' own ``==``. A model's undeclared keys count
+    too: the encoder does not write them, and some library code reads them
+    (``goal_to_wire`` writes a ``MetricGoal``'s extra keys into the
+    request), so a model that holds any never matches its rebuild. Inside
+    an object a tuple and a list differ, because a class such as
+    ``Filter`` keeps its value as given and the library can treat the two
+    differently.
 
     Args:
         rebuilt: The value that decode produced.
@@ -342,6 +343,8 @@ def _same_rich_value(rebuilt: object, original: object) -> bool:
         if type(rebuilt) is not type(original):
             return False
         if isinstance(original, BaseModel):
+            if original.model_extra != getattr(rebuilt, "model_extra", None):
+                return False
             names: list[str] = list(type(original).model_fields)
         else:
             names = [f.name for f in dataclasses.fields(original)]  # type: ignore[arg-type]
