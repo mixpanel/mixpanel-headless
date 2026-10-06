@@ -53,6 +53,72 @@
         "src/mixpanel_headless/workspace.py",
         "src/mixpanel_headless/types.py"
       ]
+    },
+    {
+      "path": ".github/instructions/library.instructions.md",
+      "description": "Library code: errors and broad catches, frozen and mutable models, bool versus int, public-surface sync",
+      "scope": [
+        "src/mixpanel_headless/**"
+      ]
+    },
+    {
+      "path": ".github/instructions/cli.instructions.md",
+      "description": "CLI: no API client in CLI modules, output through formatters, option dependencies, exit codes",
+      "scope": [
+        "src/mixpanel_headless/cli/**"
+      ]
+    },
+    {
+      "path": ".github/instructions/tests.instructions.md",
+      "description": "Test conventions: docstrings, tests that can fail, isolation from real ~/.mp and MP_* variables, no live network, live tests",
+      "scope": [
+        "tests/**"
+      ]
+    },
+    {
+      "path": ".github/instructions/conformance.instructions.md",
+      "description": "Conformance corpus: generated vectors and contract, rrweb goldens that follow the analyzer, hand-written tooling, stamp checks",
+      "scope": [
+        "conformance/**"
+      ]
+    },
+    {
+      "path": ".github/instructions/replays.instructions.md",
+      "description": "Session replay analyzer: what to review, golden regeneration, module conventions",
+      "scope": [
+        "src/mixpanel_headless/_internal/replays/**"
+      ]
+    },
+    {
+      "path": ".github/instructions/specs.instructions.md",
+      "description": "Design specs: what to check across the files of one feature",
+      "scope": [
+        "specs/**"
+      ]
+    },
+    {
+      "path": ".github/instructions/plugin.instructions.md",
+      "description": "Claude Code plugin: mp help instead of copied reference, plugin venv paths, error handling in examples, stderr",
+      "scope": [
+        "mixpanel-plugin/**"
+      ]
+    },
+    {
+      "path": ".github/instructions/docs.instructions.md",
+      "description": "Docs and changelog: match the code, Unreleased section, plain-language reasons, fenced examples",
+      "scope": [
+        "docs/**",
+        "CHANGELOG.md",
+        "README.md",
+        "CONTRIBUTING.md"
+      ]
+    },
+    {
+      "path": ".github/instructions/workflows.instructions.md",
+      "description": "GitHub Actions: SHA pins, least permissions, label-gated API keys, Copilot setup steps",
+      "scope": [
+        ".github/workflows/**"
+      ]
     }
   ]
 }

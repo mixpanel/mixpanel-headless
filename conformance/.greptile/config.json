@@ -1,5 +1,5 @@
 {
-  "instructions": "The conformance corpus pins the behavior of mixpanel_headless for other language ports. Recorded vectors (conformance/vectors/), golden JSON files (conformance/goldens/), and differential JSON files are generated and excluded from review. Review the hand-written tooling (runner, record, contract, referee_bookmark_parser, smoke, tests, oracle_py, differential harness, and goldens/rrweb/generate.py) as normal code. CI runs conformance/record/check_stamps.py, which verifies that every source_commit stamp is a commit that main can reach and that corpus content does not change without the stamp changing, so do not try to verify stamp SHAs by hand.",
+  "instructions": "Follow .github/instructions/conformance.instructions.md (listed in the context files) for this folder. That file is the single source for these notes, shared with Copilot code review.",
   "rules": [
     {
       "id": "stamp-main-reachable",
