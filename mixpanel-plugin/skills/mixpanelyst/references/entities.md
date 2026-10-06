@@ -31,7 +31,7 @@ Other data governance domains: `lexicon schemas`, `schema enforcement`, `data au
 
 ## Entity methods are workspace-scoped
 
-App API entity methods run against one workspace (a data view) in the project. Saved metrics and saved behaviors are the exception: they belong to the project, so a workspace does not change them. If you do not set one, the library picks one on the first call: the global view first, then "All Project Data", then the default view. If it cannot find one, it raises `WorkspaceScopeError`.
+App API entity methods run against one workspace (a data view) in the project. If you do not set one, the library picks one on the first call: the global view first, then "All Project Data", then the default view. If it cannot find one, it raises `WorkspaceScopeError`. Saved metrics and saved behaviors are the exception: they belong to the project, so a workspace does not change them.
 
 When the project has several workspaces and the user means a specific one, pin it first: `ws.use(workspace=<id>)`, or set `MP_WORKSPACE_ID`. `ws.workspaces()` lists them, and `ws.resolve_workspace_id()` shows the one in use. A wrong workspace puts the entity where the user will not find it.
 
