@@ -277,14 +277,14 @@ class _CallbackProxy:
 
 
 def _rebuilt_alike(rebuilt: object, original: object) -> bool:
-    """Return whether a rebuilt input value matches the recorded value.
+    """Return whether a rebuilt argument value matches the recorded value.
 
-    Dataclass and model instances compare with their own ``==``, which
-    sees a tuple field that came back as a list. Containers compare item
-    by item, so a tuple argument that comes back as a list still matches:
-    the vector schema has no tuple type, and the library accepts any
-    sequence there. Other values are plain JSON, a callback stub, or a
-    tagged scalar that round-trips exactly.
+    Dataclass and model instances compare field by field
+    (:func:`_same_rich_value`). Plain containers compare item by item, so
+    a tuple argument that comes back as a list still matches: the vector
+    schema has no tuple type, and the library accepts any sequence there.
+    Other plain values are JSON, a callback stub, or a tagged scalar that
+    round-trips exactly.
 
     Args:
         rebuilt: The value that decode produced.
@@ -293,10 +293,8 @@ def _rebuilt_alike(rebuilt: object, original: object) -> bool:
     Returns:
         True when the rebuilt value matches the recorded one.
     """
-    if isinstance(original, BaseModel) or (
-        dataclasses.is_dataclass(original) and not isinstance(original, type)
-    ):
-        return bool(rebuilt == original)
+    if _is_rich(original):
+        return _same_rich_value(rebuilt, original)
     if isinstance(original, Mapping) and isinstance(rebuilt, Mapping):
         return original.keys() == rebuilt.keys() and all(
             _rebuilt_alike(rebuilt[key], value) for key, value in original.items()
@@ -307,6 +305,64 @@ def _rebuilt_alike(rebuilt: object, original: object) -> bool:
             for item, source in zip(rebuilt, original, strict=True)
         )
     return True
+
+
+def _is_rich(value: object) -> bool:
+    """Return whether a value is a dataclass or model instance.
+
+    Args:
+        value: Any value.
+
+    Returns:
+        True for a model instance or a dataclass instance (not a class).
+    """
+    return isinstance(value, BaseModel) or (
+        dataclasses.is_dataclass(value) and not isinstance(value, type)
+    )
+
+
+def _same_rich_value(rebuilt: object, original: object) -> bool:
+    """Compare two values inside a dataclass or model, field by field.
+
+    This is the objects' own ``==`` with one change: a model compares its
+    declared fields only. The encoder never writes undeclared keys (for
+    example the server keys that ``SavedMetric`` keeps), so they cannot
+    count. Inside an object a tuple and a list differ, because a class
+    such as ``Filter`` keeps its value as given and the library can treat
+    the two differently.
+
+    Args:
+        rebuilt: The value that decode produced.
+        original: The value that the test passed.
+
+    Returns:
+        True when the values match.
+    """
+    if _is_rich(original):
+        if type(rebuilt) is not type(original):
+            return False
+        if isinstance(original, BaseModel):
+            names: list[str] = list(type(original).model_fields)
+        else:
+            names = [f.name for f in dataclasses.fields(original)]  # type: ignore[arg-type]
+        return all(
+            _same_rich_value(getattr(rebuilt, name), getattr(original, name))
+            for name in names
+        )
+    if isinstance(original, Mapping) and isinstance(rebuilt, Mapping):
+        return original.keys() == rebuilt.keys() and all(
+            _same_rich_value(rebuilt[key], value) for key, value in original.items()
+        )
+    if isinstance(original, list | tuple):
+        return (
+            type(rebuilt) is type(original)
+            and len(original) == len(rebuilt)
+            and all(
+                _same_rich_value(item, source)
+                for item, source in zip(rebuilt, original, strict=True)
+            )
+        )
+    return bool(rebuilt == original)
 
 
 def _callback_eligible(value: Any) -> bool:

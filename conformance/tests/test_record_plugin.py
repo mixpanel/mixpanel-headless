@@ -14,7 +14,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from pydantic import SecretStr
+from pydantic import BaseModel, ConfigDict, SecretStr
 
 from conformance.record.capture import EntryCallCapture
 from conformance.record.clock import RecordClock
@@ -1058,3 +1058,47 @@ def test_env_base_url_override_unset_leaves_capture_unmarked(
     capture = record_session.captures[-1]
     assert capture.env_base_url_override is False
     assert capture.interactions[0].request.scheme_host == "https://mixpanel.com"
+
+
+class _OpenModel(BaseModel):
+    """A model that keeps undeclared keys, like ``SavedMetric``."""
+
+    model_config = ConfigDict(extra="allow")
+
+    name: str
+
+
+def test_rebuilt_alike_ignores_undeclared_model_keys() -> None:
+    """A model's undeclared keys do not count; the encoder never writes them.
+
+    ``SavedMetric`` keeps server keys such as ``is_superadmin``. A test
+    that passes one to ``build_params`` replays the same way without them.
+
+    Raises:
+        AssertionError: If the comparison counts undeclared keys or misses
+            a declared difference.
+    """
+    from conformance.record.plugin import _rebuilt_alike
+
+    recorded = _OpenModel.model_validate({"name": "a", "is_superadmin": True})
+    assert _rebuilt_alike([_OpenModel(name="a")], [recorded])
+    assert not _rebuilt_alike(_OpenModel(name="b"), recorded)
+
+
+def test_rebuilt_alike_sequences() -> None:
+    """A tuple matches a list in an argument but not inside a dataclass.
+
+    Raises:
+        AssertionError: If either rule fails.
+    """
+    from conformance.record.plugin import _rebuilt_alike
+    from mixpanel_headless.types import Filter, Formula
+
+    assert _rebuilt_alike(["a", "b"], ("a", "b"))
+    as_list = Filter("d", "was between", ["2026-09-01", "2026-09-02"])
+    as_tuple = Filter("d", "was between", ("2026-09-01", "2026-09-02"))  # type: ignore[arg-type]
+    assert not _rebuilt_alike([as_list], [as_tuple])
+    operands = [Metric("A"), Metric("B")]
+    assert _rebuilt_alike(
+        Formula("A / B", metrics=operands), Formula("A / B", metrics=tuple(operands))
+    )
