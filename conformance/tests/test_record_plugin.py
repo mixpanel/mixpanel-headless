@@ -14,12 +14,14 @@ from pathlib import Path
 
 import httpx
 import pytest
-from pydantic import SecretStr
+from pydantic import BaseModel, ConfigDict, SecretStr
 
+from conformance.record.capture import EntryCallCapture
 from conformance.record.clock import RecordClock
 from conformance.record.plugin import RecordOptions, RecordSession
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
+from mixpanel_headless.types import Metric
 
 
 def _make_session() -> Session:
@@ -641,6 +643,173 @@ def test_mock_collaborator_invocation_excludes_capture(
     assert calls[0].excluded_reason == "unserializable_input"
 
 
+def _validate_inline_metric(metric: Metric) -> None:
+    """Call ``validate_query_args`` with one metric and neutral arguments.
+
+    Args:
+        metric: The metric to validate.
+    """
+    from mixpanel_headless._internal import validation
+
+    validation.validate_query_args(
+        events=[metric],
+        math="total",
+        math_property=None,
+        per_user=None,
+        from_date=None,
+        to_date=None,
+        last=30,
+        has_formula=False,
+        rolling=None,
+        cumulative=False,
+        group_by=None,
+        formulas=[],
+    )
+
+
+def _validator_calls(record_session: RecordSession) -> list[EntryCallCapture]:
+    """Return the ``validate_query_args`` calls of the last captured test.
+
+    Args:
+        record_session: The active record session.
+
+    Returns:
+        The matching entry-call captures.
+    """
+    return [
+        c
+        for c in record_session.captures[-1].entry_calls
+        if c.entry.api == "validation.validate_query_args"
+    ]
+
+
+def test_input_its_constructor_refuses_is_unserializable(
+    record_session: RecordSession,
+) -> None:
+    """An input that its constructor refuses on decode is excluded.
+
+    The test changes the event list of a ``Metric`` after construction.
+    The value encodes, but replay rebuilds it through the constructor,
+    which refuses a ``FunnelStep`` there, so no vector can carry it. The
+    check decodes through wrapped constructors, and none of those calls
+    may join the capture (one would record a guard error that the test
+    never caused).
+
+    Raises:
+        AssertionError: If the capture stays includable.
+    """
+    from mixpanel_headless.types import Filter, FunnelStep
+
+    events: list[object] = ["Login", "Signup"]
+    metric = Metric(events, filters=[Filter.equals("country", "US")])  # type: ignore[arg-type]
+    events[1] = FunnelStep("Signup")
+
+    nodeid = "tests/unit/test_fake.py::test_changed_after_construction"
+    record_session.begin_test(nodeid, None)
+    _validate_inline_metric(metric)
+    record_session.finish_test(nodeid)
+
+    calls = _validator_calls(record_session)
+    assert len(calls) == 1
+    assert calls[0].excluded_reason == "unserializable_input"
+    assert len(record_session.captures[-1].entry_calls) == 1
+
+
+def test_input_its_constructor_accepts_stays_includable(
+    record_session: RecordSession,
+) -> None:
+    """The same call with an unchanged metric records as usual.
+
+    Raises:
+        AssertionError: If the capture is excluded.
+    """
+    from mixpanel_headless.types import Filter
+
+    metric = Metric(["Login", "Signup"], filters=[Filter.equals("country", "US")])
+
+    nodeid = "tests/unit/test_fake.py::test_unchanged_metric"
+    record_session.begin_test(nodeid, None)
+    _validate_inline_metric(metric)
+    record_session.finish_test(nodeid)
+
+    calls = _validator_calls(record_session)
+    assert len(calls) == 1
+    assert calls[0].excluded_reason is None
+    assert calls[0].input_encoded is not None
+    assert len(record_session.captures[-1].entry_calls) == 1
+
+
+def test_tuple_that_rebuilds_as_a_list_is_unserializable(
+    record_session: RecordSession,
+) -> None:
+    """An input whose tuple field comes back as a list is excluded.
+
+    Vector JSON has no tuple type. ``Filter`` keeps its value as given,
+    so the rebuilt filter holds a list, and the library treats the two
+    differently: a ``"was between"`` filter refuses a tuple date range
+    (``ES16_DATE_RANGE_EXPECTS_PAIR``) and accepts the list.
+
+    Raises:
+        AssertionError: If the capture stays includable.
+    """
+    from mixpanel_headless._internal.query import user_builders
+    from mixpanel_headless.exceptions import ParamValidationError
+    from mixpanel_headless.types import Filter
+
+    value = Filter("d", "was between", ("2026-09-01", "2026-09-02"))  # type: ignore[arg-type]
+
+    nodeid = "tests/unit/test_fake.py::test_tuple_date_range"
+    record_session.begin_test(nodeid, None)
+    with pytest.raises(ParamValidationError):
+        user_builders.filter_to_selector(value)
+    record_session.finish_test(nodeid)
+
+    calls = record_session.captures[-1].entry_calls
+    assert [c.entry.api for c in calls] == ["user_builders.filter_to_selector"]
+    assert calls[0].excluded_reason == "unserializable_input"
+
+
+def test_tuple_that_its_constructor_restores_stays_includable(
+    record_session: RecordSession,
+) -> None:
+    """A tuple field that the constructor rebuilds from a list is kept.
+
+    ``Formula`` stores its operands as a tuple although the annotation is
+    not a tuple. Its constructor turns the decoded list back into a
+    tuple, so the rebuilt formula equals the recorded one.
+
+    Raises:
+        AssertionError: If the capture is excluded.
+    """
+    from mixpanel_headless._internal import validation
+    from mixpanel_headless.types import Formula
+
+    formula = Formula("A / B", metrics=[Metric("A"), Metric("B")])
+    assert isinstance(formula.metrics, tuple)
+
+    nodeid = "tests/unit/test_fake.py::test_operand_formula"
+    record_session.begin_test(nodeid, None)
+    validation.validate_query_args(
+        events=[],
+        math="total",
+        math_property=None,
+        per_user=None,
+        from_date=None,
+        to_date=None,
+        last=30,
+        has_formula=False,
+        rolling=None,
+        cumulative=False,
+        group_by=None,
+        formulas=[formula],
+    )
+    record_session.finish_test(nodeid)
+
+    calls = _validator_calls(record_session)
+    assert len(calls) == 1
+    assert calls[0].excluded_reason is None
+
+
 # ---------------------------------------------------------------------------
 # Coded-guard error_only entries (coding-pass design §5 item 2, RR-7 fixes)
 # ---------------------------------------------------------------------------
@@ -889,3 +1058,49 @@ def test_env_base_url_override_unset_leaves_capture_unmarked(
     capture = record_session.captures[-1]
     assert capture.env_base_url_override is False
     assert capture.interactions[0].request.scheme_host == "https://mixpanel.com"
+
+
+class _OpenModel(BaseModel):
+    """A model that keeps undeclared keys, like ``SavedMetric``."""
+
+    model_config = ConfigDict(extra="allow")
+
+    name: str
+
+
+def test_rebuilt_alike_counts_undeclared_model_keys() -> None:
+    """A model that holds undeclared keys does not match its rebuild.
+
+    The encoder does not write undeclared keys, and some library code
+    reads them (``goal_to_wire`` writes a ``MetricGoal``'s extra keys
+    into the request), so such an input cannot replay faithfully.
+
+    Raises:
+        AssertionError: If the comparison ignores undeclared keys or a
+            declared difference.
+    """
+    from conformance.record.plugin import _rebuilt_alike
+
+    recorded = _OpenModel.model_validate({"name": "a", "is_superadmin": True})
+    assert not _rebuilt_alike([_OpenModel(name="a")], [recorded])
+    assert _rebuilt_alike([_OpenModel(name="a")], [_OpenModel(name="a")])
+    assert not _rebuilt_alike(_OpenModel(name="b"), _OpenModel(name="a"))
+
+
+def test_rebuilt_alike_sequences() -> None:
+    """A tuple matches a list in an argument but not inside a dataclass.
+
+    Raises:
+        AssertionError: If either rule fails.
+    """
+    from conformance.record.plugin import _rebuilt_alike
+    from mixpanel_headless.types import Filter, Formula
+
+    assert _rebuilt_alike(["a", "b"], ("a", "b"))
+    as_list = Filter("d", "was between", ["2026-09-01", "2026-09-02"])
+    as_tuple = Filter("d", "was between", ("2026-09-01", "2026-09-02"))  # type: ignore[arg-type]
+    assert not _rebuilt_alike([as_list], [as_tuple])
+    operands = [Metric("A"), Metric("B")]
+    assert _rebuilt_alike(
+        Formula("A / B", metrics=operands), Formula("A / B", metrics=tuple(operands))
+    )

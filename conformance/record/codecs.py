@@ -80,6 +80,29 @@ class UndecodableValueError(Exception):
     """
 
 
+class UnrebuildableValueError(UndecodableValueError):
+    """Raised when a constructor refuses the decoded fields of a payload.
+
+    The payload itself decodes, but the class refuses those values. That
+    happens when a test changes an object after construction, for example
+    by putting a ``FunnelStep`` into the event list that a ``Metric``
+    holds. At replay this is still a loud decode failure. At record time
+    the plugin decodes each encoded input once and excludes a capture
+    that raises this error as ``unserializable_input``, because no vector
+    can carry an object that its own constructor refuses.
+    """
+
+
+_FIELDS_SET_MODELS = frozenset({"MetricDisplay"})
+"""Models whose library behavior depends on which fields the caller set.
+
+The saved-metric display merge reads ``model_fields_set``: a field set to
+``None`` removes the stored key, and an unset field keeps it. In input
+position these models write only their set fields, so that decode sets the
+same fields. Other models write every field, which keeps the values that a
+default factory made at record time."""
+
+
 class RecordingCallback:
     """Replay stub injected for ``$type: callback`` kwargs (design D4.4).
 
@@ -182,6 +205,30 @@ def _encode_bytes(value: bytes) -> dict[str, str]:
     }
 
 
+def _set_field_names(value: BaseModel) -> list[str]:
+    """Return the declared fields that the caller set, in declaration order.
+
+    Used for the ``_FIELDS_SET_MODELS`` in input position.
+
+    Args:
+        value: A model instance whose type is in ``_FIELDS_SET_MODELS``.
+
+    Returns:
+        The names of the declared fields in ``model_fields_set``.
+
+    Raises:
+        UnencodableValueError: If the model holds a key that is not a
+            declared field. The library counts such a key as set, but
+            decode accepts declared fields only.
+    """
+    if value.model_extra:
+        raise UnencodableValueError(
+            f"{type(value).__name__} holds undeclared keys "
+            f"{sorted(value.model_extra)}; decode accepts declared fields only"
+        )
+    return [name for name in type(value).model_fields if name in value.model_fields_set]
+
+
 def _encode_common(
     value: object, depth: int, *, tagged_models: bool, in_rich_payload: bool = False
 ) -> Any:
@@ -255,6 +302,8 @@ def _encode_common(
         field_names = list(type(value).model_fields)
         if not tagged_models:
             field_names.extend(type(value).model_computed_fields)
+        elif type(value).__name__ in _FIELDS_SET_MODELS:
+            field_names = _set_field_names(value)
         try:
             encoded = {
                 str(name): _encode_common(
@@ -525,8 +574,9 @@ def _decode_dataclass(cls: type, payload: Mapping[str, Any]) -> Any:
         A new ``cls`` instance equal to the encoded original.
 
     Raises:
-        UndecodableValueError: If the payload carries unknown fields or the
-            constructor rejects the decoded values.
+        UndecodableValueError: If the payload carries unknown fields.
+        UnrebuildableValueError: If the constructor rejects the decoded
+            values, or if the field annotations of ``cls`` do not resolve.
     """
     field_names = {field.name for field in dataclasses.fields(cls)}
     extra = set(payload) - field_names - {"$type"}
@@ -534,7 +584,15 @@ def _decode_dataclass(cls: type, payload: Mapping[str, Any]) -> Any:
         raise UndecodableValueError(
             f"unknown fields {sorted(extra)} for $type {cls.__name__}"
         )
-    tuple_fields = _tuple_fields(cls)
+    try:
+        tuple_fields = _tuple_fields(cls)
+    except (NameError, TypeError) as exc:
+        # An annotation names a type that the module imports for type
+        # checking only (FlowQueryResult and networkx), so no payload of
+        # this class can ever be rebuilt.
+        raise UnrebuildableValueError(
+            f"the field annotations of {cls.__name__} do not resolve: {exc}"
+        ) from exc
     kwargs: dict[str, Any] = {}
     for name in field_names & set(payload):
         decoded = decode_value(payload[name])
@@ -544,7 +602,7 @@ def _decode_dataclass(cls: type, payload: Mapping[str, Any]) -> Any:
     try:
         return _rebuild_dataclass(cls, kwargs)
     except Exception as exc:
-        raise UndecodableValueError(
+        raise UnrebuildableValueError(
             f"could not reconstruct {cls.__name__} from vector fields: {exc}"
         ) from exc
 
@@ -562,8 +620,8 @@ def _decode_cohort_definition(payload: Mapping[str, Any]) -> Any:
         The reconstructed ``CohortDefinition``.
 
     Raises:
-        UndecodableValueError: If the operator is unknown or the criteria
-            list is empty/invalid.
+        UndecodableValueError: If the operator is unknown.
+        UnrebuildableValueError: If the criteria list is empty or invalid.
     """
     from mixpanel_headless.types import CohortDefinition
 
@@ -575,7 +633,7 @@ def _decode_cohort_definition(payload: Mapping[str, Any]) -> Any:
         if operator == "and":
             return CohortDefinition.all_of(*criteria)
     except Exception as exc:
-        raise UndecodableValueError(
+        raise UnrebuildableValueError(
             f"could not reconstruct CohortDefinition: {exc}"
         ) from exc
     raise UndecodableValueError(
@@ -625,8 +683,8 @@ def _decode_model(cls: type[BaseModel], payload: Mapping[str, Any]) -> Any:
         A new ``cls`` instance equal to the encoded original.
 
     Raises:
-        UndecodableValueError: If the payload carries unknown fields or
-            validation rejects the decoded values.
+        UndecodableValueError: If the payload carries unknown fields.
+        UnrebuildableValueError: If validation rejects the decoded values.
     """
     field_names = set(cls.model_fields)
     extra = set(payload) - field_names - {"$type"}
@@ -638,7 +696,7 @@ def _decode_model(cls: type[BaseModel], payload: Mapping[str, Any]) -> Any:
     try:
         return cls(**kwargs)
     except Exception as exc:
-        raise UndecodableValueError(
+        raise UnrebuildableValueError(
             f"could not reconstruct {cls.__name__} from vector fields: {exc}"
         ) from exc
 

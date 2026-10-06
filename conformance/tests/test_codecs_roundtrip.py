@@ -592,3 +592,147 @@ def test_nonfinite_floats_still_unencodable_at_record_time() -> None:
     """
     with pytest.raises(UnencodableValueError, match="non-finite float"):
         encode_input_value(math.inf)
+
+
+def test_constructor_rejection_raises_unrebuildable() -> None:
+    """A payload that the constructor refuses raises ``UnrebuildableValueError``.
+
+    A test can change an object after construction, here by putting a
+    ``FunnelStep`` into the event list that a ``Metric`` holds. The
+    payload encodes, but decode rebuilds through the constructor, which
+    refuses it. The error stays an ``UndecodableValueError``, so the
+    runner still fails loudly on such a vector.
+
+    Raises:
+        AssertionError: If decode succeeds or raises another error type.
+    """
+    from conformance.record.codecs import UnrebuildableValueError
+
+    events: list[Any] = ["Login", "Signup"]
+    metric = Metric(events, filters=[Filter.equals("country", "US")])
+    events[1] = FunnelStep("Signup")
+    encoded = encode_input_value(metric)
+    with pytest.raises(UnrebuildableValueError) as excinfo:
+        decode_value(encoded)
+    assert isinstance(excinfo.value, UndecodableValueError)
+
+
+def test_unknown_field_is_not_unrebuildable() -> None:
+    """An unknown field stays a plain decode error, not a constructor refusal.
+
+    Raises:
+        AssertionError: If the unknown-field error is an
+            ``UnrebuildableValueError``.
+    """
+    from conformance.record.codecs import UnrebuildableValueError
+
+    encoded = encode_input_value(Formula(expression="A"))
+    assert isinstance(encoded, dict)
+    encoded["not_a_field"] = 1
+    with pytest.raises(UndecodableValueError) as excinfo:
+        decode_value(encoded)
+    assert not isinstance(excinfo.value, UnrebuildableValueError)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "fields_set"),
+    [
+        pytest.param({"prefix": "#"}, {"prefix"}, id="one-field"),
+        pytest.param(
+            {"prefix": None, "precision": 2}, {"prefix", "precision"}, id="none-is-set"
+        ),
+        pytest.param(
+            {"minimumDetectableEffect": 0.1},
+            {"minimum_detectable_effect"},
+            id="alias",
+        ),
+        pytest.param({}, set(), id="empty"),
+    ],
+)
+def test_metric_display_keeps_only_the_fields_the_caller_set(
+    kwargs: dict[str, Any], fields_set: set[str]
+) -> None:
+    """A ``MetricDisplay`` input carries only its set fields.
+
+    The library's display merge reads ``model_fields_set``: a field set to
+    ``None`` removes the stored key, and an unset field keeps it. If every
+    field went into the vector, decode would set all of them, and the
+    replayed merge would remove stored keys that the caller never named.
+
+    Args:
+        kwargs: The constructor arguments.
+        fields_set: The field names that the caller set.
+
+    Raises:
+        AssertionError: If the encoding or the decoded set fields differ.
+    """
+    from mixpanel_headless.types import MetricDisplay
+
+    original = MetricDisplay(**kwargs)
+    encoded = encode_input_value(original)
+    assert set(encoded) == {"$type", *fields_set}
+    decoded = decode_value(json.loads(json.dumps(encoded)))
+    assert decoded == original
+    assert decoded.model_fields_set == fields_set
+
+
+def test_metric_display_set_fields_survive_inside_params() -> None:
+    """A display inside ``UpdateMetricParams`` keeps its set fields too.
+
+    Raises:
+        AssertionError: If the nested display gains set fields on decode.
+    """
+    from mixpanel_headless.types import MetricDisplay, UpdateMetricParams
+
+    params = UpdateMetricParams(display=MetricDisplay(prefix="#"))
+    decoded = decode_value(encode_input_value(params))
+    assert decoded == params
+    assert decoded.display.model_fields_set == {"prefix"}
+
+
+def test_metric_display_extra_keys_are_unencodable() -> None:
+    """A ``MetricDisplay`` with an unknown key does not encode.
+
+    The display merge counts an unknown key as set, but decode accepts
+    declared fields only, so the vector cannot carry the key.
+
+    Raises:
+        AssertionError: If the display encodes.
+    """
+    from mixpanel_headless.types import MetricDisplay
+
+    with pytest.raises(UnencodableValueError, match="MetricDisplay"):
+        encode_input_value(MetricDisplay(prefix="#", colour="red"))
+
+
+def test_metric_display_keeps_every_field_in_expect_position() -> None:
+    """Expect position still writes every field, the library's to-dict shape.
+
+    Raises:
+        AssertionError: If expect position drops an unset field.
+    """
+    from conformance.record.codecs import encode_expect_value
+    from mixpanel_headless.types import MetricDisplay
+
+    encoded = encode_expect_value(MetricDisplay(prefix="#"))
+    assert encoded["prefix"] == "#"
+    assert "precision" in encoded
+    assert encoded["precision"] is None
+
+
+def test_unresolvable_annotations_raise_unrebuildable() -> None:
+    """A dataclass whose annotations do not resolve cannot be rebuilt.
+
+    Decode reads the annotations to restore tuple fields.
+    ``FlowQueryResult`` names networkx, which it imports for type checking
+    only, so decode can never rebuild it. The error is a constructor-side
+    refusal, so the recorder excludes such an input instead of keeping a
+    vector that the runner cannot replay.
+
+    Raises:
+        AssertionError: If decode raises another error type.
+    """
+    from conformance.record.codecs import UnrebuildableValueError
+
+    with pytest.raises(UnrebuildableValueError, match="FlowQueryResult"):
+        decode_value({"$type": "FlowQueryResult"})
