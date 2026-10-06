@@ -2,9 +2,10 @@
 
 Copilot code review reads ``.github/instructions/*.instructions.md`` by their
 ``applyTo`` globs. Greptile reads the same files through scoped entries in
-``.greptile/files.json``. These guards keep the two reviewers in step. They
-compare structure (paths, scopes, rule ids), not prose. Every guard is
-offline and reports every violation in one assertion message.
+``.greptile/files.json``. Copilot code review also loads the review skill in
+``.github/skills/code-review/``. These guards keep the reviewers in step. They
+compare structure (paths, scopes, rule ids, skill names), not prose. Every
+guard is offline and reports every violation in one assertion message.
 
 | Guard | Fails when |
 | --- | --- |
@@ -14,6 +15,8 @@ offline and reports every violation in one assertion message.
 | Scopes | An entry's ``scope`` differs from the ``applyTo`` globs of its file. |
 | Rule ids | An instruction file names a Greptile rule id that no config defines. |
 | Pointers | A ``.greptile`` ``instructions`` string names a missing file. |
+| Review skill | The ``code-review`` skill is absent, or a skill's ``name`` breaks the rules. |
+| Skill paths | A skill names a repository path that does not exist. |
 """
 
 from __future__ import annotations
@@ -34,6 +37,12 @@ INSTRUCTIONS_DIR = REPO_ROOT / ".github" / "instructions"
 ROOT_FILES_JSON = REPO_ROOT / ".greptile" / "files.json"
 """Greptile context-file list that registers the instruction files."""
 
+SKILLS_DIR = REPO_ROOT / ".github" / "skills"
+"""Folder that holds the Copilot agent skills, one sub-folder per skill."""
+
+REVIEW_SKILL = SKILLS_DIR / "code-review" / "SKILL.md"
+"""Skill that Copilot code review loads for review tasks in this repository."""
+
 GREPTILE_SEARCH_ROOTS = (
     "src",
     "tests",
@@ -53,6 +62,12 @@ _RULE_LINE = re.compile(r"Greptile rules? for this area:(?P<ids>.*)", re.DOTALL)
 
 _INSTRUCTION_PATH = re.compile(r"\.github/instructions/[\w.-]+\.instructions\.md")
 """Matches a repository path to one instruction file."""
+
+_SKILL_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+"""A skill name: lowercase words joined by single hyphens."""
+
+_BACKTICKED_PATH = re.compile(r"`((?:\.?[\w-]+/)+[\w.-]*|[\w.-]+\.md)`")
+"""Matches a backticked repository path, such as ``tests/live/`` or ``REVIEW.md``."""
 
 
 def _report(title: str, violations: list[str]) -> str:
@@ -232,3 +247,48 @@ class TestGreptilePointers:
                 if not (REPO_ROOT / pointed).is_file():
                     violations.append(f"{_rel(config)}: missing {pointed}")
         assert not violations, _report("Pointed files exist", violations)
+
+
+def _skill_files() -> list[Path]:
+    """List the Copilot agent skill files.
+
+    Returns:
+        Every ``SKILL.md`` one level under ``SKILLS_DIR``, sorted.
+    """
+    return sorted(SKILLS_DIR.glob("*/SKILL.md"))
+
+
+class TestReviewSkill:
+    """The Copilot review skill exists and every skill has valid front matter."""
+
+    def test_review_skill_exists(self) -> None:
+        """Copilot code review finds its skill at ``.github/skills/code-review/``."""
+        assert REVIEW_SKILL.is_file(), f"missing {_rel(REVIEW_SKILL)}"
+
+    def test_skill_front_matter(self) -> None:
+        """Each skill has a ``description`` and a lowercase hyphenated ``name`` equal to its folder."""
+        violations: list[str] = []
+        for path in _skill_files():
+            frontmatter = parse_frontmatter(path.read_text(encoding="utf-8")) or {}
+            name = frontmatter.get("name", "")
+            if not _SKILL_NAME.fullmatch(name):
+                violations.append(
+                    f"{_rel(path)}: name {name!r} is not lowercase-hyphen"
+                )
+            if name != path.parent.name:
+                violations.append(
+                    f"{_rel(path)}: name {name!r} != folder {path.parent.name!r}"
+                )
+            if not frontmatter.get("description", "").strip():
+                violations.append(f"{_rel(path)}: no description")
+        assert not violations, _report("Skill front matter", violations)
+
+    def test_skill_paths_exist(self) -> None:
+        """Each backticked repository path in a skill exists."""
+        violations = [
+            f"{_rel(path)}: missing {named}"
+            for path in _skill_files()
+            for named in _BACKTICKED_PATH.findall(path.read_text(encoding="utf-8"))
+            if not (REPO_ROOT / named).exists()
+        ]
+        assert not violations, _report("Skill paths exist", violations)

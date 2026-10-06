@@ -12,6 +12,8 @@ Other instruction files:
 - `.github/instructions/*.instructions.md`: notes for one area of the tree.
   Each file names the folder guide (a `CLAUDE.md` in that folder) to read
   first.
+- `.github/skills/code-review/SKILL.md`: the review procedure, including how
+  to check a finding before you post it.
 
 ## Environment
 
