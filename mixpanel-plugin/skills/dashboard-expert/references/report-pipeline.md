@@ -100,7 +100,7 @@ dashboard = ws.create_dashboard(CreateDashboardParams(
 ))
 ```
 
-When the team already defines a number as a saved metric (for example revenue or activation), query the saved metric instead of a rebuild, and build the report from that result. Find it with `ws.list_metrics(name_contains="revenue", verified=True)`, then pass it to `ws.query()`. The report keeps the reference, so it follows later edits to the saved metric, as a report built in Mixpanel does.
+When the team already defines a number as a saved metric (for example revenue or activation), query the saved metric instead of a rebuild, and build the report from that result. Find candidates with `ws.list_metrics(name_contains="revenue", viewable_only=True)`. Keep unverified matches, read each candidate's definition, and prefer a verified match that answers the question. If several fit, ask the user which one they mean. Then pass the one selected metric to `ws.query()`, not the whole list, because a list charts one series per metric. The report keeps the reference, so it follows later edits to the saved metric, as a report built in Mixpanel does.
 
 If one query fails, put a text card in its place and keep the build going. The user sees what is missing and why:
 

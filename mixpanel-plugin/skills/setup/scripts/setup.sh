@@ -187,7 +187,7 @@ fi
 if "$venv_python" -m mixpanel_headless help -f json Workspace.list_metrics >/dev/null; then
   echo "✓ built-in help (mp help)"
 else
-  echo "✗ built-in help (mp help) failed — mixpanel-headless $new_version may be older than 0.4.0"
+  echo "✗ built-in help (mp help) failed — mixpanel-headless $new_version could not look up Workspace.list_metrics; read the error above"
   exit 1
 fi
 

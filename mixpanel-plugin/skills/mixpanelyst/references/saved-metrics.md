@@ -63,7 +63,7 @@ print(m.type, m.behavior_type, m.math, m.formula_expression)
 print(m.definition)           # the stored definition
 ```
 
-- `math` says what the metric counts: people (`unique`), events (`total`), or a property value.
+- `math` says how the metric counts, for example people (`unique`), events (`total`), sessions (`sessions`), a property value (`average`, `median`), or a funnel or retention rate (`conversion_rate_unique`, `retention_rate`).
 - `behavior_type` says what users did, for example one event (`event`), any of several events (`simple`), a funnel, or a retention pair.
 - For a formula, `formula_expression` and `referenced_metric_ids` name the operands.
 - In your answer, say which metric you used and what it counts.

@@ -119,7 +119,7 @@ for order in ["loose", "any"]:
 
 ## One event per step
 
-A step takes one event, and `query_funnel()` refuses a list of events as a step. For "did A or B" as one step, use a custom event: the name `"$custom_event:<id>"` works as a step. The id is the `custom_event_id` of an entry of `ws.list_custom_events()`. The display name of a custom event matches no event, so it gives zeros. When no custom event exists, a new one is an entity write, so confirm it with the user first.
+A step takes one event, and `query_funnel()` refuses a list of events as a step. For "did A or B" as one step, use a custom event: the name `"$custom_event:<id>"` works as a step. To find the id, match the name in `ws.list_custom_events()` and keep only entries whose `custom_event_id` is a positive number (0 or none marks an orphan entry). When several entries remain, ask the user which one they mean. The listing does not show which events a custom event covers, so confirm with the user that it covers the events of the step. The display name of a custom event matches no event, so it gives zeros. When no custom event exists, a new one is an entity write, so confirm it with the user first.
 
 A saved funnel behavior replaces the steps. Pass it to `query_funnel()` to run the team's funnel with its own window and order.
 

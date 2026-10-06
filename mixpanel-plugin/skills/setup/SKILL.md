@@ -55,7 +55,7 @@ Read these lines in the output:
 | `✗ ... is not a virtual environment` | Something else uses that path. Tell the user to move it away. |
 | `✗ Package install failed` | Show the installer output. A network or package-index problem is the usual cause. |
 | `✗ Import verification failed` | Show the error. A partial install is the usual cause. Run setup again. |
-| `✗ built-in help (mp help) failed` | The installed library is older than 0.4.0. Show the install output. |
+| `✗ built-in help (mp help) failed` | The install met the 0.4.0 floor, but `mp help` could not look up `Workspace.list_metrics`. Show the error above that line. A broken or partial install is the usual cause, so run setup again. |
 
 If the script printed `UPGRADED`, tell the user to restart any Python kernel or
 notebook that imported the old version.
