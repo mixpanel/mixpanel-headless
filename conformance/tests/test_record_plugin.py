@@ -739,6 +739,77 @@ def test_input_its_constructor_accepts_stays_includable(
     assert len(record_session.captures[-1].entry_calls) == 1
 
 
+def test_tuple_that_rebuilds_as_a_list_is_unserializable(
+    record_session: RecordSession,
+) -> None:
+    """An input whose tuple field comes back as a list is excluded.
+
+    Vector JSON has no tuple type. ``Filter`` keeps its value as given,
+    so the rebuilt filter holds a list, and the library treats the two
+    differently: a ``"was between"`` filter refuses a tuple date range
+    (``ES16_DATE_RANGE_EXPECTS_PAIR``) and accepts the list.
+
+    Raises:
+        AssertionError: If the capture stays includable.
+    """
+    from mixpanel_headless._internal.query import user_builders
+    from mixpanel_headless.exceptions import ParamValidationError
+    from mixpanel_headless.types import Filter
+
+    value = Filter("d", "was between", ("2026-09-01", "2026-09-02"))  # type: ignore[arg-type]
+
+    nodeid = "tests/unit/test_fake.py::test_tuple_date_range"
+    record_session.begin_test(nodeid, None)
+    with pytest.raises(ParamValidationError):
+        user_builders.filter_to_selector(value)
+    record_session.finish_test(nodeid)
+
+    calls = record_session.captures[-1].entry_calls
+    assert [c.entry.api for c in calls] == ["user_builders.filter_to_selector"]
+    assert calls[0].excluded_reason == "unserializable_input"
+
+
+def test_tuple_that_its_constructor_restores_stays_includable(
+    record_session: RecordSession,
+) -> None:
+    """A tuple field that the constructor rebuilds from a list is kept.
+
+    ``Formula`` stores its operands as a tuple although the annotation is
+    not a tuple. Its constructor turns the decoded list back into a
+    tuple, so the rebuilt formula equals the recorded one.
+
+    Raises:
+        AssertionError: If the capture is excluded.
+    """
+    from mixpanel_headless._internal import validation
+    from mixpanel_headless.types import Formula
+
+    formula = Formula("A / B", metrics=[Metric("A"), Metric("B")])
+    assert isinstance(formula.metrics, tuple)
+
+    nodeid = "tests/unit/test_fake.py::test_operand_formula"
+    record_session.begin_test(nodeid, None)
+    validation.validate_query_args(
+        events=[],
+        math="total",
+        math_property=None,
+        per_user=None,
+        from_date=None,
+        to_date=None,
+        last=30,
+        has_formula=False,
+        rolling=None,
+        cumulative=False,
+        group_by=None,
+        formulas=[formula],
+    )
+    record_session.finish_test(nodeid)
+
+    calls = _validator_calls(record_session)
+    assert len(calls) == 1
+    assert calls[0].excluded_reason is None
+
+
 # ---------------------------------------------------------------------------
 # Coded-guard error_only entries (coding-pass design §5 item 2, RR-7 fixes)
 # ---------------------------------------------------------------------------

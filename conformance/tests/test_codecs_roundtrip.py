@@ -10,7 +10,6 @@ against exactly these shapes.
 
 from __future__ import annotations
 
-import dataclasses
 import datetime
 import json
 import math
@@ -595,28 +594,6 @@ def test_nonfinite_floats_still_unencodable_at_record_time() -> None:
         encode_input_value(math.inf)
 
 
-def test_tuple_in_a_field_not_declared_as_tuple_is_unencodable() -> None:
-    """A tuple in a dataclass field without a tuple annotation does not encode.
-
-    Vector JSON has no tuple type, and decode restores a tuple only for a
-    field declared as one, so this value would replay as a list. The
-    library can treat the two differently: a ``"was between"`` filter
-    refuses a tuple date range (``ES16_DATE_RANGE_EXPECTS_PAIR``) and
-    accepts the same two dates as a list.
-
-    Raises:
-        AssertionError: If the tuple encodes in input position, or if
-            expect position stops encoding it.
-    """
-    from conformance.record.codecs import encode_expect_value
-
-    value = Filter("d", "was between", ("2026-09-01", "2026-09-02"))  # type: ignore[arg-type]
-    with pytest.raises(UnencodableValueError, match="tuple"):
-        encode_input_value(value)
-    # Expect position compares JSON, so a list there loses nothing.
-    assert encode_expect_value(value)["_value"] == ["2026-09-01", "2026-09-02"]
-
-
 def test_constructor_rejection_raises_unrebuildable() -> None:
     """A payload that the constructor refuses raises ``UnrebuildableValueError``.
 
@@ -741,24 +718,3 @@ def test_metric_display_keeps_every_field_in_expect_position() -> None:
     assert encoded["prefix"] == "#"
     assert "precision" in encoded
     assert encoded["precision"] is None
-
-
-@dataclasses.dataclass(frozen=True)
-class _UnresolvableHint:
-    """A dataclass whose annotation names a type that does not resolve."""
-
-    graph: NotImportable  # type: ignore[name-defined]  # noqa: F821
-
-
-def test_dataclass_with_unresolvable_annotations_is_unencodable() -> None:
-    """A dataclass whose field annotations do not resolve does not encode.
-
-    Some result types import a type for type checking only (for example
-    ``FlowQueryResult`` and networkx). Decode reads the annotations to
-    restore tuple fields, so it could never rebuild such a value.
-
-    Raises:
-        AssertionError: If the value encodes or raises another error.
-    """
-    with pytest.raises(UnencodableValueError, match="_UnresolvableHint"):
-        encode_input_value(_UnresolvableHint(graph=None))

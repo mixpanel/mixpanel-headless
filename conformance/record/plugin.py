@@ -29,18 +29,20 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import dataclasses
 import functools
 import inspect
 import os
 import threading
 import unittest.mock as umock
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
 import pytest
+from pydantic import BaseModel
 
 from conformance.record.capture import (
     EntryCallCapture,
@@ -53,7 +55,6 @@ from conformance.record.capture import (
 )
 from conformance.record.clock import RecordClock
 from conformance.record.codecs import (
-    UndecodableValueError,
     UnencodableValueError,
     UnrebuildableValueError,
     decode_input_kwargs,
@@ -273,6 +274,39 @@ class _CallbackProxy:
                 except UnencodableValueError:
                     self._call.excluded_reason = "unserializable_input"
         return self._inner(*args, **kwargs)
+
+
+def _rebuilt_alike(rebuilt: object, original: object) -> bool:
+    """Return whether a rebuilt input value matches the recorded value.
+
+    Dataclass and model instances compare with their own ``==``, which
+    sees a tuple field that came back as a list. Containers compare item
+    by item, so a tuple argument that comes back as a list still matches:
+    the vector schema has no tuple type, and the library accepts any
+    sequence there. Other values are plain JSON, a callback stub, or a
+    tagged scalar that round-trips exactly.
+
+    Args:
+        rebuilt: The value that decode produced.
+        original: The value that the test passed.
+
+    Returns:
+        True when the rebuilt value matches the recorded one.
+    """
+    if isinstance(original, BaseModel) or (
+        dataclasses.is_dataclass(original) and not isinstance(original, type)
+    ):
+        return bool(rebuilt == original)
+    if isinstance(original, Mapping) and isinstance(rebuilt, Mapping):
+        return original.keys() == rebuilt.keys() and all(
+            _rebuilt_alike(rebuilt[key], value) for key, value in original.items()
+        )
+    if isinstance(original, list | tuple) and isinstance(rebuilt, list | tuple):
+        return len(original) == len(rebuilt) and all(
+            _rebuilt_alike(item, source)
+            for item, source in zip(rebuilt, original, strict=True)
+        )
+    return True
 
 
 def _callback_eligible(value: Any) -> bool:
@@ -909,42 +943,55 @@ class RecordSession:
             except UnencodableValueError:
                 call.excluded_reason = "unserializable_input"
         if call.input_encoded is not None and not self._input_rebuilds(
-            call.input_encoded
+            call.input_encoded, arguments
         ):
             call.excluded_reason = "unserializable_input"
         capture.entry_calls.append(call)
         return call, call_args, call_kwargs
 
-    def _input_rebuilds(self, encoded: dict[str, Any]) -> bool:
-        """Return whether the replay can rebuild an encoded call input.
+    def _input_rebuilds(
+        self, encoded: dict[str, Any], arguments: dict[str, Any]
+    ) -> bool:
+        """Return whether the replay rebuilds a call input as recorded.
 
-        Replay rebuilds each rich input through its constructor. A test can
-        change an object after construction (for example, put a
-        ``FunnelStep`` into the event list that a ``Metric`` holds), and
-        the constructor then refuses the recorded fields. Such an input is
-        excluded at record time. Any other decode failure is a codec bug,
-        so this check keeps the vector for the runner to fail loudly.
+        Replay rebuilds each rich input from its vector fields. Two cases
+        give a different input, and such a capture is excluded:
 
-        The decode calls constructors that this session wraps, so it runs
-        one level deeper: the re-entrancy guard then records none of them.
+        - A test changed an object after construction (for example, put a
+          ``FunnelStep`` into the event list that a ``Metric`` holds), so
+          the constructor refuses the recorded fields.
+        - A field held a value that JSON cannot carry, such as a tuple in
+          a ``Filter``, which keeps its value as given. The rebuilt object
+          then differs, and the library can treat it differently.
+
+        Any other decode failure is a codec bug, so this check keeps the
+        vector for the runner to fail loudly. The decode calls
+        constructors that this session wraps, so it runs one level deeper:
+        the re-entrancy guard then records none of them.
 
         Args:
             encoded: The encoded ``call.input`` mapping.
+            arguments: The recorded argument values, by parameter name.
 
         Returns:
-            False only when a constructor refuses the decoded fields.
+            False when a constructor refuses the decoded fields or a
+            rebuilt value differs from the recorded one.
         """
         state = self._thread_state
         state.depth += 1
         try:
-            decode_input_kwargs(encoded)
+            decoded = decode_input_kwargs(encoded)
+            return all(
+                _rebuilt_alike(decoded[name], arguments[name])
+                for name in encoded
+                if name in arguments
+            )
         except UnrebuildableValueError:
             return False
-        except UndecodableValueError:
-            pass  # A codec bug: the runner reports the vector loudly.
+        except Exception:  # A codec bug: the runner reports the vector loudly.
+            return True
         finally:
             state.depth -= 1
-        return True
 
     @staticmethod
     def _client_options_for(

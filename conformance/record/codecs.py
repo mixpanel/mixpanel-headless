@@ -229,40 +229,6 @@ def _set_field_names(value: BaseModel) -> list[str]:
     return [name for name in type(value).model_fields if name in value.model_fields_set]
 
 
-def _reject_undeclared_tuples(value: object) -> None:
-    """Refuse a tuple in a dataclass field that is not declared as a tuple.
-
-    Vector JSON has no tuple type, and decode restores a tuple only for a
-    field declared as one (:func:`_tuple_fields`). Elsewhere the value
-    would replay as a list, and the library can treat a list differently:
-    a ``"was between"`` filter refuses a tuple date range and accepts a
-    list. Only input position calls this; expect position compares JSON.
-
-    Args:
-        value: A dataclass instance in input position.
-
-    Raises:
-        UnencodableValueError: If a field holds a tuple and its annotation
-            is not a tuple, or if the field annotations do not resolve
-            (decode reads them too, so it could not rebuild the value).
-    """
-    if not dataclasses.is_dataclass(value) or isinstance(value, type):
-        return
-    cls: type = type(value)
-    try:
-        declared = _tuple_fields(cls)
-    except (NameError, TypeError) as exc:
-        raise UnencodableValueError(
-            f"the field annotations of {cls.__name__} do not resolve: {exc}"
-        ) from exc
-    for field in dataclasses.fields(value):
-        if field.name not in declared and isinstance(getattr(value, field.name), tuple):
-            raise UnencodableValueError(
-                f"{type(value).__name__}.{field.name} holds a tuple, which "
-                "would replay as a list (the field is not declared as a tuple)"
-            )
-
-
 def _encode_common(
     value: object, depth: int, *, tagged_models: bool, in_rich_payload: bool = False
 ) -> Any:
@@ -356,8 +322,6 @@ def _encode_common(
             return {"$type": type(value).__name__, **encoded}
         return encoded
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        if tagged_models:
-            _reject_undeclared_tuples(value)
         fields = {
             f.name: _encode_common(
                 getattr(value, f.name),
