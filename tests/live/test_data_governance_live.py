@@ -1,10 +1,10 @@
 # ruff: noqa: S101, S603, S607
 """Live QA tests for Data Governance CRUD — Phase 027.
 
-Exercises the full stack against the real Mixpanel API on Project 8.
-All created objects are prefixed ``QA-027-`` and cleaned up after tests.
+Exercises the full stack against the real Mixpanel API. All created
+objects are prefixed ``QA-027-`` and cleaned up after tests.
 
-Usage:
+Usage (set ``MP_LIVE_ACCOUNT=<account> MP_LIVE_WRITE_PROJECT=<project id>``):
     uv run pytest tests/live/test_data_governance_live.py -v -m live
     uv run pytest tests/live/test_data_governance_live.py -v -m live -k Tags
     uv run pytest tests/live/test_data_governance_live.py -v -m live -k DropFilters
@@ -13,9 +13,22 @@ Usage:
     uv run pytest tests/live/test_data_governance_live.py -v -m live -k CustomEvents
     uv run pytest tests/live/test_data_governance_live.py -v -m live -k EdgeCases
 
+Environment:
+    - ``MP_LIVE_ACCOUNT`` — the configured account to run as. Every test
+      skips when it is unset; the suite never uses the default session.
+    - ``MP_LIVE_WRITE_PROJECT`` — the project id this suite may write to.
+      Every test skips unless it is set and the account resolves to that
+      project. The ``mp`` CLI calls pass both as global flags.
+
 Constraints:
-    - Uses account ``p8`` (Project ID 8)
-    - Never modifies pre-existing non-QA objects permanently
+    - Never modifies pre-existing non-QA objects permanently. The Lexicon
+      update tests change one existing event and one existing event
+      property, and put back the values they read. They use definitions
+      that are not Mixpanel built-ins: for a built-in (for example
+      ``$session_start``) the read API returns the built-in text, not the
+      stored custom text, so writing back what was read would replace the
+      stored text. They read back the exact row (name and resource type),
+      because a name lookup can return several rows.
     - All QA objects named ``QA-027-*``
     - Cleanup guaranteed via fixtures with finalizers
 """
@@ -26,6 +39,7 @@ import contextlib
 import json
 import subprocess
 import uuid
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -57,9 +71,17 @@ from mixpanel_headless.types import (
     UpdateTagParams,
     UploadLookupTableParams,
 )
+from tests.live._live_settings import (
+    live_cli_command,
+    live_cli_env,
+    live_workspace,
+    requires_live_account,
+    requires_write_project,
+)
 
-# All tests require the `live` marker — skipped by default
-pytestmark = pytest.mark.live
+# All tests require the `live` marker, MP_LIVE_ACCOUNT, and
+# MP_LIVE_WRITE_PROJECT — skipped by default
+pytestmark = [pytest.mark.live, requires_live_account, requires_write_project]
 
 QA_PREFIX = "QA-027-"
 
@@ -78,19 +100,21 @@ def _unique_name(label: str) -> str:
 
 
 def _mp(*args: str) -> subprocess.CompletedProcess[str]:
-    """Run an ``mp`` CLI command against Project 8.
+    """Run an ``mp`` CLI command on the live account and write project.
 
     Args:
-        *args: CLI arguments after ``mp``.
+        *args: CLI arguments after the global ``--account`` and
+            ``--project`` flags.
 
     Returns:
         Completed process with captured stdout and stderr.
     """
     return subprocess.run(
-        ["uv", "run", "mp", *args],
+        live_cli_command(*args),
         capture_output=True,
         text=True,
         timeout=60,
+        env=live_cli_env(),
     )
 
 
@@ -101,12 +125,145 @@ def _mp(*args: str) -> subprocess.CompletedProcess[str]:
 
 @pytest.fixture(scope="module")
 def ws() -> Workspace:
-    """Create a Workspace using default credentials (OAuth to current project).
+    """Create the Workspace on the ``MP_LIVE_ACCOUNT`` account.
 
     Returns:
-        Workspace instance.
+        Workspace on ``MP_LIVE_WRITE_PROJECT``; the test skips when a
+        setting is missing or the account resolves to another project.
     """
-    return Workspace()
+    return live_workspace(write=True)
+
+
+def _is_builtin(definition: EventDefinition | PropertyDefinition) -> bool:
+    """Return whether a Lexicon definition is a Mixpanel built-in.
+
+    For a built-in, the read API returns the built-in text instead of the
+    stored custom text, so its read values cannot be written back.
+
+    Args:
+        definition: An event or property definition as the API returned it.
+
+    Returns:
+        ``True`` when the response marks it ``isMixpanelDefinition``.
+    """
+    return bool((definition.model_extra or {}).get("isMixpanelDefinition"))
+
+
+def _event_row(ws: Workspace, name: str) -> EventDefinition:
+    """Read the definition row of exactly one event.
+
+    Args:
+        ws: Workspace fixture.
+        name: The event name.
+
+    Returns:
+        The row whose name equals ``name``.
+    """
+    rows = [d for d in ws.get_event_definitions(names=[name]) if d.name == name]
+    assert len(rows) == 1, f"expected one definition row for {name!r}, got {rows}"
+    return rows[0]
+
+
+def _event_property_row(ws: Workspace, name: str) -> PropertyDefinition:
+    """Read the definition row of exactly one event property.
+
+    A name lookup can return several rows (other resource types and names),
+    so the row must match the name and the ``event`` resource type.
+
+    Args:
+        ws: Workspace fixture.
+        name: The event property name.
+
+    Returns:
+        The row whose name equals ``name`` and whose resource type is event.
+    """
+    rows = [
+        d
+        for d in ws.get_property_definitions(names=[name], resource_type="event")
+        if d.name == name and (d.resource_type or "").lower() == "event"
+    ]
+    assert len(rows) == 1, f"expected one event property row for {name!r}, got {rows}"
+    return rows[0]
+
+
+_LOOKUP_BATCH = 50
+"""Names per Lexicon definition lookup while searching for a candidate."""
+
+
+def _batches(names: list[str]) -> Iterator[list[str]]:
+    """Split names into lookup batches of at most :data:`_LOOKUP_BATCH`.
+
+    Args:
+        names: The names to look up.
+
+    Yields:
+        Consecutive slices of ``names``.
+    """
+    for start in range(0, len(names), _LOOKUP_BATCH):
+        yield names[start : start + _LOOKUP_BATCH]
+
+
+def _restore(step: str, restore: Callable[[], object]) -> None:
+    """Run one restore step; any failure fails the test with its error text.
+
+    A restore puts back a value that the test changed on an existing
+    definition, so a silent failure would leave the project changed.
+
+    Args:
+        step: What the step restores, for the failure message.
+        restore: The call that writes the old value back.
+    """
+    try:
+        restore()
+    except Exception as exc:  # noqa: BLE001 - every failure must fail the test
+        pytest.fail(f"restore failed ({step}): {type(exc).__name__}: {exc}")
+
+
+@pytest.fixture(scope="module")
+def custom_event(ws: Workspace) -> str:
+    """Name an event of the project whose definition is not a Mixpanel built-in.
+
+    The Lexicon update tests change this event and put its values back.
+
+    Args:
+        ws: Workspace fixture.
+
+    Returns:
+        The event name. The test skips when the project has none.
+    """
+    names = [e for e in ws.events() if not e.startswith("$")]
+    for batch in _batches(names):
+        for definition in ws.get_event_definitions(names=batch):
+            if definition.name in batch and not _is_builtin(definition):
+                return definition.name
+    pytest.skip("no event definition that is not a Mixpanel built-in")
+
+
+@pytest.fixture(scope="module")
+def custom_event_property(ws: Workspace, custom_event: str) -> str:
+    """Name an event property whose definition is not a Mixpanel built-in.
+
+    The Lexicon update test changes this property and puts its values back.
+
+    Args:
+        ws: Workspace fixture.
+        custom_event: An event whose properties are searched.
+
+    Returns:
+        The property name. The test skips when none qualifies.
+    """
+    names = [p for p in ws.properties(custom_event) if not p.startswith("$")]
+    for batch in _batches(names):
+        for definition in ws.get_property_definitions(
+            names=batch, resource_type="event"
+        ):
+            if (
+                definition.name in batch
+                and (definition.resource_type or "").lower() == "event"
+                and not _is_builtin(definition)
+            ):
+                return definition.name
+    pytest.skip("no event property definition that is not a Mixpanel built-in")
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -279,71 +436,99 @@ class TestEventDefinitions:
         result = ws.get_event_definitions(names=[])
         assert isinstance(result, list)
 
-    def test_update_description(self, ws: Workspace) -> None:
+    def test_update_description(self, ws: Workspace, custom_event: str) -> None:
         """Updating an event description takes effect and can be reverted.
 
         Args:
             ws: Workspace fixture.
+            custom_event: An event that is not a Mixpanel built-in.
         """
-        original = ws.get_event_definitions(names=["$session_start"])
-        assert len(original) >= 1
-        ev = original[0]
-        old_desc = ev.description or ""
+        old_desc = _event_row(ws, custom_event).description or ""
         new_desc = f"QA-027 test description {uuid.uuid4().hex[:8]}"
         try:
             updated = ws.update_event_definition(
-                "$session_start",
+                custom_event,
                 UpdateEventDefinitionParams(description=new_desc),
             )
             assert updated.description == new_desc
         finally:
-            with contextlib.suppress(Exception):
-                ws.update_event_definition(
-                    "$session_start",
+            _restore(
+                "event description",
+                lambda: ws.update_event_definition(
+                    custom_event,
                     UpdateEventDefinitionParams(description=old_desc),
-                )
+                ),
+            )
+            restored = _event_row(ws, custom_event).description or ""
+            assert restored == old_desc, (
+                f"restore left description {restored!r}, expected {old_desc!r}"
+            )
 
-    def test_update_hidden_flag(self, ws: Workspace) -> None:
+    def test_update_hidden_flag(self, ws: Workspace, custom_event: str) -> None:
         """Setting hidden=True then hidden=False both take effect.
 
         Args:
             ws: Workspace fixture.
+            custom_event: An event that is not a Mixpanel built-in.
         """
+        old_hidden = bool(_event_row(ws, custom_event).hidden)
         try:
             hidden = ws.update_event_definition(
-                "$session_start",
+                custom_event,
                 UpdateEventDefinitionParams(hidden=True),
             )
             assert hidden.hidden is True
 
             visible = ws.update_event_definition(
-                "$session_start",
+                custom_event,
                 UpdateEventDefinitionParams(hidden=False),
             )
             assert visible.hidden is False
         finally:
-            with contextlib.suppress(Exception):
-                ws.update_event_definition(
-                    "$session_start",
-                    UpdateEventDefinitionParams(hidden=False),
-                )
+            _restore(
+                "event hidden flag",
+                lambda: ws.update_event_definition(
+                    custom_event,
+                    UpdateEventDefinitionParams(hidden=old_hidden),
+                ),
+            )
+            restored = bool(_event_row(ws, custom_event).hidden)
+            assert restored is old_hidden, (
+                f"restore left hidden={restored}, expected {old_hidden}"
+            )
 
-    def test_bulk_update(self, ws: Workspace) -> None:
+    def test_bulk_update(self, ws: Workspace, custom_event: str) -> None:
         """Bulk-updating event definitions returns a list.
 
         The API may return 0 results if the event doesn't match or
-        the response format differs from expectations.
+        the response format differs from expectations. The verified flag
+        that the update sets is put back afterwards.
 
         Args:
             ws: Workspace fixture.
+            custom_event: An event that is not a Mixpanel built-in.
         """
+        old_verified = bool(_event_row(ws, custom_event).verified)
         params = BulkUpdateEventsParams(
             events=[
-                BulkEventUpdate(name="$session_start", verified=True),
+                BulkEventUpdate(name=custom_event, verified=True),
             ]
         )
-        result = ws.bulk_update_event_definitions(params)
-        assert isinstance(result, list)
+        try:
+            result = ws.bulk_update_event_definitions(params)
+            assert isinstance(result, list)
+        finally:
+            _restore(
+                "event verified flag",
+                lambda: ws.update_event_definition(
+                    custom_event,
+                    UpdateEventDefinitionParams(verified=old_verified),
+                ),
+            )
+            restored = bool(_event_row(ws, custom_event).verified)
+            assert restored is old_verified, (
+                f"restore left verified={restored}, expected {old_verified}"
+            )
 
     def test_tracking_metadata(self, ws: Workspace) -> None:
         """Getting tracking metadata for a known event returns a dict.
@@ -396,29 +581,41 @@ class TestPropertyDefinitions:
         assert isinstance(result, list)
         assert len(result) >= 1
 
-    def test_update(self, ws: Workspace) -> None:
+    def test_update(self, ws: Workspace, custom_event_property: str) -> None:
         """Updating a property description takes effect and can be reverted.
+
+        The old description comes from the exact row (name and event
+        resource type), and both writes name the event resource type.
 
         Args:
             ws: Workspace fixture.
+            custom_event_property: An event property that is not a Mixpanel
+                built-in.
         """
-        original = ws.get_property_definitions(names=["$browser"])
-        assert len(original) >= 1
-        prop = original[0]
-        old_desc = prop.description or ""
+        old_desc = _event_property_row(ws, custom_event_property).description or ""
         new_desc = f"QA-027 test prop desc {uuid.uuid4().hex[:8]}"
         try:
             updated = ws.update_property_definition(
-                "$browser",
-                UpdatePropertyDefinitionParams(description=new_desc),
+                custom_event_property,
+                UpdatePropertyDefinitionParams(
+                    description=new_desc, resource_type="Event"
+                ),
             )
             assert updated.description == new_desc
         finally:
-            with contextlib.suppress(Exception):
-                ws.update_property_definition(
-                    "$browser",
-                    UpdatePropertyDefinitionParams(description=old_desc),
-                )
+            _restore(
+                "event property description",
+                lambda: ws.update_property_definition(
+                    custom_event_property,
+                    UpdatePropertyDefinitionParams(
+                        description=old_desc, resource_type="Event"
+                    ),
+                ),
+            )
+            restored = _event_property_row(ws, custom_event_property).description or ""
+            assert restored == old_desc, (
+                f"restore left description {restored!r}, expected {old_desc!r}"
+            )
 
     def test_bulk_update(self, ws: Workspace) -> None:
         """Bulk-updating property definitions returns a list.
@@ -564,17 +761,18 @@ class TestLexiconCLI:
         assert isinstance(data, list)
         assert len(data) >= 1
 
-    def test_events_update_revert(self) -> None:
+    def test_events_update_revert(self, custom_event: str) -> None:
         """CLI event update + revert succeeds.
 
-        Returns:
-            None.
+        Args:
+            custom_event: An event that is not a Mixpanel built-in.
         """
-        # Get original
-        r = _mp("lexicon", "events", "get", "--names", "$session_start")
+        # Get original from the exact row
+        r = _mp("lexicon", "events", "get", "--names", custom_event)
         assert r.returncode == 0, f"stderr: {r.stderr}"
-        events = json.loads(r.stdout)
-        old_desc = events[0].get("description", "")
+        rows = [e for e in json.loads(r.stdout) if e.get("name") == custom_event]
+        assert len(rows) == 1, f"expected one row for {custom_event!r}, got {rows}"
+        old_desc = rows[0].get("description") or ""
 
         new_desc = f"QA-027 CLI test {uuid.uuid4().hex[:8]}"
         try:
@@ -583,22 +781,24 @@ class TestLexiconCLI:
                 "events",
                 "update",
                 "--name",
-                "$session_start",
+                custom_event,
                 "--description",
                 new_desc,
             )
             assert r.returncode == 0, f"stderr: {r.stderr}"
         finally:
-            with contextlib.suppress(Exception):
-                _mp(
-                    "lexicon",
-                    "events",
-                    "update",
-                    "--name",
-                    "$session_start",
-                    "--description",
-                    old_desc,
-                )
+            revert = _mp(
+                "lexicon",
+                "events",
+                "update",
+                "--name",
+                custom_event,
+                "--description",
+                old_desc,
+            )
+            assert revert.returncode == 0, (
+                f"CLI revert failed (exit {revert.returncode}): {revert.stderr}"
+            )
 
     def test_events_bulk_update_invalid_json(self) -> None:
         """Bulk update with invalid JSON exits non-zero.

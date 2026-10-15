@@ -4,7 +4,7 @@
 Exercises the full stack against the real Mixpanel API.
 All created objects are prefixed ``QA-028-`` and cleaned up after tests.
 
-Usage:
+Usage (set ``MP_LIVE_ACCOUNT=<account> MP_LIVE_WRITE_PROJECT=<project id>``):
     uv run pytest tests/live/test_schema_governance_live.py -v -m live
     uv run pytest tests/live/test_schema_governance_live.py -v -m live -k SchemaRegistry
     uv run pytest tests/live/test_schema_governance_live.py -v -m live -k Enforcement
@@ -16,8 +16,14 @@ Usage:
     # Exclude destructive tests (consumes monthly deletion request quota):
     uv run pytest tests/live/test_schema_governance_live.py -v -m "live and not destructive"
 
+Environment:
+    - ``MP_LIVE_ACCOUNT`` — the configured account to run as. Every test
+      skips when it is unset; the suite never uses the default session.
+    - ``MP_LIVE_WRITE_PROJECT`` — the project id this suite may write to.
+      Every test skips unless it is set and the account resolves to that
+      project. The ``mp`` CLI calls pass both as global flags.
+
 Constraints:
-    - Uses default OAuth credentials
     - Never modifies pre-existing non-QA objects permanently
     - All QA objects named ``QA-028-*``
     - Cleanup guaranteed via fixtures with finalizers
@@ -53,9 +59,17 @@ from mixpanel_headless.types import (
     UpdateAnomalyParams,
     UpdateSchemaEnforcementParams,
 )
+from tests.live._live_settings import (
+    live_cli_command,
+    live_cli_env,
+    live_workspace,
+    requires_live_account,
+    requires_write_project,
+)
 
-# All tests require the `live` marker — skipped by default
-pytestmark = pytest.mark.live
+# All tests require the `live` marker, MP_LIVE_ACCOUNT, and
+# MP_LIVE_WRITE_PROJECT — skipped by default
+pytestmark = [pytest.mark.live, requires_live_account, requires_write_project]
 
 QA_PREFIX = "QA-028-"
 
@@ -111,10 +125,11 @@ def _unique_name(label: str) -> str:
 
 
 def _mp(*args: str, timeout: int = 120) -> subprocess.CompletedProcess[str]:
-    """Run an ``mp`` CLI command.
+    """Run an ``mp`` CLI command on the live account and write project.
 
     Args:
-        *args: CLI arguments after ``mp``.
+        *args: CLI arguments after the global ``--account`` and
+            ``--project`` flags.
         timeout: Maximum seconds to wait (default 120).
 
     Returns:
@@ -122,10 +137,11 @@ def _mp(*args: str, timeout: int = 120) -> subprocess.CompletedProcess[str]:
     """
     try:
         return subprocess.run(
-            ["uv", "run", "mp", *args],
+            live_cli_command(*args),
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=live_cli_env(),
         )
     except subprocess.TimeoutExpired:
         pytest.skip(f"CLI command timed out after {timeout}s: mp {' '.join(args)}")
@@ -172,12 +188,13 @@ def _test_schema(**extra_props: dict[str, Any]) -> dict[str, Any]:
 
 @pytest.fixture(scope="module")
 def ws() -> Workspace:
-    """Create a Workspace using default credentials (OAuth to current project).
+    """Create the Workspace on the ``MP_LIVE_ACCOUNT`` account.
 
     Returns:
-        Workspace instance.
+        Workspace on ``MP_LIVE_WRITE_PROJECT``; the test skips when a
+        setting is missing or the account resolves to another project.
     """
-    return Workspace()
+    return live_workspace(write=True)
 
 
 @pytest.fixture(scope="module", autouse=True)

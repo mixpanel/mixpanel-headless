@@ -2,12 +2,18 @@
 
 Exercises PropertyInput, InlineCustomProperty, and CustomPropertyRef
 across all 3 positions (group_by, filter, measurement) and all 3 engines
-(insights, funnels, retention) against the real Mixpanel API on account
-``p8`` (project ID 8).
+(insights, funnels, retention) against the real Mixpanel API. Read-only.
 
 Usage:
-    uv run pytest tests/live/test_custom_property_queries_live.py -m live -v
-    uv run pytest tests/live/test_custom_property_queries_live.py -m live -v -k "GroupBy"
+    MP_LIVE_ACCOUNT=<account> uv run pytest tests/live/test_custom_property_queries_live.py -m live -v
+    MP_LIVE_ACCOUNT=<account> uv run pytest tests/live/test_custom_property_queries_live.py -m live -v -k "GroupBy"
+
+Environment:
+    - ``MP_LIVE_ACCOUNT`` — the configured account to run as. Every test
+      skips when it is unset; the suite never uses the default session.
+      The Workspace uses the account's default project (and its default
+      workspace), which needs events, numeric properties, and saved custom
+      properties.
 """
 
 from __future__ import annotations
@@ -32,8 +38,9 @@ from mixpanel_headless.types import (
     FunnelStep,
     RetentionQueryResult,
 )
+from tests.live._live_settings import live_workspace, requires_live_account
 
-pytestmark = pytest.mark.live
+pytestmark = [pytest.mark.live, requires_live_account]
 
 # =============================================================================
 # Fixtures
@@ -42,12 +49,13 @@ pytestmark = pytest.mark.live
 
 @pytest.fixture(scope="module")
 def ws() -> Workspace:
-    """Create Workspace with ecommerce-demo credentials.
+    """Create the Workspace on the ``MP_LIVE_ACCOUNT`` account.
 
     Returns:
-        Workspace connected to ecommerce-demo, workspace 3536632.
+        Workspace on the account's default project; the test skips when
+        ``MP_LIVE_ACCOUNT`` is unset.
     """
-    return Workspace(account="ecommerce-demo", workspace=3536632)
+    return live_workspace()
 
 
 @pytest.fixture(scope="module")
@@ -173,10 +181,10 @@ def string_inline_cp(real_string_property: str) -> InlineCustomProperty:
 
 
 class TestDiscovery:
-    """Verify project 8 has the data needed for custom property tests."""
+    """Verify the project has the data needed for custom property tests."""
 
     def test_discover_events(self, ws: Workspace) -> None:
-        """Project 8 has discoverable events."""
+        """The project has discoverable events."""
         events = ws.events()
         assert len(events) > 0
 
