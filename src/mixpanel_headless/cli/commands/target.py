@@ -8,8 +8,6 @@ cursor positions. ``mp target use ecom`` swaps all three axes in
 The CLI delegates to the :mod:`mixpanel_headless.targets` Python namespace,
 which in turn delegates to :class:`ConfigManager`. The CLI is purely a
 thin presentation layer: input parsing + output formatting.
-
-Reference: archive/specs/042-auth-architecture-redesign/contracts/cli-commands.md §6.
 """
 
 from __future__ import annotations

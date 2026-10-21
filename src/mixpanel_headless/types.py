@@ -14782,9 +14782,6 @@ class OAuthLoginResult(BaseModel):
 # ``ReplaySummary``, ``SignedReplay``, ``ReplayEvent``, ``UserAction``,
 # ``Replay``, and ``ReplayBundle``. The rrweb analyzer populates
 # ``Replay.actions`` (and the ``UserAction`` records) on fetch.
-# See ``archive/specs/044-session-replay/data-model.md`` for the full schema and
-# state-transition diagram, and ``contracts/python-api.md`` for the
-# canonical method signatures these types appear in.
 
 
 _REPLAY_ACTION_LITERAL = Literal[

@@ -3,8 +3,6 @@
 Covers ``mp account``, ``mp project``, ``mp workspace``, ``mp session``,
 ``mp config`` plus the new globals (``--account``, ``--project``,
 ``--workspace``, ``--target``).
-
-Reference: archive/specs/042-auth-architecture-redesign/contracts/cli-commands.md.
 """
 
 from __future__ import annotations

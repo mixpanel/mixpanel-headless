@@ -4,8 +4,6 @@ Verifies that ``mp --project ID command...`` is a per-command override —
 it does NOT mutate the persisted ``[active]`` block. This is the unix-style
 composition contract: shell loops can iterate over project IDs without
 leaving global state changed afterwards.
-
-Reference: archive/specs/042-auth-architecture-redesign/spec.md US7.
 """
 
 from __future__ import annotations

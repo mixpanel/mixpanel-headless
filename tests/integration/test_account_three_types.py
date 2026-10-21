@@ -4,8 +4,6 @@ Registers one ServiceAccount, one OAuthBrowserAccount (mocked browser
 flow — we just write a tokens.json directly), one OAuthTokenAccount;
 verifies ``mp.accounts.list()`` returns all three, and switching between
 them via ``mp.accounts.use(name)`` is consistent.
-
-Reference: archive/specs/042-auth-architecture-redesign/contracts/python-api.md §5.
 """
 
 from __future__ import annotations

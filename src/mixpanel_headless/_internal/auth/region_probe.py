@@ -27,8 +27,6 @@ valid region, else ``us``. ``MP_APP_BASE_URL`` alone re-homes ``/me`` but
 keeps the full ``us → eu → in`` walk, because the discovered region still
 routes the live Query / Export / Engage hosts. See
 ``api_client._override_probe_order``.
-
-Reference: ``archive/specs/043-frictionless-auth/contracts/python-api.md`` §2.1.
 """
 
 from __future__ import annotations

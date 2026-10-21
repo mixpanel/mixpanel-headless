@@ -16,10 +16,6 @@ projects within a single Python session:
 The sequential pattern is the right default — switching is cheap, the
 HTTP client is shared, and the ``/me`` cache populates once. Snapshot
 mode is the parallel-execution escape hatch.
-
-Reference:
-    archive/specs/042-auth-architecture-redesign/spec.md US7
-    archive/specs/042-auth-architecture-redesign/research.md R5
 """
 
 from __future__ import annotations

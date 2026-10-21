@@ -15,9 +15,6 @@ Bridge file search order (first existing file wins):
     2. ``MP_AUTH_FILE`` env var (if set).
     3. ``~/.claude/mixpanel/auth.json`` (default Cowork location).
     4. ``<cwd>/mixpanel_auth.json`` (workspace-mount fallback).
-
-Reference:
-    ``archive/specs/042-auth-architecture-redesign/contracts/config-schema.md`` §2.
 """
 
 from __future__ import annotations

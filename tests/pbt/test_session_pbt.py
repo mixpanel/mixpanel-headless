@@ -6,8 +6,6 @@ Covers:
 - Omitting an axis preserves the existing value (sentinel semantics for
   workspace and headers).
 - Round-trip serialize/deserialize preserves equality.
-
-Reference: archive/specs/042-auth-architecture-redesign/data-model.md §4.
 """
 
 from __future__ import annotations

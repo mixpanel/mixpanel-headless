@@ -8,8 +8,6 @@ am I working on" — an ``Account`` plus a ``Project`` and an optional
 The naming distinction matters: :class:`WorkspaceRef` is the data type
 held inside a Session, while ``mixpanel_headless.Workspace`` (in the public
 API) is the facade class. Renaming avoids the collision.
-
-Reference: ``archive/specs/042-auth-architecture-redesign/data-model.md`` §3, §4, §5.
 """
 
 from __future__ import annotations

@@ -158,8 +158,8 @@ api family + the R10.9 edge sets riding as `@example` decorators).
   508, `build_segfilter_entry` 508, `filter_to_selector` 508,
   `filters_to_selector` 510, `normalize_on_expression` 505.
   `validators_by_code` (510 skips at the B0 gate) now runs both-bridge
-  with 0 skips — the B2-BIND registration un-skipped it as predicted in
-  `context/phase3/notes/B2-BIND-notes.md`. Every both-bridge family ran
+  with 0 skips — the B2-BIND registration un-skipped it as predicted.
+  Every both-bridge family ran
   >= 504 examples (>= the P2-9 500 budget) except the divergence-stopped
   `codec_roundtrip` in the 52794688 run.
 - Raw harness JSON: `2026-08-15-b2-gate-attempt1-seed21091621.json` +
@@ -341,8 +341,7 @@ api family + the R10.9 edge sets riding as `@example` decorators).
 - Referees at this gate (P3-7): (a) ajv — NEW runner feed
   (`differential/test/bookmark-referee-feed.test.ts`): 98 insights-shaped
   B3 builder outputs fed, 94 ACCEPT + **4 expected-and-disclosed
-  dataGroupId REJECTs** (int-vs-string contract mismatch, filed
-  `context/phase3/bug-reports/mixpanel-headless-datagroupid-int-clause.md`,
+  dataGroupId REJECTs** (int-vs-string contract mismatch, filed as a bug report,
   pinned exactly in the test); (b) bookmark_parser round-trip: structural
   **314/314 ACCEPT**, deep **123 ACCEPT / 2 REJECT / 189 SKIP** — the 2
   are the standing frequency-filter true positives (expected-and-
@@ -449,7 +448,7 @@ api family + the R10.9 edge sets riding as `@example` decorators).
   dataGroupId REJECTs** (the 4 standing B3 clause-level pins + ONE NEW
   SITE: sections-level `dataGroupId` int, `workspace.py:2278`, rejected
   as `/sections: must NOT have additional properties` — addendum filed
-  in `context/phase3/bug-reports/mixpanel-headless-datagroupid-int-clause.md`);
+  in the same bug report);
   (b) bookmark_parser round-trip over the regenerated (byte-identical)
   handoff: structural **314/314 ACCEPT**, deep **123 ACCEPT / 2 REJECT
   / 189 SKIP** — the 2 are the standing frequency-filter true positives
@@ -538,8 +537,7 @@ uv run python -m conformance.differential.fuzz_harness \
   `oracle.call` surface), and the auth surface as a whole has no
   cross-language fuzz bridge (playbook Risk 7 — compensating controls
   are full Layer-3 translation, the DOUBLED review pairs, and the two
-  R10.9 local-mini-model harnesses recorded in
-  `context/phase3/notes/B7-A{1,2}-notes.md`). `strategies.py` untouched
+  R10.9 local-mini-model harnesses). `strategies.py` untouched
   by any B7 commit; cumulative surface stays **55 families**.
 - **Differential full-suite regression** over the existing registered
   surface, fresh seed + replay of EVERY prior gate seed:
@@ -569,7 +567,7 @@ uv run python -m conformance.differential.fuzz_harness \
 - Referees at this gate (P3-7): **not required and not run** — B7
   touches no bookmark source and emits no bookmark payloads
   (name-only diff over all five B7 TS commits: zero `bookmarks/`
-  contact; check recorded in `context/phase3/notes/B7-notes.md`).
+  contact).
 - Conformance checkpoint at the same gate commit: **3,244 PASS /
   0 FAIL / 7 UNPORTED** @ corpus 70c904dc (delta +14 = the 14
   `region_probe.probe_region` vectors; the 7 remaining are
@@ -583,8 +581,7 @@ uv run python -m conformance.differential.fuzz_harness \
   (probe-exempt — no `oracle.call` surface, b8-packets.md §5.4), and the
   auth surface as a whole has no cross-language fuzz bridge (playbook
   Risk 7 — compensating controls are full Layer-3 translation, the
-  DOUBLED blind review pairs, and the four R10.9 harnesses recorded in
-  `context/phase3/notes/B8-{MAPFIX,N1,N2,N3}-notes.md`, two of them
+  DOUBLED blind review pairs, and the four R10.9 harnesses, two of them
   direct-CPython differentials). `strategies.py` untouched by any B8
   commit; cumulative surface stays **55 families**.
 - **Differential full-suite regression** over the existing registered
@@ -640,8 +637,8 @@ uv run python -m conformance.differential.fuzz_harness \
   explicitly per b9-packets.md §5.2.2, not skipped silently**. The batch's
   cross-language surfaces were locked instead by the two direct-CPython
   differentials (PKCE 601 @ 20260816 + browser-entry re-run 601 @
-  20260817; redirect-parse 709 @ 20260817 — RUN records in
-  `context/phase3/notes/B9-{R1,R2}-notes.md`, both re-verified from their
+  20260817; redirect-parse 709 @ 20260817 — both
+  re-verified from their
   recorded seeds at this gate: 0 divergences) and the DOUBLED BLIND review
   (playbook Risk 7 posture). `strategies.py` untouched by any B9 commit;
   cumulative surface stays **55 families**.
@@ -687,10 +684,8 @@ uv run python -m conformance.differential.fuzz_harness \
 - Conformance checkpoint at the same gate tree: **3,251 PASS / 0 FAIL /
   0 UNPORTED** @ corpus 70c904dc — **the terminal HOLD stands; B9
   flipped nothing** (`batch-status.ts` untouched since the B8 flip
-  `b59567c`, verified by `git log`). Report archived:
-  `context/phase3/reports/2026-08-16-b9-gate.json`.
+  `b59567c`, verified by `git log`).
 - **This is the LAST Phase-3 gate record. Phase 3 is COMPLETE.**
-  Phase-4 planning reads `context/phase4/inbound-ledger.md`.
 
 ## 2026-08-17 — R10.7 four-bug batch gate: **GATE CLOSED (all clean, first attempt)**
 
@@ -734,10 +729,8 @@ uv run python -m conformance.differential.fuzz_harness \
   controls passed for both oracles first, structural **314/314 ACCEPT**,
   deep **125 ACCEPT / 0 REJECT / 189 SKIP_NON_INSIGHTS**, exit 0 (fresh
   reports identical to the committed `last-run-{structural,deep}.json`
-  modulo `runtime_seconds` — not re-committed; gate copies archived at
-  `context/phase4/reports/2026-08-17-bugfix-gate-referee-b-{structural,deep}.json`).
+  modulo `runtime_seconds` — not re-committed).
 - Conformance at the same gate trees: Python runner **3,262 / 3,262 PASS /
   0 FAIL** and TS `npm run conformance` **3,262 / 3,262 PASS / 0 FAIL /
   0 UNPORTED**, both @ corpus pin `700db996` — same N both languages.
 - `repros/` unchanged: exactly the two RESOLVED P2-9 triage records.
-- Full gate record: `context/phase4/notes/bugfix-batch-gate.md`.

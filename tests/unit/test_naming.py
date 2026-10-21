@@ -4,8 +4,6 @@ Locks the FR-015 (``slugify``) and FR-016 (``default_account_name``)
 input/output tables from the spec verbatim, plus a few edge cases that
 exercise the boundary conditions of the 32-character truncation and
 collision-suffix loops.
-
-Reference: ``archive/specs/043-frictionless-auth/spec.md`` FR-015, FR-016.
 """
 
 from __future__ import annotations

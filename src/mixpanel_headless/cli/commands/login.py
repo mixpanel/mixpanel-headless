@@ -5,8 +5,6 @@ TTY-aware project / org pickers and the structured stdout success line.
 All other orchestration (auth-type detection, region probe, name
 derivation, atomic publish, re-login state machine) lives in the
 library.
-
-Reference: ``archive/specs/043-frictionless-auth/contracts/cli-commands.md`` §1.
 """
 
 from __future__ import annotations

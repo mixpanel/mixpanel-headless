@@ -8,8 +8,6 @@ This is the snapshot-mode flow from US7's "Independent Test":
 ``ws.session.replace(project=p)`` returns a NEW Session; the original is
 unchanged. Multiple workers can therefore hold their own session refs
 without observable interference.
-
-Reference: archive/specs/042-auth-architecture-redesign/spec.md US7 / FR-058.
 """
 
 from __future__ import annotations

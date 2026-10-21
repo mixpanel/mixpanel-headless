@@ -7,8 +7,6 @@ Three layers:
 
 For Phase 4 we focus on the unit layer; the contract and live layers
 are stubbed out as future work tied to the `contract` / `live` markers.
-
-Reference: archive/specs/042-auth-architecture-redesign/research.md R6.
 """
 
 from __future__ import annotations

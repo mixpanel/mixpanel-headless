@@ -87,15 +87,11 @@ class TestLocBudget:
       ``_redact_token_payload`` allowlist helper + its mandatory full
       docstring, the ``_SAFE_TOKEN_DETAIL_KEYS`` /
       ``_NON_OBJECT_BODY_PLACEHOLDER`` constants, and the expanded
-      ``_post_token_request`` Security note (fix-of-record
-      ``context/phase3/bug-reports/python-oauth-error-details-token-payload.md``,
-      findings F-B1/F-B2/F-B3 in
-      ``context/phase4/notes/bugfix-reviewB-resolution.md``).
+      ``_post_token_request`` Security note.
     - 8975 → 9000 covers docstrings only: the nested ``_to_dict`` and
       ``_render_table`` helpers in ``cli/commands/project.py`` and
       ``cli/commands/workspace.py`` gained them when the ``src/``
       docstring gate moved from 99% to 100%.
-    See ``archive/specs/043-frictionless-auth/plan.md`` §"Scale/Scope".
     """
 
     def test_file_count_cap(self) -> None:

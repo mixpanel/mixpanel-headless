@@ -206,7 +206,6 @@ class TestSensitiveDataMapping:
 class TestSensitiveData403BodyShapes:
     """403 sniff handles every JSON body shape without crashing.
 
-    Fix-of-record: context/phase3/bug-reports/python-handle-response-403-typeerror.md.
     The sniff must apply uniform substring semantics across dict, list, string,
     and scalar bodies — never raising an uncoded ``TypeError``.
     """

@@ -5,8 +5,6 @@ exposing target CRUD and activation. Targets are saved
 (account, project, workspace?) triples used as named cursor positions:
 ``mp.targets.use("ecom")`` writes all three axes to ``[active]`` in a
 single config save.
-
-Reference: archive/specs/042-auth-architecture-redesign/contracts/python-api.md §6.
 """
 
 from __future__ import annotations

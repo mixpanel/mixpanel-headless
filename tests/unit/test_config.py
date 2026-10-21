@@ -4,8 +4,6 @@ The ConfigManager operates on a single TOML schema with three sections:
 ``[active]``, ``[accounts.NAME]``, ``[targets.NAME]``, plus optional
 ``[settings]``. The ``[active]`` block holds only ``account`` and
 ``workspace`` — project lives on the account as ``default_project``.
-
-Reference: archive/specs/042-auth-architecture-redesign/contracts/config-schema.md §1.
 """
 
 from __future__ import annotations

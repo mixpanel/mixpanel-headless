@@ -825,8 +825,7 @@ def build_frequency_filter_entry(ff: FrequencyFilter) -> dict[str, Any]:
     ``"$frequency"`` marker nested under ``behavior.behaviorType``,
     matching the analytics bookmark contract (fix for the
     ``customProperty``-nested shape the query engine rejected with
-    HTTP 500 — see
-    ``context/phase1/bug-reports/mixpanel-headless-frequency-filter-clause-shape.md``).
+    HTTP 500).
 
     Args:
         ff: FrequencyFilter specification.

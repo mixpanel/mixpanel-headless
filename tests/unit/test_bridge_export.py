@@ -3,10 +3,6 @@
 Covers the standalone ``bridge.export_bridge`` / ``bridge.remove_bridge``
 functions plus the public ``mp.accounts.export_bridge`` /
 ``mp.accounts.remove_bridge`` namespace wrappers.
-
-Reference:
-    archive/specs/042-auth-architecture-redesign/contracts/config-schema.md §2
-    archive/specs/042-auth-architecture-redesign/contracts/python-api.md §5
 """
 
 from __future__ import annotations

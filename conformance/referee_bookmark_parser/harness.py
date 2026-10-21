@@ -20,8 +20,7 @@ imports are lazy, resolved inside the recipe environments below, so the
 repo test suite can unit-test the routing knowledge without the analytics
 checkout mounted.
 
-Invocation recipes (proven by recon transcripts in
-``context/phase1/recon/referee-assets.md`` §1/§2A/§2B; run from the repo
+Invocation recipes (proven by recon transcripts; run from the repo
 root; NEVER write into the analytics checkout):
 
     ```bash

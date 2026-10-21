@@ -1,8 +1,7 @@
 """Phase-1 TypeScript-port verification rig (conformance corpus tooling).
 
 This package holds the record plugin, corpus runner, smoke test, differential
-oracles, and referee harnesses defined by the Phase-1 design of record at
-``context/phase1/design/phase1-design.md``. It is repo tooling, not part of
+oracles, and referee harnesses. It is repo tooling, not part of
 the published ``mixpanel_headless`` distribution: it is held to the same
 mypy --strict / ruff / docstring bar as ``src/`` (design D17) but is excluded
 from the 90% coverage floor and from the wheel.

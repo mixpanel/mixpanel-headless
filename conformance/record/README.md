@@ -1,8 +1,5 @@
 # conformance/record — vector extraction (record mode)
 
-Design of record: `context/phase1/design/phase1-design.md` (D1 plugin, D3
-corpus layout/regeneration, D8 CI drift check, D10 exclusions).
-
 ## Regeneration command (D3)
 
 The exact command line that (re)generates `conformance/vectors/`:
