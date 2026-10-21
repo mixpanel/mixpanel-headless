@@ -36,6 +36,23 @@ may include API changes.
 - Plugin: the dashboard report pipeline builds a report for a number that
   the team defines from its saved metric, so the board follows later edits.
 
+### Removed
+
+- The credential bridge is removed. The library no longer reads a bridge
+  file (`MP_AUTH_FILE`, `~/.claude/mixpanel/auth.json`, or
+  `./mixpanel_auth.json`). `Workspace()` no longer copies OAuth tokens from
+  a bridge file into `~/.mp/accounts/`. Credentials now come from
+  environment variables and `~/.mp/config.toml` only, in this order: env,
+  then explicit arguments, then a target, then the config file.
+- Removed `mp.accounts.export_bridge()`, `mp.accounts.remove_bridge()`,
+  `mixpanel_headless.auth_types.BridgeFile`, and
+  `mixpanel_headless.auth_types.load_bridge`.
+- Removed the `mp account export-bridge` and `mp account remove-bridge`
+  commands and the `mp session --bridge` option.
+- A bridge file that you wrote before holds plaintext secrets, and no
+  command deletes it now. Delete it by hand, for example
+  `rm ~/.claude/mixpanel/auth.json`.
+
 ### Fixed
 
 - Plugin: the insights reference no longer says that a formula needs two or

@@ -34,7 +34,7 @@ mp --version
 | `--version` | | Show version and exit |
 | `--help` | | Show help and exit |
 
-These resolve via the priority chain `env > param > target > bridge > [active] > default_project`. See [Configuration → Credential Resolution Chain](../getting-started/configuration.md#credential-resolution-chain).
+These resolve via the priority chain `env > param > target > [active] > default_project`. See [Configuration → Credential Resolution Chain](../getting-started/configuration.md#credential-resolution-chain).
 
 ## Command Groups
 
@@ -66,8 +66,6 @@ Manage configured accounts (service accounts, OAuth browser, OAuth token) and th
 | `mp account login` | Run the OAuth browser PKCE flow (oauth_browser only) — `mp login --name NAME` is the unified equivalent |
 | `mp account logout` | Delete on-disk OAuth tokens (oauth_browser only) |
 | `mp account token` | Print the bearer token (for piping to curl etc.) |
-| `mp account export-bridge` | Write a v2 Cowork bridge file |
-| `mp account remove-bridge` | Delete the bridge file (idempotent) |
 
 ### project — Project Switching
 
@@ -108,7 +106,6 @@ Show the resolved active session — account, project, workspace, user.
 | Command | Description |
 |---------|-------------|
 | `mp session` | Print the active session (`-f json` for machine-readable output) |
-| `mp session --bridge` | Show bridge-resolved state (Cowork integration) |
 
 ### query — Query Operations
 
@@ -533,7 +530,7 @@ mp inspect events --format plain | wc -l
 
 ## Environment Variables
 
-These resolve via `env > param > target > bridge > [active] > default_project` — see [Configuration → Credential Resolution Chain](../getting-started/configuration.md#credential-resolution-chain).
+These resolve via `env > param > target > [active] > default_project` — see [Configuration → Credential Resolution Chain](../getting-started/configuration.md#credential-resolution-chain).
 
 | Variable | Description |
 |----------|-------------|
@@ -545,7 +542,6 @@ These resolve via `env > param > target > bridge > [active] > default_project` �
 | `MP_USERNAME` | Service-account username (requires `MP_SECRET`, `MP_PROJECT_ID`, `MP_REGION`) |
 | `MP_SECRET` | Service-account secret (paired with `MP_USERNAME`) |
 | `MP_REGION` | Data residency region (`us`, `eu`, `in`) |
-| `MP_AUTH_FILE` | Override path to the v2 Cowork bridge file |
 | `MP_CONFIG_PATH` | Override config file path (`~/.mp/config.toml`) |
 | `MP_STORAGE_DIR` | Override storage root (`~/.mp`); `MP_OAUTH_STORAGE_DIR` is a deprecated alias |
 | `MP_API_BASE_URL` | Route every API family at one alternate host (`{base}/api/query`, `{base}/api/2.0`, `{base}/api/query/engage`, `{base}/api/app`); no CLI flag needed — see [Configuration → Alternate API host](../getting-started/configuration.md#alternate-api-host-mp_api_base_url) |

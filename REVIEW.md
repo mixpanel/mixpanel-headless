@@ -19,9 +19,9 @@ of the tree are in `.github/instructions/`.
 `resolve_session(...)` in `_internal/auth/resolver.py` builds the session for
 API calls. It resolves the account, project, and workspace axes independently,
 each in one order: environment, then explicit parameter, then saved target,
-then the bridge file, then config. The config step is `[active].account` for
-the account, the resolved account's `default_project` for the project (there is
-no `[active].project`), and `[active].workspace` for the workspace.
+then config. The config step is `[active].account` for the account, the
+resolved account's `default_project` for the project (there is no
+`[active].project`), and `[active].workspace` for the workspace.
 
 The login and account-add flows (`mp login`, `mp account add`,
 `accounts.login_unified()`) read `MP_USERNAME`, `MP_SECRET`, `MP_OAUTH_TOKEN`,

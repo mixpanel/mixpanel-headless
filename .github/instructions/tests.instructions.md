@@ -10,7 +10,7 @@ applyTo: "tests/**"
 - A test must fail when the behavior it covers breaks. An assertion that
   stays true when the code is wrong is a defect.
 - Isolation: tests not marked live never read or write the real `~/.mp`
-  folder, the real auth bridge file, or real `MP_*` variables. The autouse
+  folder or real `MP_*` variables. The autouse
   fixture `_clean_mp_env` in `tests/conftest.py` scrubs every variable in
   `_MP_ENV_VARS`. A new `MP_*` variable that production code reads must go
   into that list.

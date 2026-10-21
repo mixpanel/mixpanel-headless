@@ -40,7 +40,7 @@ mixpanel_headless follows a layered architecture with clear separation of concer
 
 The `Workspace` class is the unified entry point that coordinates all services:
 
-- **Session resolution** — Three independent axes resolved via `env > param > target > bridge > [active] > default_project`. Single resolver in `_internal/auth/resolver.py`; no silent cross-axis fallback.
+- **Session resolution** — Three independent axes resolved via `env > param > target > [active] > default_project`. Single resolver in `_internal/auth/resolver.py`; no silent cross-axis fallback.
 - **In-session switching** — `Workspace.use(account=, project=, workspace=, target=)` returns `self` for chaining and preserves the underlying `httpx.Client` and per-account `/me` cache (O(1) per swap).
 - **Service Orchestration** — Creates and manages service instances
 - **Entity CRUD** — Direct App API access for dashboards, reports, cohorts (workspace-scoped) and feature flags, experiments (project-scoped)
@@ -166,7 +166,7 @@ All services accept their dependencies as constructor arguments. This enables:
 src/mixpanel_headless/
 ├── __init__.py              # Public exports (Workspace, Account, Session, namespaces, exceptions, types)
 ├── workspace.py             # Workspace facade with Workspace.use()
-├── auth_types.py            # Public auth surface (Account union, Session, Region, OAuthTokens, BridgeFile, ...)
+├── auth_types.py            # Public auth surface (Account union, Session, Region, OAuthTokens, ...)
 ├── accounts.py              # mp.accounts namespace (add/list/use/login/test/...)
 ├── session.py               # mp.session namespace (show/use)
 ├── targets.py               # mp.targets namespace (saved cursors)
@@ -181,11 +181,10 @@ src/mixpanel_headless/
 │   ├── auth/
 │   │   ├── account.py       # Account variants (ServiceAccount/OAuthBrowserAccount/OAuthTokenAccount)
 │   │   ├── session.py       # Session, Project, WorkspaceRef, ActiveSession
-│   │   ├── resolver.py      # env > param > target > bridge > [active] resolver
+│   │   ├── resolver.py      # env > param > target > [active] resolver
 │   │   ├── token_resolver.py# OnDiskTokenResolver
 │   │   ├── token.py         # OAuthTokens, OAuthClientInfo
 │   │   ├── flow.py          # OAuth PKCE browser flow
-│   │   ├── bridge.py        # Cowork bridge file v2
 │   │   ├── storage.py       # account_dir, ensure_account_dir (atomic 0o600 writes)
 │   │   ├── pkce.py          # PKCE challenge generation (RFC 7636)
 │   │   ├── callback_server.py # Local HTTP callback server

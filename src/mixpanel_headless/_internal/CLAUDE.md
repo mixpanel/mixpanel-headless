@@ -16,7 +16,7 @@ Private infrastructure powering `mixpanel_headless`'s programmable interface to 
 | `auth/` | The auth subsystem — see [`../auth_types.py`](../auth_types.py) for the public re-export and [`../../../context/auth-architecture-redesign.md`](../../../context/auth-architecture-redesign.md) for the design |
 | `auth/account.py` | `Account` discriminated union (`ServiceAccount` / `OAuthBrowserAccount` / `OAuthTokenAccount`) + `TokenResolver` protocol |
 | `auth/session.py` | `Session`, `Project`, `WorkspaceRef`, `ActiveSession` |
-| `auth/resolver.py` | `resolve_session(...)` — single resolver with three independent axes (env → param → target → bridge → config) |
+| `auth/resolver.py` | `resolve_session(...)` — single resolver with three independent axes (env → param → target → config) |
 | `auth/token_resolver.py` | `OnDiskTokenResolver` — refreshes browser tokens, reads inline / env-var bearers |
 | `auth/flow.py` | OAuth PKCE flow (browser tokens) |
 | `auth/pkce.py` | PKCE challenge generation (RFC 7636) |
@@ -24,7 +24,6 @@ Private infrastructure powering `mixpanel_headless`'s programmable interface to 
 | `auth/client_registration.py` | Dynamic Client Registration (RFC 7591) |
 | `auth/storage.py` | `account_dir` / `ensure_account_dir` (per-account `~/.mp/accounts/{name}/` at `0o700`; files at `0o600`) |
 | `auth/token.py` | `OAuthTokens`, `OAuthClientInfo` |
-| `auth/bridge.py` | `BridgeFile` v2 schema + `load_bridge` / `export_bridge` / `remove_bridge` (Cowork credential courier) |
 | `query/` | Query engine builders and validators (`user_builders.py`, `user_validators.py`) |
 | `services/` | Domain services: `DiscoveryService` (events, properties, funnels, cohorts, bookmarks, lexicon), `LiveQueryService` (segmentation, retention) |
 | `help/` | Built-in API reference behind `mixpanel_headless.reference` and `mp help`; offline — no network, no config read, never constructs a `Workspace` |
@@ -45,9 +44,9 @@ A single function — `auth/resolver.py::resolve_session(...)` — returns a `Se
 
 | Axis | Priority order |
 |------|----------------|
-| Account | env (`MP_USERNAME`+`MP_SECRET`+`MP_REGION` for SA; `MP_OAUTH_TOKEN`+`MP_REGION` for static bearer) → explicit param → target → bridge → `[active].account` |
-| Project | env (`MP_PROJECT_ID`) → explicit param → target → bridge → `account.default_project` |
-| Workspace | env (`MP_WORKSPACE_ID`) → explicit param → target → bridge → `[active].workspace` (may resolve to `None` and lazy-resolve later) |
+| Account | env (`MP_USERNAME`+`MP_SECRET`+`MP_REGION` for SA; `MP_OAUTH_TOKEN`+`MP_REGION` for static bearer) → explicit param → target → `[active].account` |
+| Project | env (`MP_PROJECT_ID`) → explicit param → target → `account.default_project` |
+| Workspace | env (`MP_WORKSPACE_ID`) → explicit param → target → `[active].workspace` (may resolve to `None` and lazy-resolve later) |
 
 Service-account env vars win over `MP_OAUTH_TOKEN` when both sets are complete (preserves PR #125 behavior). The resolver is pure-functional: no network I/O, no `os.environ` mutation, deterministic on repeat invocations with identical inputs.
 
