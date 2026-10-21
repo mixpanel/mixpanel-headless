@@ -9,7 +9,7 @@ This is the snapshot-mode flow from US7's "Independent Test":
 unchanged. Multiple workers can therefore hold their own session refs
 without observable interference.
 
-Reference: specs/042-auth-architecture-redesign/spec.md US7 / FR-058.
+Reference: archive/specs/042-auth-architecture-redesign/spec.md US7 / FR-058.
 """
 
 from __future__ import annotations

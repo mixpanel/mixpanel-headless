@@ -5,7 +5,7 @@ Covers Project validation (numeric string id), WorkspaceRef validation
 ``project_id``/``workspace_id``/``region`` properties, and ``Session.replace(...)``
 sentinel semantics for each axis.
 
-Reference: specs/042-auth-architecture-redesign/data-model.md §3, §4.
+Reference: archive/specs/042-auth-architecture-redesign/data-model.md §3, §4.
 """
 
 from __future__ import annotations

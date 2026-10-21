@@ -6,7 +6,7 @@ exposing target CRUD and activation. Targets are saved
 ``mp.targets.use("ecom")`` writes all three axes to ``[active]`` in a
 single config save.
 
-Reference: specs/042-auth-architecture-redesign/contracts/python-api.md §6.
+Reference: archive/specs/042-auth-architecture-redesign/contracts/python-api.md §6.
 """
 
 from __future__ import annotations

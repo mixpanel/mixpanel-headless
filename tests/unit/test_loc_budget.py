@@ -95,7 +95,7 @@ class TestLocBudget:
       ``_render_table`` helpers in ``cli/commands/project.py`` and
       ``cli/commands/workspace.py`` gained them when the ``src/``
       docstring gate moved from 99% to 100%.
-    See ``specs/043-frictionless-auth/plan.md`` §"Scale/Scope".
+    See ``archive/specs/043-frictionless-auth/plan.md`` §"Scale/Scope".
     """
 
     def test_file_count_cap(self) -> None:

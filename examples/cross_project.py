@@ -18,8 +18,8 @@ HTTP client is shared, and the ``/me`` cache populates once. Snapshot
 mode is the parallel-execution escape hatch.
 
 Reference:
-    specs/042-auth-architecture-redesign/spec.md US7
-    specs/042-auth-architecture-redesign/research.md R5
+    archive/specs/042-auth-architecture-redesign/spec.md US7
+    archive/specs/042-auth-architecture-redesign/research.md R5
 """
 
 from __future__ import annotations

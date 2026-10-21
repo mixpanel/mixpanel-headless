@@ -1634,7 +1634,7 @@ class ReportLinkError(MixpanelHeadlessError):
 
         Args:
             message: Human-readable error message; see
-                ``specs/045-report-links/contracts/error-messages.md`` for the
+                ``archive/specs/045-report-links/contracts/error-messages.md`` for the
                 stable wording per code.
             code: Machine-readable error code. Defaults to the subclass's
                 ``_DEFAULT_CODE``.

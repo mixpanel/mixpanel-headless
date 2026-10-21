@@ -7,7 +7,7 @@ Note: this module shadows the :class:`Session` value type. Public
 callers access via ``import mixpanel_headless; mp.session.show()`` (module)
 or ``import mixpanel_headless; mp.Session(...)`` (the type).
 
-Reference: specs/042-auth-architecture-redesign/contracts/python-api.md §7.
+Reference: archive/specs/042-auth-architecture-redesign/contracts/python-api.md §7.
 """
 
 from __future__ import annotations

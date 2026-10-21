@@ -6,7 +6,7 @@ Per spec SC-006/SC-007/SC-008:
 - ``use(account=A)`` rebuilds auth header AND clears in-session project state (FR-033)
 - HTTP transport (``id(ws._api_client._http)``) is preserved across all switches
 
-Reference: specs/042-auth-architecture-redesign/contracts/python-api.md §3.
+Reference: archive/specs/042-auth-architecture-redesign/contracts/python-api.md §3.
 """
 
 from __future__ import annotations

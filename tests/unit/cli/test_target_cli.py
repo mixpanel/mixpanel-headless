@@ -5,7 +5,7 @@ Verifies that each subcommand (``add`` / ``use`` / ``list`` / ``show`` /
 namespace and that the on-disk ``[active]`` block reflects the applied
 target's three axes.
 
-Reference: specs/042-auth-architecture-redesign/contracts/cli-commands.md §6.
+Reference: archive/specs/042-auth-architecture-redesign/contracts/cli-commands.md §6.
 """
 
 from __future__ import annotations

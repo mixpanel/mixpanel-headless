@@ -5,7 +5,7 @@ exposing account CRUD, switching, and probing operations as the canonical
 Python API for ``mp account ...`` CLI commands and the plugin's
 ``auth_manager.py``.
 
-Reference: specs/042-auth-architecture-redesign/contracts/python-api.md §5.
+Reference: archive/specs/042-auth-architecture-redesign/contracts/python-api.md §5.
 """
 
 from __future__ import annotations
@@ -382,7 +382,7 @@ def add(
     Per FR-045, the first account added auto-promotes to
     ``[active].account``. Subsequent accounts do not.
 
-    ## Derived naming (specs/043-frictionless-auth)
+    ## Derived naming (archive/specs/043-frictionless-auth)
 
     Pass ``derive_name=True`` (and leave ``name=None``) to have the
     function fetch ``/me`` against the supplied credentials and pick a

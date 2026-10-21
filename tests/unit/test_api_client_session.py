@@ -6,7 +6,7 @@ Tests cover:
 - HTTP transport (``_http``) preserved across all ``use()`` calls
 - Cache invalidation policy per Research R5
 
-Reference: specs/042-auth-architecture-redesign/research.md R5.
+Reference: archive/specs/042-auth-architecture-redesign/research.md R5.
 """
 
 from __future__ import annotations

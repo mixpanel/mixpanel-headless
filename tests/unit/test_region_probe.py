@@ -6,7 +6,7 @@ against ``/api/app/me``, stops at the first 200, and raises
 caller injects a ``client_factory`` so tests can supply ``httpx.Client``
 instances bound to ``MockTransport`` instead of hitting the real network.
 
-Reference: ``specs/043-frictionless-auth/contracts/python-api.md`` §2.1.
+Reference: ``archive/specs/043-frictionless-auth/contracts/python-api.md`` §2.1.
 """
 
 from __future__ import annotations

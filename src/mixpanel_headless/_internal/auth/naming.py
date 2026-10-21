@@ -16,7 +16,7 @@ reads, no random sampling. Determinism is required for the property
 tests in ``tests/pbt/test_naming_pbt.py`` and for the mutation-testing
 guarantee in ``just mutate``.
 
-Reference: ``specs/043-frictionless-auth/contracts/python-api.md`` §2.2.
+Reference: ``archive/specs/043-frictionless-auth/contracts/python-api.md`` §2.2.
 """
 
 from __future__ import annotations

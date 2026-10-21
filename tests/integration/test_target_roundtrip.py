@@ -17,7 +17,7 @@ the ``mp target`` CLI, and ``Workspace.use(target=...)``. Verifies:
    ``Workspace(target=NAME)`` produce the same Session shape (the
    per-axis arguments and the named-target shortcut are interchangeable).
 
-Reference: specs/042-auth-architecture-redesign/spec.md US6 acceptance
+Reference: archive/specs/042-auth-architecture-redesign/spec.md US6 acceptance
 scenarios 1-2; tasks.md T072, T075.
 """
 

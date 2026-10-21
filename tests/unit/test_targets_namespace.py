@@ -1,6 +1,6 @@
 """Unit tests for the ``mp.targets`` public namespace (T031).
 
-Reference: specs/042-auth-architecture-redesign/contracts/python-api.md §6.
+Reference: archive/specs/042-auth-architecture-redesign/contracts/python-api.md §6.
 """
 
 from __future__ import annotations

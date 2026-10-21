@@ -9,7 +9,7 @@ The CLI delegates to the :mod:`mixpanel_headless.targets` Python namespace,
 which in turn delegates to :class:`ConfigManager`. The CLI is purely a
 thin presentation layer: input parsing + output formatting.
 
-Reference: specs/042-auth-architecture-redesign/contracts/cli-commands.md §6.
+Reference: archive/specs/042-auth-architecture-redesign/contracts/cli-commands.md §6.
 """
 
 from __future__ import annotations

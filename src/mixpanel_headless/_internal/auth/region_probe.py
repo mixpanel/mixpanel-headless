@@ -28,7 +28,7 @@ keeps the full ``us → eu → in`` walk, because the discovered region still
 routes the live Query / Export / Engage hosts. See
 ``api_client._override_probe_order``.
 
-Reference: ``specs/043-frictionless-auth/contracts/python-api.md`` §2.1.
+Reference: ``archive/specs/043-frictionless-auth/contracts/python-api.md`` §2.1.
 """
 
 from __future__ import annotations

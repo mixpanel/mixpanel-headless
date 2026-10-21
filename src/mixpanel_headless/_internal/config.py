@@ -5,7 +5,7 @@ Owns the single-schema TOML config file (``~/.mp/config.toml``) with
 sections.
 
 Reference:
-    ``specs/042-auth-architecture-redesign/contracts/config-schema.md`` §1.
+    ``archive/specs/042-auth-architecture-redesign/contracts/config-schema.md`` §1.
 """
 
 from __future__ import annotations

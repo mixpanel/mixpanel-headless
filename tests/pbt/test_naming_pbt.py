@@ -10,7 +10,7 @@ Hypothesis covers the invariants that the example-based suite in
   never ``-1`` or out-of-order).
 - ``default_account_name`` is deterministic (same inputs → same output).
 
-Reference: ``specs/043-frictionless-auth/contracts/python-api.md`` §2.2.
+Reference: ``archive/specs/043-frictionless-auth/contracts/python-api.md`` §2.2.
 """
 
 from __future__ import annotations

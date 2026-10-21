@@ -1422,7 +1422,7 @@ A slash command for the `mixpanel-headless` Claude Code plugin: `/mixpanel-headl
 - `src/mixpanel_headless/workspace.py:1246` — `Workspace.stream_events()` (streaming convention)
 - `src/mixpanel_headless/_internal/services/` — service layer where `replays.py` lives
 - `src/mixpanel_headless/cli/commands/cohorts.py` — CLI command pattern to mirror
-- `specs/034-flow-query/plan.md` — closest spec precedent for shape and detail
+- `archive/specs/034-flow-query/plan.md` — closest spec precedent for shape and detail
 
 ### Research artifacts
 

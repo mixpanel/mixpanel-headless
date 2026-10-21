@@ -11,7 +11,7 @@ Browser-token refresh delegates to
 :meth:`mixpanel_headless._internal.auth.flow.OAuthFlow.refresh_tokens` and
 persists the new payload back to the per-account path atomically.
 
-Reference: ``specs/042-auth-architecture-redesign/data-model.md``,
+Reference: ``archive/specs/042-auth-architecture-redesign/data-model.md``,
 ``contracts/python-api.md`` §5.
 """
 

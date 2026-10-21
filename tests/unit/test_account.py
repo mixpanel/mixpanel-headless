@@ -5,7 +5,7 @@ field validation (name pattern, region constraint), frozen + extra="forbid"
 behavior, ``auth_header()`` for each variant via a stub ``TokenResolver``, and
 ``is_long_lived()`` per variant.
 
-Reference: specs/042-auth-architecture-redesign/data-model.md §1, §2.
+Reference: archive/specs/042-auth-architecture-redesign/data-model.md §1, §2.
 """
 
 from __future__ import annotations

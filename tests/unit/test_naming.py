@@ -5,7 +5,7 @@ input/output tables from the spec verbatim, plus a few edge cases that
 exercise the boundary conditions of the 32-character truncation and
 collision-suffix loops.
 
-Reference: ``specs/043-frictionless-auth/spec.md`` FR-015, FR-016.
+Reference: ``archive/specs/043-frictionless-auth/spec.md`` FR-015, FR-016.
 """
 
 from __future__ import annotations

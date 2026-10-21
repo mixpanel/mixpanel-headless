@@ -8,7 +8,7 @@ project lives in. If the picked project's domain disagrees with the
 auth region, this is a configuration mistake the user must resolve
 before any further request can succeed (the bearer is region-bound).
 
-Reference: ``specs/043-frictionless-auth/contracts/error-messages.md``
+Reference: ``archive/specs/043-frictionless-auth/contracts/error-messages.md``
 E-2 (region mismatch on browser auth).
 """
 

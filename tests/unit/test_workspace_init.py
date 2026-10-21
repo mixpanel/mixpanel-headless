@@ -5,7 +5,8 @@ The new constructor accepts ``account``, ``project``, ``workspace``,
 constructor bypasses the resolver and uses the supplied Session
 directly.
 
-Reference: specs/042-auth-architecture-redesign/contracts/python-api.md §1, §2.
+Reference:
+    archive/specs/042-auth-architecture-redesign/contracts/python-api.md §1, §2.
 """
 
 from __future__ import annotations

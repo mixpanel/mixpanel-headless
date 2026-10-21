@@ -6,7 +6,8 @@ time. The resolver MUST NOT mutate ``os.environ`` (no implicit env-var
 contracts between modules). The API client MUST attach those headers to
 every outbound request.
 
-Reference: specs/042-auth-architecture-redesign/contracts/config-schema.md §1.2.
+Reference:
+    archive/specs/042-auth-architecture-redesign/contracts/config-schema.md §1.2.
 """
 
 from __future__ import annotations

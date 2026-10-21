@@ -6,7 +6,7 @@ All other orchestration (auth-type detection, region probe, name
 derivation, atomic publish, re-login state machine) lives in the
 library.
 
-Reference: ``specs/043-frictionless-auth/contracts/cli-commands.md`` §1.
+Reference: ``archive/specs/043-frictionless-auth/contracts/cli-commands.md`` §1.
 """
 
 from __future__ import annotations

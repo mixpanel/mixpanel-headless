@@ -5,7 +5,7 @@ it does NOT mutate the persisted ``[active]`` block. This is the unix-style
 composition contract: shell loops can iterate over project IDs without
 leaving global state changed afterwards.
 
-Reference: specs/042-auth-architecture-redesign/spec.md US7.
+Reference: archive/specs/042-auth-architecture-redesign/spec.md US7.
 """
 
 from __future__ import annotations

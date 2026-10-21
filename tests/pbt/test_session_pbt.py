@@ -7,7 +7,7 @@ Covers:
   workspace and headers).
 - Round-trip serialize/deserialize preserves equality.
 
-Reference: specs/042-auth-architecture-redesign/data-model.md §4.
+Reference: archive/specs/042-auth-architecture-redesign/data-model.md §4.
 """
 
 from __future__ import annotations

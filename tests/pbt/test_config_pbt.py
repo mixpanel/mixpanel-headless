@@ -6,7 +6,7 @@ account that the model accepts as valid, ``add_account`` followed by
 ``get_account`` MUST return an equal value (modulo the secret unwrap that
 ``_account_to_block`` does for TOML serialization).
 
-Reference: specs/042-auth-architecture-redesign/data-model.md §1, §2.
+Reference: archive/specs/042-auth-architecture-redesign/data-model.md §1, §2.
 """
 
 from __future__ import annotations

@@ -5,7 +5,7 @@ Covers:
 - ``OAuthTokenAccount`` validator never accepts both/neither token+token_env.
 - ``Account.name`` always satisfies the pattern when constructed from valid input.
 
-Reference: specs/042-auth-architecture-redesign/data-model.md §2.
+Reference: archive/specs/042-auth-architecture-redesign/data-model.md §2.
 """
 
 from __future__ import annotations

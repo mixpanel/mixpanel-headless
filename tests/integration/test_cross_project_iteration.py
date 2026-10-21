@@ -9,8 +9,8 @@ Exercises the public Workspace API end-to-end with a mocked transport
 so we can count exactly how many HTTP requests each iteration emits.
 
 Reference:
-    specs/042-auth-architecture-redesign/spec.md SC-008 / FR-061
-    specs/042-auth-architecture-redesign/research.md R5
+    archive/specs/042-auth-architecture-redesign/spec.md SC-008 / FR-061
+    archive/specs/042-auth-architecture-redesign/research.md R5
 """
 
 from __future__ import annotations

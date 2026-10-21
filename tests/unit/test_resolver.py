@@ -4,7 +4,7 @@ Per FR-017, the resolver consults sources in this priority per axis:
 **env → param → target → bridge → config**. Each axis is independent —
 setting a project override does NOT affect account or workspace resolution.
 
-Reference: specs/042-auth-architecture-redesign/contracts/python-api.md §1.
+Reference: archive/specs/042-auth-architecture-redesign/contracts/python-api.md §1.
 """
 
 from __future__ import annotations
