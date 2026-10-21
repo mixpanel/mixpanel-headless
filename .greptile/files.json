@@ -90,13 +90,6 @@
       ]
     },
     {
-      "path": ".github/instructions/specs.instructions.md",
-      "description": "Design specs: what to check across the files of one feature",
-      "scope": [
-        "specs/**"
-      ]
-    },
-    {
       "path": ".github/instructions/plugin.instructions.md",
       "description": "Claude Code plugin: mp help instead of copied reference, plugin venv paths, error handling in examples, stderr",
       "scope": [
