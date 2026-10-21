@@ -5393,8 +5393,7 @@ item 5; the >=500-example budget applies per target)."""
 # but unserved — the same "registered at (b′)" posture the B2 validator
 # families were declared under.
 #
-# Reference semantics are pydantic-core in LAX mode, pinned by the B3-K1
-# CPython probe (``context/phase3/notes/B3-K1-notes.md`` §Probe).
+# Reference semantics are pydantic-core in LAX mode, pinned by a CPython probe.
 # ---------------------------------------------------------------------------
 
 _BOOKMARK_SCHEMA_API = "bookmark_schema.validate_with_pydantic"

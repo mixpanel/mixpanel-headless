@@ -21,8 +21,6 @@ fetched lazily by ``MixpanelAPIClient`` at request time); never mutates
 
 Per spec FR-024, when an axis cannot be resolved, the raised
 ``ConfigError`` lists every fix path the user can try.
-
-Reference: specs/042-auth-architecture-redesign/contracts/python-api.md §1.
 """
 
 from __future__ import annotations

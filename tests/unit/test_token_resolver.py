@@ -6,8 +6,6 @@ Covers:
 - ``OnDiskTokenResolver.get_static_token(account)`` reads inline token or
   env var via ``token_env``.
 - Raises ``OAuthError`` if env var unset / browser tokens missing or unrefreshable.
-
-Reference: specs/042-auth-architecture-redesign/data-model.md §2, contracts/python-api.md §5.
 """
 
 from __future__ import annotations

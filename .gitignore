@@ -74,8 +74,8 @@ demo/
 # mp credentials
 .mp/
 
-# fastmcp docs
-context/fastmcp/
+# Local notes and plans
+context/
 
 # MCP client configuration (local dev only)
 .mcp.json

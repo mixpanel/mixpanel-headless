@@ -730,8 +730,7 @@ def link_report(
 def _warn_ignored_overrides(link: str) -> None:
     """Warn when a saved-report link carries a ``~(...)`` override tail.
 
-    Specified in ``specs/045-report-links/contracts/cli-commands.md`` §7. The
-    parse is pure and cheap. A parse failure is ignored here so the
+    The parse is pure and cheap. A parse failure is ignored here so the
     ``Workspace`` call raises the canonical error with the right exit code.
 
     Args:

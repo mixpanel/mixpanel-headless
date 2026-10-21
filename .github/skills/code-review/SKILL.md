@@ -11,7 +11,7 @@ scale, and what not to comment on. This skill is the procedure to apply it.
 ## 1. Collect the context
 
 1. Read the PR description. List the changed areas: library, CLI, tests,
-   conformance, replays, specs, plugin, docs, workflows.
+   conformance, replays, plugin, docs, workflows.
 2. For each changed area, read its file in `.github/instructions/`. If that
    file names a folder guide (a `CLAUDE.md` in the folder), read the guide
    too. Not every area has one.

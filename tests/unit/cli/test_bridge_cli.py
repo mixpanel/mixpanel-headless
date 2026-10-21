@@ -1,8 +1,4 @@
-"""CLI tests for ``mp account export-bridge`` / ``remove-bridge`` and ``mp session --bridge``.
-
-Reference:
-    specs/042-auth-architecture-redesign/contracts/cli-commands.md §3.10–§3.11, §7
-"""
+"""CLI tests for ``mp account export-bridge`` / ``remove-bridge`` and ``mp session --bridge``."""
 
 from __future__ import annotations
 

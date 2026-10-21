@@ -1,7 +1,7 @@
 """Storybook mock harvester — parse-kind vectors from analytics fixtures.
 
-Implements user ruling E1 (``context/phase1/design/escalation-resolutions.md``,
-APPROVED with scrubbing) over design D3.1: reads the READ-ONLY analytics
+Implements user ruling E1 (APPROVED with scrubbing) over design D3.1: reads
+the READ-ONLY analytics
 storybook mock tree (``iron/.storybook/mocks/api/``, 81 files), unwraps the
 9 ``{body, init}`` fetch-mock wrapper files, SCRUBS internal identifiers
 (demo project/workspace ids, the 5 employee emails, creator ids/names) to

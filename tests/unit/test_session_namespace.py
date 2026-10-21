@@ -1,7 +1,4 @@
-"""Unit tests for the ``mp.session`` public namespace (T032).
-
-Reference: specs/042-auth-architecture-redesign/contracts/python-api.md §7.
-"""
+"""Unit tests for the ``mp.session`` public namespace."""
 
 from __future__ import annotations
 

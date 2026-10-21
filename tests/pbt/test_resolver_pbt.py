@@ -5,8 +5,6 @@ Three property classes per Research R2:
 - Axis independence: perturbing one axis input never changes the others.
 - Env wins: when a per-axis env var and a config value both exist, env wins.
 
-Reference: specs/042-auth-architecture-redesign/research.md R2.
-
 Implementation note: Each Hypothesis example builds its own ConfigManager
 in a fresh tmp dir to avoid state leak between examples (the function-scoped
 ``tmp_path`` fixture is reused across examples within one test function).

@@ -10,8 +10,6 @@ The ``Account`` type is a discriminated union dispatched on the ``type`` field:
 - :class:`ServiceAccount` — long-lived Basic-auth credentials.
 - :class:`OAuthBrowserAccount` — PKCE browser flow; tokens persisted on disk.
 - :class:`OAuthTokenAccount` — static bearer (CI/agents); inline or env-var.
-
-Reference: ``specs/042-auth-architecture-redesign/data-model.md`` §1, §2.
 """
 
 from __future__ import annotations

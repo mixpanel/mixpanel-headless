@@ -4,9 +4,8 @@ The `mp` command-line interface for `mixpanel_headless`—a complete programmabl
 
 ## Command Groups
 
-The auth surface is organized around the **Account → Project → Workspace** hierarchy
-(042 redesign): five identity command groups, each with `use` as the universal
-state-change verb.
+The auth surface is organized around the **Account → Project → Workspace** hierarchy:
+five identity command groups, each with `use` as the universal state-change verb.
 
 | Group | Purpose |
 |-------|---------|

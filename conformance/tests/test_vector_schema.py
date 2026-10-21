@@ -1,8 +1,7 @@
 """Tests for the committed conformance-vector JSON Schema artifact.
 
 The schema at ``conformance/schema/vector.schema.json`` is the single source
-of truth for vector shape after PR-1 copies it from
-``context/phase1/design/vector.schema.json`` (design D3). These tests lock
+of truth for vector shape. These tests lock
 that the copy is present, parseable, and a structurally valid Draft 2020-12
 JSON Schema, so later emit-time self-validation (D1/PR-2) has a sound anchor.
 """

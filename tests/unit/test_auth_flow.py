@@ -491,9 +491,8 @@ class TestOAuthFlowTokenExchange:
 class TestTokenPayloadRedaction:
     """Malformed-200 token responses must not leak token material into error details.
 
-    Fix-of-record: context/phase3/bug-reports/python-oauth-error-details-token-payload.md,
-    hardened by ARB-B (pair-B review F-B1/F-B2/F-B3/E-1). When a 200 response
-    parses as a JSON object but fails ``OAuthTokens.from_token_response``, the
+    When a 200 response parses as a JSON object but fails
+    ``OAuthTokens.from_token_response``, the
     raised OAuthError's ``details["response_data"]`` keeps every FIELD NAME but
     only the VALUES of the safe RFC 6749 metadata keys (``token_type``,
     ``expires_in``, ``scope``, ``error``, ``error_description``) when they are

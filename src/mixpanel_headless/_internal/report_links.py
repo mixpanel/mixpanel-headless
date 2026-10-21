@@ -7,7 +7,6 @@ mints slugs. It is stdlib-only, makes no network calls, and is total: for
 any input string :func:`parse_report_link` either returns a
 :class:`ParsedReportLink` or raises :class:`ReportLinkParseError`.
 
-The grammar is specified in ``specs/045-report-links/contracts/url-grammar.md``.
 The constants below are the single place to change when Mixpanel moves an
 app path (see ``SLUG_APP_FOR_TYPE``).
 

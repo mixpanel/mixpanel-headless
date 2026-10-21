@@ -3,9 +3,6 @@
 Owns the single-schema TOML config file (``~/.mp/config.toml``) with
 ``[active]``, ``[accounts.NAME]``, ``[targets.NAME]``, ``[settings]``
 sections.
-
-Reference:
-    ``specs/042-auth-architecture-redesign/contracts/config-schema.md`` §1.
 """
 
 from __future__ import annotations

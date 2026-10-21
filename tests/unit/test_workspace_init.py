@@ -4,8 +4,6 @@ The new constructor accepts ``account``, ``project``, ``workspace``,
 ``target``, ``session`` (all keyword-only). With ``session=``, the
 constructor bypasses the resolver and uses the supplied Session
 directly.
-
-Reference: specs/042-auth-architecture-redesign/contracts/python-api.md §1, §2.
 """
 
 from __future__ import annotations

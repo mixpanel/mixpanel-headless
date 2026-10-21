@@ -18,9 +18,7 @@ Then copy the outputs into the TS repo:
     cp conformance/goldens/rrweb/*.golden.json \\
        ../mixpanel-headless-ts/packages/core/test/replays/goldens/
 
-Both copies are committed (Phase-3 plan §Layer-3,
-``context/typescript-port-plan.md:351-354``; the TS-2 pinned-table
-precedent for two-repo generated artifacts).
+Both copies are committed.
 
 The frozen shape per fixture is
 ``{actions[], markdown, page_visits, console_errors}`` — every public

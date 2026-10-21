@@ -4,8 +4,6 @@ Verifies that each subcommand (``add`` / ``use`` / ``list`` / ``show`` /
 ``remove``) round-trips through the underlying ``mixpanel_headless.targets``
 namespace and that the on-disk ``[active]`` block reflects the applied
 target's three axes.
-
-Reference: specs/042-auth-architecture-redesign/contracts/cli-commands.md §6.
 """
 
 from __future__ import annotations

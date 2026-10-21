@@ -3,7 +3,7 @@
   "commentTypes": ["logic", "syntax", "style"],
   "autoReview": ["open", "push"],
   "excludeAuthors": ["dependabot[bot]"],
-  "ignorePatterns": "conformance/vectors/**\nconformance/goldens/**/*.json\nconformance/differential/*.json\nconformance/differential/oracle/*.json\nuv.lock\n.specify/**\n.claude/skills/speckit-*/**",
+  "ignorePatterns": "conformance/vectors/**\nconformance/goldens/**/*.json\nconformance/differential/*.json\nconformance/differential/oracle/*.json\nuv.lock\narchive/**",
   "statusCheck": true,
   "fixWithAI": true,
   "sequenceDiagramSection": {

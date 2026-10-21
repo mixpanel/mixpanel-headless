@@ -579,8 +579,8 @@ class TestAPIErrorHierarchy:
 # =============================================================================
 
 #: Snapshot of the pre-existing error-code universe at the start of the E2
-#: coding pass (recon `codes` from context/phase1/recon/validation-errors.json
-#: at 852d718 UNION a fresh literal scan of src/mixpanel_headless/** for
+#: coding pass (the error codes recorded at 852d718 UNION a fresh literal
+#: scan of src/mixpanel_headless/** for
 #: `code="…"` / `code: str = "…"` / `self._code = "…"` assignments plus the
 #: two dynamic `FL_TYPE_{name}` expansions). Newly minted coded-guard codes
 #: must never collide with this set (design §1, RR-2).

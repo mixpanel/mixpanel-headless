@@ -9,8 +9,7 @@ the READ-ONLY analytics checkout (`/Users/jaredmcfarland/Developer/analytics`
 | **structural** (draft-04) | `bookmark_parser.validate.assert_valid_schema(params, "common/schema/bookmark.json" \| "funnels/schema/bookmark.json")` | pass / `jsonschema.exceptions.ValidationError` |
 | **deep** (voluptuous) | `analytics.bookmark_parser.insights.validate.validate_insights_bookmark_params_schema(params, require_all_keys=False)` | pass / `voluptuous.error.MultipleInvalid` |
 
-Both invocation recipes were proven by the recon transcripts in
-`context/phase1/recon/referee-assets.md` (§1, §2A, §2B). No CI job runs
+Both invocation recipes were proven by recon transcripts. No CI job runs
 these — referee (b) is manual/nightly on a machine with the analytics
 checkout (design D15 CI hooks); the D9 release gate includes one batch run.
 
@@ -160,10 +159,7 @@ both oracles before the batches (3/3 structural, 4/4 deep).
 (`bookmarks/workspace.build_params/test_query_params-testfrequencyfilterinbuildparams-test_frequency_filter_in_filter_section`
 and `…-test_frequency_filter_mixed_with_filter`) — true positives
 disclosed since Phase 1, settled by the GATE-VERDICT R7 live probe
-(`context/phase1/addendum/frequency-filter-probe.md`) and filed per R10.7
-as
-`context/phase1/bug-reports/mixpanel-headless-frequency-filter-clause-shape.md`
-— are RETIRED: the Python fix (`ts-port/python-bugfix-batch` FIX-1,
+and filed per R10.7 as a bug report — are RETIRED: the Python fix (`ts-port/python-bugfix-batch` FIX-1,
 `build_frequency_filter_entry` now emits the platform-native top-level
 `filterType`/`filterOperator`/`filterValue` clause with `$frequency`
 under `behavior.behaviorType`) landed, the corpus was re-extracted at

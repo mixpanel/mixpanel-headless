@@ -1104,8 +1104,7 @@ class MixpanelAPIClient:
             # `response.json()` can yield ANY JSON value (dict, list, str,
             # number, bool, null) — serialize every non-str body so the
             # substring sniff below is uniform across shapes and can never
-            # raise TypeError on a scalar body (see
-            # context/phase3/bug-reports/python-handle-response-403-typeerror.md).
+            # raise TypeError on a scalar body.
             body_text = (
                 response_body
                 if isinstance(response_body, str)

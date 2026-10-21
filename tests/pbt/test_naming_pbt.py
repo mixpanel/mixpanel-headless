@@ -9,8 +9,6 @@ Hypothesis covers the invariants that the example-based suite in
 - Collision suffixes are monotonically increasing (``-2`` then ``-3``,
   never ``-1`` or out-of-order).
 - ``default_account_name`` is deterministic (same inputs → same output).
-
-Reference: ``specs/043-frictionless-auth/contracts/python-api.md`` §2.2.
 """
 
 from __future__ import annotations

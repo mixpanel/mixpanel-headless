@@ -4,8 +4,6 @@ Loops over multiple Workspaces backed by different accounts and verifies:
 - the auth header rebuilds per account
 - the underlying ``httpx.Client`` survives all switches via ``ws.use(account=)``
 - in-session project state is cleared on account swap (FR-033)
-
-Reference: specs/042-auth-architecture-redesign/spec.md US7 / FR-033.
 """
 
 from __future__ import annotations

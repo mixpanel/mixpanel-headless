@@ -188,9 +188,9 @@ just mutate-check        # Check score meets 80% threshold
 ## Key Design Decisions
 
 - **Streaming data access**: API returns iterators for memory-efficient processing of large datasets
-- **Account → Project → Workspace hierarchy** (042 redesign): every CLI verb and Python namespace maps to one of those three axes; `Workspace.use(account=, project=, workspace=)` is the single in-session switching method.
+- **Account → Project → Workspace hierarchy**: every CLI verb and Python namespace maps to one of those three axes; `Workspace.use(account=, project=, workspace=)` is the single in-session switching method.
 - **Three first-class account types**: `service_account` (Basic Auth), `oauth_browser` (PKCE, tokens auto-refreshed), `oauth_token` (static bearer for CI/agents). All managed through one unified surface.
-- **Frictionless login** (043): `mp login` (CLI) and `accounts.login_unified()` (Python) collapse the old two-step `mp account add` + `mp account login` flow into one call. Auth-type detection is env-driven: `MP_USERNAME`+`MP_SECRET` → `service_account`; `MP_OAUTH_TOKEN` → `oauth_token`; otherwise `oauth_browser`. Region behavior is auth-type-specific: SA and `oauth_token` paths probe `us → eu → in` when `--region` is omitted; `oauth_browser` defaults to `us` (PKCE commits to a region before the post-login `/me` probe runs, so EU / India users must pass `--region eu|in` explicitly). Project and account name derive from the post-login `/me` response; workspace stays lazy and resolves on first workspace-scoped call.
+- **Frictionless login**: `mp login` (CLI) and `accounts.login_unified()` (Python) collapse the old two-step `mp account add` + `mp account login` flow into one call. Auth-type detection is env-driven: `MP_USERNAME`+`MP_SECRET` → `service_account`; `MP_OAUTH_TOKEN` → `oauth_token`; otherwise `oauth_browser`. Region behavior is auth-type-specific: SA and `oauth_token` paths probe `us → eu → in` when `--region` is omitted; `oauth_browser` defaults to `us` (PKCE commits to a region before the post-login `/me` probe runs, so EU / India users must pass `--region eu|in` explicitly). Project and account name derive from the post-login `/me` response; workspace stays lazy and resolves on first workspace-scoped call.
 - **Single resolver**: `resolve_session(...)` consults env → param → target → bridge → config in priority order; no silent cross-axis fallback.
 - **Connection-pool preservation**: `ws.use(account=...)` rebuilds the auth header but reuses the underlying `httpx.Client` (same Python instance — verified by `id()` equality in `tests/integration/test_cross_project_iteration.py`).
 - **Dependency injection**: Services accept dependencies as constructor arguments for testing.
@@ -328,36 +328,3 @@ python3 -m mixpanel_headless help types      # fallback when mp is not on PATH
 ```
 
 In Python: `mp.help("Workspace.query")` prints the same text; `mp.reference.search("cohort")` returns structured results.
-
-## Active Technologies
-- Python 3.10+ (mypy --strict) + httpx (HTTP client), Pydantic v2 (validation), Typer (CLI), Rich (output)
-- JSON files at `~/.mp/oauth/` (token + client info persistence)
-- Mixpanel App API (remote CRUD for entities and data governance)
-- Python 3.10+ with full type hints (mypy --strict) + httpx (HTTP client), Pydantic v2 (validation), pandas (DataFrames) (029-insights-query-api)
-- N/A — live query only, no local persistence (029-insights-query-api)
-- Python 3.10+ (mypy --strict) + httpx (HTTP), Pydantic v2 (validation), pandas (DataFrames) (031-shared-infra-extraction)
-- Python 3.10+ (mypy --strict) + httpx (HTTP client), Pydantic v2 (validation), pandas (DataFrames) (033-retention-query)
-- Python 3.10+ (mypy --strict) + Pydantic v2 (for existing `CreateCohortParams`), pandas (existing), Hypothesis (PBT) (035-cohort-definition-builder)
-- N/A — pure types, no persistence (035-cohort-definition-builder)
-- Python 3.10+ (mypy --strict) + Pydantic v2 (validation), httpx (HTTP), pandas (DataFrames), Hypothesis (PBT) (036-cohort-behaviors)
-- Python 3.10+ (mypy --strict compliant) + Pydantic v2 (validation), httpx (HTTP client), Hypothesis (PBT), mutmut (mutation testing) (037-custom-properties-queries)
-- N/A — pure query-building types, no persistence (037-custom-properties-queries)
-- Python 3.10+ (mypy --strict compliant) + Pydantic v2 (validation/models), httpx (HTTP client), Typer (CLI), Rich (output), tomli/tomli_w (TOML read/write) (038-auth-project-workspace-redesign)
-- TOML config file (`~/.mp/config.toml`), JSON cache files (`~/.mp/oauth/me_{region}.json`), JSON OAuth token files (`~/.mp/oauth/tokens_{region}.json`) (038-auth-project-workspace-redesign)
-- Python 3.10+ (mypy --strict) + httpx (HTTP), Pydantic v2 (validation), pandas (DataFrames), Hypothesis (PBT) (039-query-user-engine)
-- Python 3.10+ + httpx, Pydantic v2, Typer, Rich, pandas, Hypothesis (040-query-engine-completeness)
-- N/A — query parameter types only, no persistence (040-query-engine-completeness)
-- Python 3.10+ (mypy --strict) + httpx, Pydantic v2, Typer, Rich, Hypothesis, mutmut (043-frictionless-auth)
-- TOML config (`~/.mp/config.toml`) + per-account state at `~/.mp/accounts/{name}/{tokens,client,me}.json` — schema unchanged from 042 (043-frictionless-auth)
-- Python 3.10+ (mypy --strict) + httpx, Pydantic v2, pandas, Typer, Rich, Hypothesis, mutmut; vendored rrweb analyzer (pure stdlib) for session replay (044-session-replay)
-- N/A — signed URLs are time-bounded bearer credentials handled in-process; no new on-disk persistence (044-session-replay)
-- Python 3.10+ (mypy --strict) + httpx, Pydantic v2, Typer, Rich, pandas, Hypothesis, mutmut; stdlib-only URL parse/build module (045-report-links)
-- N/A — unsaved-report slug records live on the Mixpanel server per project and region; no new on-disk persistence (045-report-links)
-
-<!-- SPECKIT START -->
-Current plan: [specs/045-report-links/plan.md](specs/045-report-links/plan.md)
-
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan.
-<!-- SPECKIT END -->
-

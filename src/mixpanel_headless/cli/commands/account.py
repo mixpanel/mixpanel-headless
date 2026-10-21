@@ -3,8 +3,6 @@
 Replaces ``mp auth`` with a single source of truth for account CRUD,
 switching, and probing across the three account types
 (``service_account`` / ``oauth_browser`` / ``oauth_token``).
-
-Reference: specs/042-auth-architecture-redesign/contracts/cli-commands.md §3.
 """
 
 from __future__ import annotations

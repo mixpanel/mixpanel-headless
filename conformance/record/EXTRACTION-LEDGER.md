@@ -1,9 +1,5 @@
 # Extraction Ledger — count reconciliation (D10)
 
-Design of record: `context/phase1/design/phase1-design.md` D10 ("Count
-reconciliation ledger") and D3 (manifest), plus the addendum coding-pass
-design (`context/phase1/addendum/coding-pass-design.md`) and GATE-VERDICT
-recommendations R1/R2/R3 (`context/phase1/audit/GATE-VERDICT.md` §8).
 `conformance/vectors/manifest.json` is authoritative; every table below is
 a prose snapshot of the committed extraction run.
 

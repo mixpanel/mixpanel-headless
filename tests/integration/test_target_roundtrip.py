@@ -16,9 +16,6 @@ the ``mp target`` CLI, and ``Workspace.use(target=...)``. Verifies:
 4. **Construction-path equivalence**: ``Workspace().use(target=NAME)`` and
    ``Workspace(target=NAME)`` produce the same Session shape (the
    per-axis arguments and the named-target shortcut are interchangeable).
-
-Reference: specs/042-auth-architecture-redesign/spec.md US6 acceptance
-scenarios 1-2; tasks.md T072, T075.
 """
 
 from __future__ import annotations

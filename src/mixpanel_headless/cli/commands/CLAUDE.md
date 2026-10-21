@@ -1,7 +1,7 @@
 # CLI Commands
 
 Typer command groups for the `mp` CLI. Each file defines one subcommand
-group. The auth surface (042 redesign) is organized around the
+group. The auth surface is organized around the
 **Account → Project → Workspace** hierarchy — see
 [`../CLAUDE.md`](../CLAUDE.md) for the canonical group list and global
 flags.

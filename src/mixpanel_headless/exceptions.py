@@ -1633,9 +1633,7 @@ class ReportLinkError(MixpanelHeadlessError):
         """Initialize a report-link error.
 
         Args:
-            message: Human-readable error message; see
-                ``specs/045-report-links/contracts/error-messages.md`` for the
-                stable wording per code.
+            message: Human-readable error message.
             code: Machine-readable error code. Defaults to the subclass's
                 ``_DEFAULT_CODE``.
             details: Parsed link fields that are available (``kind``,
@@ -2075,11 +2073,10 @@ CODED_GUARD_REGISTRY: Final[frozenset[str]] = frozenset(
 )
 """Every full error code minted by the E2 uncoded-raise coding pass.
 
-Single source of truth for the codes newly introduced by the coding pass
-(design ``context/phase1/addendum/coding-pass-design.md`` §1), importable by
-tests (code-uniqueness guard) and the conformance recorder. Reused twin
-codes are listed separately in :data:`CODED_GUARD_TWIN_CODES` — they
-pre-exist in the registry and are deliberately NOT minted here.
+Single source of truth for the codes newly introduced by the coding pass,
+importable by tests (code-uniqueness guard) and the conformance recorder.
+Reused twin codes are listed separately in :data:`CODED_GUARD_TWIN_CODES` —
+they pre-exist in the registry and are deliberately NOT minted here.
 """
 
 CODED_GUARD_TWIN_CODES: Final[frozenset[str]] = frozenset(

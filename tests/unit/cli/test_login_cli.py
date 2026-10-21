@@ -12,8 +12,6 @@ Covers the highest-value scenarios from the
 The remaining scenarios (interactive multi-project picker, browser
 flow with placeholder dir, atomic-publish lifecycle) live in
 follow-on integration tests once the orchestrator settles.
-
-Reference: ``specs/043-frictionless-auth/contracts/cli-commands.md`` §6.
 """
 
 from __future__ import annotations

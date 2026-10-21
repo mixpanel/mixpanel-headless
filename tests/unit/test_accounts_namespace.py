@@ -6,8 +6,6 @@ The namespace mirrors the spec ``contracts/python-api.md §5``:
 
 Tests focus on the wiring + delegation behavior; the underlying
 ``ConfigManager`` is exercised in ``test_config.py``.
-
-Reference: specs/042-auth-architecture-redesign/contracts/python-api.md §5.
 """
 
 from __future__ import annotations

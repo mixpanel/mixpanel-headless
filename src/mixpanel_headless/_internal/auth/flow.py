@@ -607,8 +607,7 @@ class OAuthFlow:
             Non-200 branches still embed the raw ERROR body in
             ``details["response_body"]`` — those are IdP error documents
             (e.g. ``{"error": "invalid_grant"}``), not token grants, and
-            their shapes are vector-locked. Fix-of-record:
-            context/phase3/bug-reports/python-oauth-error-details-token-payload.md.
+            their shapes are vector-locked.
         """
         token_url = f"{self._base_url}token/"
 

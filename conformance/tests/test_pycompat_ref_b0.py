@@ -3,8 +3,7 @@
 Covers the R11.3 parse-grammar wrappers (``python_int``/``python_float``),
 the R11.3 enabling dependency ``python_strip``, and the R11.5/R11.6
 codepoint wrappers (``sorted_strings``/``cp_length``/``cp_slice``) against
-the CPython 3.14.6 probe results recorded in
-``context/phase3/notes/B0-notes.md``. The authored ``compat.*`` vectors
+the CPython 3.14.6 probe results. The authored ``compat.*`` vectors
 freeze exactly these outputs; the TS port must match vector-for-vector.
 """
 
