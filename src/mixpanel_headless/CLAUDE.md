@@ -61,7 +61,7 @@ import mixpanel_headless as mp
 # `~/.mp/config.toml [active]` + the active account's default_project.
 ws = mp.Workspace()
 
-# Override per Workspace (env > param > target > bridge > config)
+# Override per Workspace (env > param > target > config)
 ws = mp.Workspace(account="team", project="3713224")
 ws = mp.Workspace(target="ecom")
 ws = mp.Workspace(session=mp.Session(account=..., project=..., workspace=...))
@@ -91,8 +91,6 @@ with mp.Workspace() as ws:
 - `mp.accounts.login(name)` — run PKCE flow for an oauth_browser account
 - `mp.accounts.login_unified(*, name=None, region=None, project=None, ...)` — orchestrator behind `mp login`; composes region probe, project picker, name derivation, and re-login state machine
 - `mp.accounts.test(name)` — probe `/me` and return `AccountTestResult`
-- `mp.accounts.export_bridge(*, to, account=None)` — write a v2 Cowork bridge file
-- `mp.accounts.remove_bridge(*, at=None)` — idempotent bridge removal
 - `mp.targets.add(name, *, account, project, workspace=None)` — saved cursor
 - `mp.targets.use(name)` — atomic apply (writes all three [active] axes in one save)
 - `mp.session.show()` — read the persisted `[active]` block as `ActiveSession`

@@ -404,7 +404,7 @@ class OAuthStorage:
             contains invalid/non-JSON data.
         """
         # Probe for symlink before existence check — see the analogous
-        # pattern in ``me.MeCache.get`` and ``bridge.load_bridge``.
+        # pattern in ``me.MeCache.get``.
         try:
             reject_if_symlink(path)
         except CredentialPathError as exc:

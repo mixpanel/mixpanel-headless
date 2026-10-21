@@ -11,11 +11,11 @@ flags.
 | File | Command Group | Purpose |
 |------|---------------|---------|
 | `login.py` | `mp login` | Guided account add (region probe, project picker, name derivation) |
-| `account.py` | `mp account` | Account CRUD + lifecycle (`list`, `add`, `update`, `remove`, `use`, `show`, `test`, `login`, `logout`, `token`, `export-bridge`, `remove-bridge`) |
+| `account.py` | `mp account` | Account CRUD + lifecycle (`list`, `add`, `update`, `remove`, `use`, `show`, `test`, `login`, `logout`, `token`) |
 | `project.py` | `mp project` | Project axis (`list` from `/me`, `use ID`, `show`) |
 | `workspace.py` | `mp workspace` | Workspace axis (`list`, `use ID`, `show`) |
 | `target.py` | `mp target` | Saved (account, project, workspace?) cursors (`list`, `add`, `use`, `show`, `remove`) |
-| `session.py` | `mp session` | Resolved active-session viewer (`mp session [--bridge]`) |
+| `session.py` | `mp session` | Resolved active-session viewer (`mp session`) |
 | `query.py` | `mp query` | Live Mixpanel API queries (segmentation, funnel, retention, …); opt-in `--link` on `segmentation`, `funnel`, `saved-report`, `flows` adds `report_url` and never fails the query |
 | `inspect.py` | `mp inspect` | Schema discovery (events, properties, funnels, cohorts, bookmarks) |
 | `dashboards.py` | `mp dashboards` | Dashboard CRUD (list, create, get, update, delete, favorite, pin, blueprints, RCA) |

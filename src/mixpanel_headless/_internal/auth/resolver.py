@@ -4,9 +4,9 @@ Replaces the six-layer fallback chain in the legacy ``ConfigManager`` with
 one pure-functional ``resolve_session`` that consults independent priority
 axes:
 
-    Account axis:    env → param → target → bridge → [active].account
-    Project axis:    env → param → target → bridge → account.default_project
-    Workspace axis:  env → param → target → bridge → [active].workspace
+    Account axis:    env → param → target → [active].account
+    Project axis:    env → param → target → account.default_project
+    Workspace axis:  env → param → target → [active].workspace
 
 Each axis is independent — perturbing one input never affects the others
 (verified by Hypothesis property tests). The project axis chain ends at the
@@ -14,10 +14,9 @@ resolved account (its ``default_project`` field) — there is no
 ``[active].project`` fallback. Switching accounts implicitly switches
 projects (FR-033).
 
-The resolver does no I/O beyond optionally reading the config and bridge
-file (both passed in by the caller); never reads OAuth tokens (those are
-fetched lazily by ``MixpanelAPIClient`` at request time); never mutates
-``os.environ``.
+The resolver does no I/O beyond optionally reading the config file (passed
+in by the caller); never reads OAuth tokens (those are fetched lazily by
+``MixpanelAPIClient`` at request time); never mutates ``os.environ``.
 
 Per spec FR-024, when an axis cannot be resolved, the raised
 ``ConfigError`` lists every fix path the user can try.
@@ -36,7 +35,6 @@ from mixpanel_headless._internal.auth.account import (
     Region,
     ServiceAccount,
 )
-from mixpanel_headless._internal.auth.bridge import BridgeFile, load_bridge
 from mixpanel_headless._internal.auth.session import (
     Project,
     Session,
@@ -134,7 +132,6 @@ def resolve_account_axis(
     *,
     explicit: str | None,
     target_account_name: str | None,
-    bridge: BridgeFile | None,
     config: ConfigManager,
 ) -> Account | None:
     """Resolve the account axis per the documented priority order.
@@ -143,14 +140,12 @@ def resolve_account_axis(
         1. Env: SA quad first (PR #125), then OAuth-token env.
         2. Explicit ``account=NAME`` param → load from config.
         3. ``--target NAME`` → load the target's referenced account.
-        4. Bridge file's account.
-        5. ``[active].account`` from config.
+        4. ``[active].account`` from config.
 
     Args:
         explicit: Value of ``account=`` kwarg (or env-var override).
         target_account_name: When ``--target NAME`` was applied, the
             account name from that target block.
-        bridge: Loaded bridge file, if any.
         config: ConfigManager (may have an empty ``[active]`` block).
 
     Returns:
@@ -166,8 +161,6 @@ def resolve_account_axis(
         return config.get_account(explicit)
     if target_account_name is not None:
         return config.get_account(target_account_name)
-    if bridge is not None:
-        return bridge.account
     active = config.get_active()
     if active.account is not None:
         return config.get_account(active.account)
@@ -178,12 +171,11 @@ def resolve_project_axis(
     *,
     explicit: str | None,
     target_project: str | None,
-    bridge: BridgeFile | None,
     account: Account | None,
 ) -> str | None:
     """Resolve the project axis per the documented priority order.
 
-    Order (per FR-017): env > param > target > bridge > ``account.default_project``.
+    Order: env > param > target > ``account.default_project``.
 
     The chain ends at the resolved account; there is no ``[active].project``
     fallback. Project lives on the account itself (``Account.default_project``)
@@ -193,7 +185,6 @@ def resolve_project_axis(
     Args:
         explicit: Value of ``project=`` kwarg.
         target_project: Project from ``--target NAME``, if applied.
-        bridge: Loaded bridge file, if any.
         account: The resolved account whose ``default_project`` is consulted as
             the bottom layer of the chain.
 
@@ -212,8 +203,6 @@ def resolve_project_axis(
         return explicit
     if target_project is not None:
         return target_project
-    if bridge is not None and bridge.project is not None:
-        return bridge.project
     if account is not None:
         return account.default_project
     return None
@@ -255,12 +244,11 @@ def resolve_workspace_axis(
     *,
     explicit: int | None,
     target_workspace: int | None,
-    bridge: BridgeFile | None,
     config: ConfigManager,
 ) -> int | None:
     """Resolve the workspace axis per the documented priority order.
 
-    Order (per FR-017): env > param > target > bridge > ``[active].workspace``.
+    Order: env > param > target > ``[active].workspace``.
 
     ``None`` is a valid terminal value (lazy resolution on first
     workspace-scoped API call per FR-025).
@@ -268,7 +256,6 @@ def resolve_workspace_axis(
     Args:
         explicit: Value of ``workspace=`` kwarg.
         target_workspace: Workspace from ``--target NAME``, if applied.
-        bridge: Loaded bridge file, if any.
         config: ConfigManager.
 
     Returns:
@@ -281,35 +268,27 @@ def resolve_workspace_axis(
         return explicit
     if target_workspace is not None:
         return target_workspace
-    if bridge is not None and bridge.workspace is not None:
-        return bridge.workspace
     active = config.get_active()
     return active.workspace
 
 
-def _resolve_headers(
-    *, bridge: BridgeFile | None, config: ConfigManager
-) -> dict[str, str]:
-    """Collect custom HTTP headers from settings + bridge.
+def _resolve_headers(*, config: ConfigManager) -> dict[str, str]:
+    """Collect custom HTTP headers from ``[settings].custom_header``.
 
-    ``[settings].custom_header`` contributes a single ``{name: value}``
-    entry; the bridge contributes a multi-entry map. Bridge wins on
-    collision (highest priority among header sources, matching the
-    bridge's general "ephemeral override" role).
+    The setting contributes a single ``{name: value}`` entry. It is the
+    only header source.
 
     Args:
-        bridge: Loaded bridge file, if any.
         config: ConfigManager.
 
     Returns:
-        Headers map ready to attach to ``Session.headers``.
+        Headers map ready to attach to ``Session.headers`` (empty when the
+        setting is absent).
     """
     headers: dict[str, str] = {}
     setting = config.get_custom_header()
     if setting is not None:
         headers[setting[0]] = setting[1]
-    if bridge is not None and bridge.headers:
-        headers.update(bridge.headers)
     return headers
 
 
@@ -364,14 +343,13 @@ def resolve_session(
     workspace: int | None = None,
     target: str | None = None,
     config: ConfigManager | None = None,
-    bridge: BridgeFile | None = None,
 ) -> Session:
     """Resolve a :class:`Session` from per-axis inputs and config sources.
 
     Per FR-016: the three axes resolve independently. Per FR-017: each
-    axis consults env → param → target → bridge → config in priority
-    order. The resolver is pure-functional: no token I/O, no env
-    mutation, no network.
+    axis consults env → param → target → config in priority order. The
+    resolver is pure-functional: no token I/O, no env mutation, no
+    network.
 
     Args:
         account: Explicit account name (e.g., from ``--account NAME``).
@@ -382,9 +360,6 @@ def resolve_session(
         config: ConfigManager. Defaults to a freshly constructed
             ``ConfigManager()`` reading ``MP_CONFIG_PATH`` or
             ``~/.mp/config.toml``.
-        bridge: Pre-loaded bridge file. If ``None``, the resolver loads
-            via :func:`load_bridge` (which honors ``MP_AUTH_FILE`` + the
-            default search paths).
 
     Returns:
         A frozen :class:`Session` with account, project, optional
@@ -403,7 +378,6 @@ def resolve_session(
         )
 
     cfg = config if config is not None else ConfigManager()
-    br = bridge if bridge is not None else load_bridge()
 
     target_account_name: str | None = None
     target_project: str | None = None
@@ -417,7 +391,6 @@ def resolve_session(
     account_obj = resolve_account_axis(
         explicit=account,
         target_account_name=target_account_name,
-        bridge=br,
         config=cfg,
     )
     if account_obj is None:
@@ -426,7 +399,6 @@ def resolve_session(
     project_id = resolve_project_axis(
         explicit=project,
         target_project=target_project,
-        bridge=br,
         account=account_obj,
     )
     if project_id is None:
@@ -441,7 +413,6 @@ def resolve_session(
     workspace_id = resolve_workspace_axis(
         explicit=workspace,
         target_workspace=target_workspace,
-        bridge=br,
         config=cfg,
     )
     workspace_obj: WorkspaceRef | None = None
@@ -453,7 +424,7 @@ def resolve_session(
                 f"Invalid workspace ID: {workspace_id!r}. Must be > 0."
             ) from exc
 
-    headers = _resolve_headers(bridge=br, config=cfg)
+    headers = _resolve_headers(config=cfg)
 
     return Session(
         account=account_obj,

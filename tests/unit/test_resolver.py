@@ -1,15 +1,18 @@
 """Unit tests for the single ``resolve_session`` (T020).
 
 Per FR-017, the resolver consults sources in this priority per axis:
-**env → param → target → bridge → config**. Each axis is independent —
+**env → param → target → config**. Each axis is independent —
 setting a project override does NOT affect account or workspace resolution.
 """
 
 from __future__ import annotations
 
+import inspect
+import json
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from pydantic import SecretStr
@@ -18,19 +21,23 @@ from mixpanel_headless._internal.auth.account import (
     OAuthTokenAccount,
     ServiceAccount,
 )
-from mixpanel_headless._internal.auth.resolver import resolve_session
+from mixpanel_headless._internal.auth.resolver import (
+    format_no_account_error,
+    resolve_account_axis,
+    resolve_project_axis,
+    resolve_session,
+    resolve_workspace_axis,
+)
 from mixpanel_headless._internal.config import ConfigManager
 from mixpanel_headless.exceptions import ConfigError
 
 
 @pytest.fixture(autouse=True)
 def _isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Isolate ``$HOME`` so the resolver does NOT pick up the dev's real bridge.
+    """Isolate ``$HOME`` under ``tmp_path`` for every test.
 
-    Without this fixture the resolver's default bridge search path
-    (``~/.claude/mixpanel/auth.json``) hits whatever the developer has on
-    disk, which is typically a v1 bridge that fails the v2 schema check
-    and turns every resolver test into a flake.
+    No test reads files from the developer's real home directory, and the
+    stray auth file tests plant their home-directory file here.
     """
     monkeypatch.setenv("HOME", str(tmp_path))
 
@@ -58,7 +65,7 @@ def cm_with_active(cm: ConfigManager) -> ConfigManager:
 
 
 class TestAccountAxisPriority:
-    """Order: env → param → target → bridge → config."""
+    """Order: env → param → target → config."""
 
     def test_explicit_param_beats_active(self, cm_with_active: ConfigManager) -> None:
         """``account=NAME`` param overrides ``[active].account``."""
@@ -74,7 +81,7 @@ class TestAccountAxisPriority:
         assert s.account.name == "other"
 
     def test_active_used_when_no_param(self, cm_with_active: ConfigManager) -> None:
-        """No env / no param / no target / no bridge → use ``[active].account``."""
+        """No env / no param / no target → use ``[active].account``."""
         s = resolve_session(config=cm_with_active)
         assert s.account.name == "team"
 
@@ -122,7 +129,7 @@ class TestAccountAxisPriority:
 
 
 class TestProjectAxisPriority:
-    """Order: env → param → target → bridge → config."""
+    """Order: env → param → target → config."""
 
     def test_explicit_param_beats_active(self, cm_with_active: ConfigManager) -> None:
         """``project=ID`` param overrides ``account.default_project``."""
@@ -148,7 +155,7 @@ class TestProjectAxisPriority:
         assert s.project.id == "3713224"
 
     def test_missing_project_axis_raises(self, tmp_path: Path) -> None:
-        """No env / param / target / bridge AND account has no default_project → ConfigError."""
+        """No env / param / target AND account has no default_project → ConfigError."""
         cm = ConfigManager(config_path=tmp_path / "config.toml")
         # Add an oauth_browser account (default_project optional) so the
         # account axis resolves but the project axis cannot.
@@ -254,7 +261,7 @@ class TestErrorMessages:
     """ConfigError messages match the multi-line format from FR-024."""
 
     def test_no_account_lists_options(self, cm: ConfigManager) -> None:
-        """No env / no param / no target / no bridge / no config → multi-line error."""
+        """No env / no param / no target / no config → multi-line error."""
         # cm has accounts but no [active].account; no env vars set.
         with pytest.raises(ConfigError) as excinfo:
             resolve_session(config=cm)
@@ -264,58 +271,17 @@ class TestErrorMessages:
 
 
 class TestCrossSourceOrdering:
-    """Inter-source priority for the resolver chain (env > param > target > bridge > config).
+    """Inter-source priority for the resolver chain (env > param > target > config).
 
     The per-axis priority tests above lock the *first* source that wins for a
-    given case. This class locks the *interaction* between sources — bridge
-    beating config, target beating bridge, env beating target — which is the
-    real-world matrix that powers the redesign's "single source of truth"
-    promise. Without these, a future refactor could swap two layers in
-    ``_resolve_*_axis`` and no per-axis test would fail.
+    given case. This class locks the *interaction* between sources — env
+    beating target — which is the real-world matrix that powers the
+    redesign's "single source of truth" promise. Without these, a future
+    refactor could swap two layers in ``_resolve_*_axis`` and no per-axis
+    test would fail.
     """
 
-    def _make_bridge(
-        self,
-        *,
-        project: str | None = None,
-        workspace: int | None = None,
-    ) -> Any:
-        """Construct a ``BridgeFile`` pointing at a fresh service account."""
-        from mixpanel_headless._internal.auth.account import ServiceAccount
-        from mixpanel_headless._internal.auth.bridge import BridgeFile
-
-        return BridgeFile(
-            account=ServiceAccount(
-                name="bridge-account",
-                region="us",
-                username="bridge.user",
-                secret=SecretStr("bridge-secret"),
-                default_project=None,
-            ),
-            project=project,
-            workspace=workspace,
-        )
-
     # ── Account axis ──────────────────────────────────────────────────
-
-    def test_bridge_account_beats_config_active(
-        self, cm_with_active: ConfigManager
-    ) -> None:
-        """No env / no param / no target → bridge.account wins over [active]."""
-        bridge = self._make_bridge(project="3713224")
-        s = resolve_session(config=cm_with_active, bridge=bridge)
-        # Bridge account (``bridge-account``) wins over [active].account (``team``).
-        assert s.account.name == "bridge-account"
-
-    def test_target_account_beats_bridge(self, cm_with_active: ConfigManager) -> None:
-        """target.account beats bridge.account when both are present."""
-        cm_with_active.add_target(
-            "ecom", account="team", project="3713224", workspace=42
-        )
-        bridge = self._make_bridge(project="3713224")
-        s = resolve_session(target="ecom", config=cm_with_active, bridge=bridge)
-        # Target (``team``) wins over bridge (``bridge-account``).
-        assert s.account.name == "team"
 
     def test_env_sa_quad_beats_target(
         self,
@@ -335,40 +301,7 @@ class TestCrossSourceOrdering:
         # that ``team`` (from the target) is NOT what we got.
         assert s.account.name != "team"
 
-    def test_env_sa_quad_beats_bridge(
-        self,
-        cm_with_active: ConfigManager,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """SA env quad beats bridge.account."""
-        bridge = self._make_bridge(project="3713224")
-        monkeypatch.setenv("MP_USERNAME", "env.user")
-        monkeypatch.setenv("MP_SECRET", "env-secret")
-        monkeypatch.setenv("MP_PROJECT_ID", "999")
-        monkeypatch.setenv("MP_REGION", "us")
-        s = resolve_session(config=cm_with_active, bridge=bridge)
-        assert s.account.name != "bridge-account"
-
     # ── Project axis ──────────────────────────────────────────────────
-
-    def test_bridge_project_beats_account_default(
-        self, cm_with_active: ConfigManager
-    ) -> None:
-        """bridge.project beats account.default_project (3713224)."""
-        bridge = self._make_bridge(project="3018488")
-        s = resolve_session(config=cm_with_active, bridge=bridge)
-        # Bridge has its own account, so this also tests the project tied to
-        # bridge.account; the project assertion is the load-bearing one.
-        assert s.project.id == "3018488"
-
-    def test_target_project_beats_bridge(self, cm_with_active: ConfigManager) -> None:
-        """target.project beats bridge.project."""
-        cm_with_active.add_target(
-            "ecom", account="team", project="3018488", workspace=42
-        )
-        bridge = self._make_bridge(project="9999999")
-        s = resolve_session(target="ecom", config=cm_with_active, bridge=bridge)
-        assert s.project.id == "3018488"
 
     def test_env_project_beats_target(
         self,
@@ -383,36 +316,7 @@ class TestCrossSourceOrdering:
         s = resolve_session(target="ecom", config=cm_with_active)
         assert s.project.id == "5555555"
 
-    def test_env_project_beats_bridge(
-        self,
-        cm_with_active: ConfigManager,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """``MP_PROJECT_ID`` env beats bridge.project."""
-        bridge = self._make_bridge(project="3018488")
-        monkeypatch.setenv("MP_PROJECT_ID", "5555555")
-        s = resolve_session(config=cm_with_active, bridge=bridge)
-        assert s.project.id == "5555555"
-
     # ── Workspace axis ────────────────────────────────────────────────
-
-    def test_bridge_workspace_beats_active(self, cm_with_active: ConfigManager) -> None:
-        """bridge.workspace beats [active].workspace."""
-        cm_with_active.set_active(workspace=99)
-        bridge = self._make_bridge(project="3713224", workspace=42)
-        s = resolve_session(config=cm_with_active, bridge=bridge)
-        assert s.workspace is not None
-        assert s.workspace.id == 42
-
-    def test_target_workspace_beats_bridge(self, cm_with_active: ConfigManager) -> None:
-        """target.workspace beats bridge.workspace."""
-        cm_with_active.add_target(
-            "ecom", account="team", project="3713224", workspace=77
-        )
-        bridge = self._make_bridge(project="3713224", workspace=42)
-        s = resolve_session(target="ecom", config=cm_with_active, bridge=bridge)
-        assert s.workspace is not None
-        assert s.workspace.id == 77
 
     def test_env_workspace_beats_target(
         self,
@@ -428,14 +332,145 @@ class TestCrossSourceOrdering:
         assert s.workspace is not None
         assert s.workspace.id == 999
 
-    def test_env_workspace_beats_bridge(
+
+# ── Stray credential files ────────────────────────────────────────────
+
+_StrayLocation = Literal["env_var", "home", "cwd"]
+
+_STRAY_LOCATIONS = [
+    pytest.param(("env_var",), id="env-var"),
+    pytest.param(("home",), id="home"),
+    pytest.param(("cwd",), id="cwd"),
+    pytest.param(("env_var", "home", "cwd"), id="all-three"),
+]
+
+
+def _stray_auth_payload() -> dict[str, Any]:
+    """Return a valid v2 credential file payload for a stray service account.
+
+    Returns:
+        A JSON-ready dict with an account, a project, a workspace, and a
+        header that no config source supplies.
+    """
+    return {
+        "version": 2,
+        "account": {
+            "type": "service_account",
+            "name": "stray",
+            "region": "eu",
+            "username": "stray.user",
+            "secret": "stray-secret",
+        },
+        "project": "5550001",
+        "workspace": 777,
+        "headers": {"X-Stray-Header": "planted"},
+    }
+
+
+def _write_stray_auth_file(path: Path) -> None:
+    """Write the stray credential payload to ``path`` with mode 0o600.
+
+    Args:
+        path: Destination file; missing parent directories are created.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(_stray_auth_payload()), encoding="utf-8")
+    path.chmod(0o600)
+
+
+def _plant_stray_auth_files(
+    locations: tuple[_StrayLocation, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Write the stray credential file at each named location.
+
+    The current directory always moves to an isolated directory under
+    ``tmp_path``, so no file from the real working directory is in scope.
+
+    Args:
+        locations: ``"env_var"`` writes a file and points ``MP_AUTH_FILE``
+            at it; ``"home"`` writes ``$HOME/.claude/mixpanel/auth.json``;
+            ``"cwd"`` writes ``<cwd>/mixpanel_auth.json``.
+        tmp_path: Test temp directory; ``$HOME`` already points here.
+        monkeypatch: Used to set ``MP_AUTH_FILE`` and change directory.
+    """
+    work_dir = tmp_path / "cloned-repo"
+    work_dir.mkdir()
+    monkeypatch.chdir(work_dir)
+    if "env_var" in locations:
+        env_path = tmp_path / "planted" / "auth.json"
+        _write_stray_auth_file(env_path)
+        monkeypatch.setenv("MP_AUTH_FILE", str(env_path))
+    if "home" in locations:
+        _write_stray_auth_file(tmp_path / ".claude" / "mixpanel" / "auth.json")
+    if "cwd" in locations:
+        _write_stray_auth_file(work_dir / "mixpanel_auth.json")
+
+
+class TestStrayAuthFileIgnored:
+    """A credential file on disk never feeds ``resolve_session``.
+
+    Three paths once held a JSON credential file that the resolver read
+    with no prompt: the path in ``MP_AUTH_FILE``,
+    ``~/.claude/mixpanel/auth.json``, and ``<cwd>/mixpanel_auth.json``. A
+    cloned repository can plant the last one. Each test writes a valid file
+    and checks that credentials come from env and config only.
+    """
+
+    @pytest.mark.parametrize("locations", _STRAY_LOCATIONS)
+    def test_config_supplies_every_axis(
         self,
+        locations: tuple[_StrayLocation, ...],
         cm_with_active: ConfigManager,
+        tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """``MP_WORKSPACE_ID`` env beats bridge.workspace."""
-        bridge = self._make_bridge(project="3713224", workspace=42)
-        monkeypatch.setenv("MP_WORKSPACE_ID", "999")
-        s = resolve_session(config=cm_with_active, bridge=bridge)
+        """Account, project, workspace, and headers come from config only."""
+        cm_with_active.set_active(workspace=42)
+        cm_with_active.set_custom_header(name="X-Config-Header", value="kept")
+        _plant_stray_auth_files(locations, tmp_path, monkeypatch)
+
+        s = resolve_session(config=cm_with_active)
+
+        assert s.account.name == "team"
+        assert s.project.id == "3713224"
         assert s.workspace is not None
-        assert s.workspace.id == 999
+        assert s.workspace.id == 42
+        assert s.headers == {"X-Config-Header": "kept"}
+
+    @pytest.mark.parametrize("locations", _STRAY_LOCATIONS)
+    def test_empty_config_raises_no_account(
+        self,
+        locations: tuple[_StrayLocation, ...],
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """With no configured account, the standard no-account error is raised."""
+        empty = ConfigManager(config_path=tmp_path / "config.toml")
+        _plant_stray_auth_files(locations, tmp_path, monkeypatch)
+
+        with pytest.raises(ConfigError) as excinfo:
+            resolve_session(config=empty)
+
+        assert str(excinfo.value) == format_no_account_error()
+
+
+class TestResolverSignature:
+    """The resolver entry points take env, param, target, and config only."""
+
+    @pytest.mark.parametrize(
+        "func",
+        [
+            resolve_session,
+            resolve_account_axis,
+            resolve_project_axis,
+            resolve_workspace_axis,
+        ],
+        ids=lambda f: f.__name__,
+    )
+    def test_takes_no_credential_file_parameter(
+        self, func: Callable[..., object]
+    ) -> None:
+        """The function has no parameter for a pre-loaded credential file."""
+        assert "bridge" not in inspect.signature(func).parameters

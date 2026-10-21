@@ -10,11 +10,11 @@ five identity command groups, each with `use` as the universal state-change verb
 | Group | Purpose |
 |-------|---------|
 | `login` | Top-level command — `mp login` orchestrates region probe + project picker + name derivation in one call |
-| `account` | Account CRUD + lifecycle (`list`, `add`, `remove`, `use`, `show`, `test`, `login`, `logout`, `token`, `export-bridge`, `remove-bridge`) |
+| `account` | Account CRUD + lifecycle (`list`, `add`, `remove`, `use`, `show`, `test`, `login`, `logout`, `token`) |
 | `project` | Project axis (`list` from `/me`, `use ID`, `show`) |
 | `workspace` | Workspace axis (`list` from `/me`, `use ID`, `show`) |
 | `target` | Saved (account, project, workspace?) cursors (`list`, `add`, `use`, `show`, `remove`) |
-| `session` | Resolved active session viewer (`mp session [--bridge]`) |
+| `session` | Resolved active session viewer (`mp session`) |
 | `query` | Live Mixpanel API queries (segmentation, funnels, retention); `--link` on segmentation / funnel / saved-report / flows adds `report_url` |
 | `inspect` | Schema discovery (events, properties, funnels, cohorts, bookmarks) |
 | `dashboards` | Dashboard CRUD (list, create, get, update, delete, favorite, pin, blueprints) |
@@ -38,7 +38,7 @@ five identity command groups, each with `use` as the universal state-change verb
 ## Global Options
 
 Defined in `main.py` — flow into the resolver as the *param* layer
-(env > param > target > bridge > config):
+(env > param > target > config):
 
 | Flag | Short | Purpose |
 |---|---|---|

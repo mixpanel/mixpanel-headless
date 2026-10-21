@@ -72,7 +72,6 @@ Realistic credential files in this codebase:
 * per-account ``tokens.json`` — < 2 KB
 * per-region ``oauth/tokens_<region>.json`` and ``client_<region>.json`` — < 2 KB
 * per-account ``me.json`` — < 10 KB
-* Cowork bridge ``auth.json`` — < 5 KB
 
 1 MiB is 100× the largest realistic file. Anything larger is either
 a runaway write, a corrupted file, or an attacker-planted blob aimed
@@ -166,8 +165,8 @@ class CredentialPathError(OSError):
     """Raised when a credential file fails a structural safety check.
 
     Subclass of :class:`OSError` so existing ``except OSError`` handlers
-    at the credential call sites (``config.py``, ``bridge.py``,
-    ``token_resolver.py``, ``storage.py``, ``me.py``) continue to catch
+    at the credential call sites (``config.py``, ``token_resolver.py``,
+    ``storage.py``, ``me.py``) continue to catch
     it and translate to their domain exceptions (``ConfigError``,
     ``OAuthError``) without code changes. Call sites that want to
     distinguish a deliberate refusal (symlink, lax mode) from incidental
@@ -238,8 +237,8 @@ def _open_credential_fd(path: Path) -> int:
 
     Threat model: a same-UID attacker can plant symlinks anywhere they
     have write access — practically, anywhere under :func:`Path.home`
-    (or the configured ``MP_STORAGE_DIR`` / ``MP_CONFIG_PATH`` /
-    ``MP_AUTH_FILE`` trees, if those env vars point inside their reach).
+    (or the configured ``MP_STORAGE_DIR`` / ``MP_CONFIG_PATH`` trees, if
+    those env vars point inside their reach).
     Outside those trees, paths typically traverse system-owned dirs
     (``/var``, ``/private``, ``/Users``) that the user trusts the OS to
     have set up correctly.
@@ -350,8 +349,8 @@ def _open_leaf_only(path: Path) -> int:
     """Open ``path`` with ``O_NOFOLLOW`` on the leaf component only.
 
     Used when the path is outside :func:`Path.home` — typically an
-    explicit env-var override (``MP_CONFIG_PATH``, ``MP_AUTH_FILE``,
-    ``MP_STORAGE_DIR``) where the user has opted into a non-home
+    explicit env-var override (``MP_CONFIG_PATH``, ``MP_STORAGE_DIR``)
+    where the user has opted into a non-home
     location. Same protection level as the original PR.
 
     Args:

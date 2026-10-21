@@ -215,7 +215,7 @@ def login(
     # ``InvalidArgumentError`` (subclass of ``ConfigError``) with a
     # ``violation`` discriminator the @handle_errors decorator maps to
     # exit 3. Keeping the rules in the orchestrator means non-CLI
-    # callers (Cowork, JSON consumers) get the same protection without
+    # callers (JSON consumers) get the same protection without
     # having to re-implement the matrix.
     # Wrap the orchestrator's /me fetch in a Rich spinner. /me is the
     # slowest single call in the login flow (multi-second when an

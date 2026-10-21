@@ -2,7 +2,7 @@
 
 The namespace mirrors the spec ``contracts/python-api.md §5``:
 ``list``, ``add``, ``update``, ``remove``, ``use``, ``show``, ``test``,
-``login``, ``logout``, ``token``, ``export_bridge``, ``remove_bridge``.
+``login``, ``logout``, ``token``.
 
 Tests focus on the wiring + delegation behavior; the underlying
 ``ConfigManager`` is exercised in ``test_config.py``.
@@ -438,12 +438,6 @@ class TestToken:
         )
         result = accounts_ns.token("ci")
         assert result == "ey.tok-123"
-
-
-# Cluster C2 (T089 / T090) replaced the Phase-4 stubs with real bridge
-# writers. Functional coverage now lives in tests/unit/test_bridge_export.py
-# (15 tests across the standalone bridge.export_bridge / remove_bridge
-# functions plus the mp.accounts wrappers).
 
 
 class TestTest:
@@ -996,7 +990,7 @@ class TestLoginUnifiedActivation:
     account. Subsequent adds and the relogin path left
     ``[active].account`` untouched. The CLI papered over the gap with
     a separate ``accounts.use(...)`` call after the orchestrator
-    returned, so library callers — and Cowork's ``auth_manager.py`` —
+    returned, so library callers — and the plugin's ``auth_manager.py`` —
     silently failed to switch active state. These tests pin the
     library-level promise.
     """
@@ -1463,7 +1457,7 @@ class TestLoginUnifiedProgressHook:
     ) -> None:
         """``progress=None`` keeps the legacy silent behavior intact.
 
-        Library callers (Cowork, scripts) must not be forced to thread
+        Library callers (scripts, tests) must not be forced to thread
         a CM through every login_unified invocation. Default falls back
         to nullcontext so the call still works with no progress UI.
         """

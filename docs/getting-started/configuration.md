@@ -60,7 +60,6 @@ Service accounts are the right default for unattended automation. OAuth browser 
 | `MP_USERNAME` | Service-account username (requires `MP_SECRET`, `MP_PROJECT_ID`, `MP_REGION`) |
 | `MP_SECRET` | Service-account secret (paired with `MP_USERNAME`) |
 | `MP_REGION` | Data residency region (`us`, `eu`, `in`) |
-| `MP_AUTH_FILE` | Override path to the Cowork bridge file |
 | `MP_CONFIG_PATH` | Override config file path (`~/.mp/config.toml`) |
 | `MP_STORAGE_DIR` | Override storage root (`~/.mp`); `MP_OAUTH_STORAGE_DIR` is a deprecated alias |
 | `MP_API_BASE_URL` | Route every API family at one alternate host — see [Alternate API host](#alternate-api-host-mp_api_base_url) |
@@ -303,15 +302,14 @@ When constructing a `Workspace` (or running a CLI command), each axis is resolve
 1. **Environment variables** — direct env reads inside the resolver.
 2. **Constructor / CLI param** — `Workspace(account="...")`, `mp -a NAME ...`.
 3. **Saved target** — `Workspace(target="ecom")`, `mp -t ecom ...`.
-4. **Bridge file** — `MP_AUTH_FILE` or `~/.claude/mixpanel/auth.json` (Cowork integration).
-5. **Persisted active session** — the `[active]` block in `config.toml`.
-6. **Account default** — `account.default_project` for the project axis.
+4. **Persisted active session** — the `[active]` block in `config.toml`.
+5. **Account default** — `account.default_project` for the project axis.
 
 Per-axis details:
 
 - **Account** — the resolver reads the **service-account env quad** (`MP_USERNAME` + `MP_SECRET` + `MP_PROJECT_ID` + `MP_REGION`) and the **OAuth-token env triple** (`MP_OAUTH_TOKEN` + `MP_PROJECT_ID` + `MP_REGION`) directly. The SA quad wins over the OAuth triple. `MP_ACCOUNT` is wired as the `envvar=` default for `--account` / `-a` by Typer — it is **not** read directly by the resolver's env step (unlike `MP_USERNAME` / `MP_OAUTH_TOKEN`). An explicit `--account NAME` or `Workspace(account="...")` overrides it normally.
-- **Project** — `MP_PROJECT_ID` is read directly by the resolver (env layer), then `--project` / `Workspace(project=...)` (param), then target, bridge, and finally the active account's `default_project`.
-- **Workspace** — `MP_WORKSPACE_ID` is read directly by the resolver (env layer), then `--workspace` / `Workspace(workspace=...)` (param), then target, bridge, and `[active].workspace`.
+- **Project** — `MP_PROJECT_ID` is read directly by the resolver (env layer), then `--project` / `Workspace(project=...)` (param), then target, and finally the active account's `default_project`.
+- **Workspace** — `MP_WORKSPACE_ID` is read directly by the resolver (env layer), then `--workspace` / `Workspace(workspace=...)` (param), then target, and `[active].workspace`.
 
 There is **no silent cross-axis fallback**: switching the active account clears the workspace (workspaces are project-scoped), and project doesn't carry forward to a new account. If an axis can't be resolved, the resolver raises `ConfigError` rather than silently falling back to a default.
 
@@ -375,38 +373,6 @@ ws.use(target="ecom")                             # apply in-session
 ```
 
 `--target` is mutually exclusive with `--account` / `--project` / `--workspace` (and the equivalent constructor kwargs).
-
-## Bridge Files (Cowork integration)
-
-The Cowork bridge is a v2 JSON file that lets a remote VM (or any environment that doesn't have your `~/.mp/config.toml`) authenticate against Mixpanel using your host machine's account and tokens.
-
-```bash
-# On the host — write the bridge
-mp account export-bridge --to ~/.claude/mixpanel/auth.json
-# Wrote bridge: ~/.claude/mixpanel/auth.json
-#   Account:  personal (oauth_browser, us)
-#   Tokens:   included (refresh-capable)
-
-# In the VM — bridge is auto-discovered, or override with env var
-export MP_AUTH_FILE=/host/.claude/mixpanel/auth.json
-mp project list                # works without `mp account add`
-mp session --bridge            # show bridge-resolved state
-
-# On the host — tear down
-mp account remove-bridge
-# Removed bridge: ~/.claude/mixpanel/auth.json
-```
-
-The bridge file embeds the full `Account` (with secrets), optional OAuth tokens (for `oauth_browser` accounts), and optional pinned project/workspace/headers. Default search order: `MP_AUTH_FILE` → `~/.claude/mixpanel/auth.json` → `./mixpanel_auth.json`.
-
-```python
-from pathlib import Path
-
-import mixpanel_headless as mp
-
-mp.accounts.export_bridge(to=Path("~/.claude/mixpanel/auth.json").expanduser())
-mp.accounts.remove_bridge()
-```
 
 ## Data Residency Regions
 

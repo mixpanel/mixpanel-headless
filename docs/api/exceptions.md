@@ -131,7 +131,7 @@ Raised by `accounts.login_unified` (and the CLI's `mp login`) when a public-API 
 | `no_browser_misuse` | `--no-browser` against a non-browser auth type |
 | `secret_stdin_misuse` | `--secret-stdin` against a non-SA auth type |
 
-The `details` dict carries `violation` and (when detection ran) `detected_auth_type`. Pattern-match by class so non-CLI callers (Cowork's `auth_manager.py`, JSON consumers) can dispatch without parsing the human message.
+The `details` dict carries `violation` and (when detection ran) `detected_auth_type`. Pattern-match by class so non-CLI callers (the plugin's `auth_manager.py`, JSON consumers) can dispatch without parsing the human message.
 
 ::: mixpanel_headless.InvalidArgumentError
     options:

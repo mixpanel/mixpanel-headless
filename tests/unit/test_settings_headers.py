@@ -1,17 +1,15 @@
 """Unit tests for in-memory header attachment (T020a).
 
 FR-014 + FR-052: custom HTTP headers configured in ``[settings].custom_header``
-or ``bridge.headers`` attach to the resolved Session in memory at resolution
-time. The resolver MUST NOT mutate ``os.environ`` (no implicit env-var
+attach to the resolved Session in memory at resolution time. The resolver
+MUST NOT mutate ``os.environ`` (no implicit env-var
 contracts between modules). The API client MUST attach those headers to
 every outbound request.
 """
 
 from __future__ import annotations
 
-import json
 import os
-import stat
 from pathlib import Path
 
 import httpx
@@ -27,7 +25,7 @@ from mixpanel_headless._internal.config import ConfigManager
 
 @pytest.fixture(autouse=True)
 def _isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Isolate ``$HOME`` so the resolver doesn't pick up the dev's real bridge."""
+    """Isolate ``$HOME`` so no test reads the developer's real home directory."""
     monkeypatch.setenv("HOME", str(tmp_path))
 
 
@@ -92,73 +90,14 @@ class TestNoEnvMutation:
         assert before == after
 
 
-class TestBridgeHeaderAttachment:
-    """A bridge file's ``headers`` map populates ``Session.headers``."""
-
-    def test_bridge_headers_populate_session(
-        self,
-        cm_with_account_active: ConfigManager,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """A bridge file with ``headers`` map populates ``Session.headers``."""
-        bridge_path = tmp_path / "bridge.json"
-        payload = {
-            "version": 2,
-            "account": {
-                "type": "service_account",
-                "name": "bridged",
-                "region": "us",
-                "username": "bridge.user",
-                "secret": "bridge-secret",
-            },
-            "project": "3018488",
-            "headers": {"X-Mixpanel-Cluster": "internal-1"},
-        }
-        bridge_path.write_text(json.dumps(payload), encoding="utf-8")
-        bridge_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
-        monkeypatch.setenv("MP_AUTH_FILE", str(bridge_path))
-        s = resolve_session(config=cm_with_account_active)
-        assert s.headers.get("X-Mixpanel-Cluster") == "internal-1"
-        assert s.account.name == "bridged"
-
-    def test_bridge_does_not_mutate_environ(
-        self,
-        cm_with_account_active: ConfigManager,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Resolver loading a bridge file does not mutate ``os.environ``."""
-        bridge_path = tmp_path / "bridge.json"
-        payload = {
-            "version": 2,
-            "account": {
-                "type": "service_account",
-                "name": "bridged",
-                "region": "us",
-                "username": "bridge.user",
-                "secret": "bridge-secret",
-            },
-            "project": "3018488",
-            "headers": {"X-Hdr": "v"},
-        }
-        bridge_path.write_text(json.dumps(payload), encoding="utf-8")
-        bridge_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
-        monkeypatch.setenv("MP_AUTH_FILE", str(bridge_path))
-        before = dict(os.environ)
-        resolve_session(config=cm_with_account_active)
-        after = dict(os.environ)
-        assert before == after
-
-
 class TestSessionHeadersOnOutboundRequests:
     """``Session.headers`` MUST ride along on every API request.
 
     Regression: the v3 ``session=`` constructor path stored ``Session.headers``
     in memory (per FR-014) but never wired them into the underlying
     ``httpx.Client`` defaults. Custom headers from ``[settings].custom_header``
-    and ``bridge.headers`` were silently dropped at request time, breaking
-    environments that route via ``X-Mixpanel-Cluster`` or similar.
+    were silently dropped at request time, breaking environments that route
+    via ``X-Mixpanel-Cluster`` or similar.
     """
 
     def test_session_headers_included_in_outbound_request(
@@ -202,10 +141,9 @@ class TestSessionHeadersOnOutboundRequests:
     ) -> None:
         """When env-var header and Session.headers collide, session wins.
 
-        The resolver attaches the env contribution to ``Session.headers`` at
-        construction; later Session.headers updates (e.g., from a bridge)
-        override it. The client should reflect the final session state, not
-        re-read env at request time.
+        The client reads the ``MP_CUSTOM_HEADER_*`` env pair on each request
+        and then applies ``Session.headers`` over it, so the session value is
+        the one sent.
         """
         monkeypatch.setenv("MP_CUSTOM_HEADER_NAME", "X-Cluster")
         monkeypatch.setenv("MP_CUSTOM_HEADER_VALUE", "from-env")

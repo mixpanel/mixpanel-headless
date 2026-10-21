@@ -39,7 +39,7 @@ src/mixpanel_headless/
 ├── __init__.py              # Public API exports
 ├── workspace.py             # Workspace facade — `use(account=, project=, workspace=, target=)`
 ├── auth_types.py            # Auth surface (Account union, Session, Region, OAuthTokens, …)
-├── accounts.py              # `mp.accounts` — add/list/use/login/test/export-bridge/...
+├── accounts.py              # `mp.accounts` — add/list/use/login/test/...
 ├── session.py               # `mp.session` — show/use the persisted [active] block
 ├── targets.py               # `mp.targets` — saved (account, project, workspace?) cursors
 ├── exceptions.py            # Exception hierarchy (incl. AccountInUseError, WorkspaceScopeError)
@@ -53,11 +53,10 @@ src/mixpanel_headless/
 │   ├── auth/                # Auth subsystem
 │   │   ├── account.py       # Account discriminated union + TokenResolver protocol
 │   │   ├── session.py       # Session, Project, WorkspaceRef, ActiveSession
-│   │   ├── resolver.py      # resolve_session(...) — env > param > target > bridge > config
+│   │   ├── resolver.py      # resolve_session(...) — env > param > target > config
 │   │   ├── token_resolver.py # OnDiskTokenResolver (refresh + per-account paths)
 │   │   ├── token.py         # OAuthTokens, OAuthClientInfo
 │   │   ├── flow.py          # OAuthFlow (PKCE + callback)
-│   │   ├── bridge.py        # BridgeFile v2 + load_bridge / export_bridge / remove_bridge
 │   │   ├── storage.py       # account_dir + ensure_account_dir + atomic writes
 │   │   ├── pkce.py          # PKCE challenge generation (RFC 7636)
 │   │   ├── callback_server.py # Local HTTP callback server
@@ -191,7 +190,7 @@ just mutate-check        # Check score meets 80% threshold
 - **Account → Project → Workspace hierarchy**: every CLI verb and Python namespace maps to one of those three axes; `Workspace.use(account=, project=, workspace=)` is the single in-session switching method.
 - **Three first-class account types**: `service_account` (Basic Auth), `oauth_browser` (PKCE, tokens auto-refreshed), `oauth_token` (static bearer for CI/agents). All managed through one unified surface.
 - **Frictionless login**: `mp login` (CLI) and `accounts.login_unified()` (Python) collapse the old two-step `mp account add` + `mp account login` flow into one call. Auth-type detection is env-driven: `MP_USERNAME`+`MP_SECRET` → `service_account`; `MP_OAUTH_TOKEN` → `oauth_token`; otherwise `oauth_browser`. Region behavior is auth-type-specific: SA and `oauth_token` paths probe `us → eu → in` when `--region` is omitted; `oauth_browser` defaults to `us` (PKCE commits to a region before the post-login `/me` probe runs, so EU / India users must pass `--region eu|in` explicitly). Project and account name derive from the post-login `/me` response; workspace stays lazy and resolves on first workspace-scoped call.
-- **Single resolver**: `resolve_session(...)` consults env → param → target → bridge → config in priority order; no silent cross-axis fallback.
+- **Single resolver**: `resolve_session(...)` consults env → param → target → config in priority order; no silent cross-axis fallback.
 - **Connection-pool preservation**: `ws.use(account=...)` rebuilds the auth header but reuses the underlying `httpx.Client` (same Python instance — verified by `id()` equality in `tests/integration/test_cross_project_iteration.py`).
 - **Dependency injection**: Services accept dependencies as constructor arguments for testing.
 
@@ -205,7 +204,6 @@ just mutate-check        # Check score meets 80% threshold
 | `MP_PROJECT_ID` | Project ID |
 | `MP_REGION` | Data residency (us, eu, in); when unset, `mp login` probes us → eu → in for SA / oauth_token paths and defaults to us for the browser PKCE path |
 | `MP_WORKSPACE_ID` | Workspace ID for App API operations |
-| `MP_AUTH_FILE` | Override path to the v2 Cowork bridge file |
 | `MP_CONFIG_PATH` | Override config file location |
 | `MP_API_BASE_URL` | Route every API family at one alternate host (read per request; trailing slash tolerated). Bypasses the per-region `ENDPOINTS` table: `query` → `{base}/api/query`, `export` → `{base}/api/2.0`, `engage` → `{base}/api/query/engage`, `app` → `{base}/api/app`. Plain `http://` bases are accepted (local / headless deployments only). `mp login`'s region probe collapses to a single probe at the base (`MP_REGION` when valid, else `us`). `MP_REGION` stays required for non-URL uses. |
 | `MP_APP_BASE_URL` | Optional: re-home only the App API family at `{app_base}/api/app` (works alone or on top of `MP_API_BASE_URL`). Alone it does not collapse the `mp login` region probe — the persisted region still routes the live Query/Export/Engage families |
@@ -215,7 +213,6 @@ Recommended starter command: `mp login` (one-shot orchestrator covering region p
 Config file: `~/.mp/config.toml`
 OAuth browser tokens: `~/.mp/accounts/{account_name}/tokens.json` (per-account, atomic 0o600 writes)
 OAuth client metadata: `~/.mp/oauth/client_{region}.json` (DCR — one client per region)
-Cowork bridge: `~/.claude/mixpanel/auth.json` (default) or `$MP_AUTH_FILE`
 
 ## Development
 

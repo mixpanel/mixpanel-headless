@@ -1,11 +1,11 @@
 # Auth
 
-The auth surface in `mixpanel_headless` is organized around three independent axes — Account, Project, Workspace — with three first-class account types, a single resolver, fluent in-session switching via `Workspace.use()`, and a Cowork bridge for remote authentication.
+The auth surface in `mixpanel_headless` is organized around three independent axes — Account, Project, Workspace — with three first-class account types, a single resolver, and fluent in-session switching via `Workspace.use()`.
 
 !!! tip "Explore on DeepWiki"
     🤖 **[Configuration Reference →](https://deepwiki.com/mixpanel/mixpanel-headless/7.3-configuration-reference)**
 
-    Ask questions about account types, session axes, OAuth, the Cowork bridge, or in-session switching.
+    Ask questions about account types, session axes, OAuth, or in-session switching.
 
 ## Overview
 
@@ -15,7 +15,7 @@ import mixpanel_headless as mp
 # Construct a Workspace from active config
 ws = mp.Workspace()
 
-# Override per Workspace (env > param > target > bridge > [active] > default_project)
+# Override per Workspace (env > param > target > [active] > default_project)
 ws = mp.Workspace(account="team", project="3713224")
 ws = mp.Workspace(target="ecom")
 ws = mp.Workspace(session=mp.Session(account=..., project=..., workspace=...))
@@ -170,7 +170,7 @@ The auth surface exposes three module-level namespaces re-exported from `mixpane
 
 ### `mp.accounts`
 
-Account lifecycle: register, switch, probe, OAuth flows, bridge export. The `login_unified` orchestrator below collapses the explicit `add` + `login` pair into a single conversational call (the Python entry point behind `mp login`).
+Account lifecycle: register, switch, probe, OAuth flows. The `login_unified` orchestrator below collapses the explicit `add` + `login` pair into a single conversational call (the Python entry point behind `mp login`).
 
 ::: mixpanel_headless.accounts
     options:
@@ -188,8 +188,6 @@ Account lifecycle: register, switch, probe, OAuth flows, bridge export. The `log
         - login_unified
         - logout
         - token
-        - export_bridge
-        - remove_bridge
 
 #### Frictionless login (`login_unified`)
 
@@ -296,43 +294,10 @@ When constructing a `Workspace`, each axis is resolved independently in this pri
 1. **Environment variables** — the resolver reads `MP_USERNAME` + `MP_SECRET` + `MP_PROJECT_ID` + `MP_REGION` (service-account quad), `MP_OAUTH_TOKEN` + `MP_PROJECT_ID` + `MP_REGION` (OAuth-token triple), `MP_PROJECT_ID` (project axis), and `MP_WORKSPACE_ID` (workspace axis). `MP_ACCOUNT` is **not** consumed by the Python resolver — it only feeds the CLI's `--account` / `-a` flag via Typer's `envvar=` default.
 2. **Constructor / CLI param** — `Workspace(account="...")`, `mp -a NAME ...`.
 3. **Saved target** — `Workspace(target="ecom")`, `mp -t ecom ...`.
-4. **Bridge file** — `MP_AUTH_FILE` or `~/.claude/mixpanel/auth.json`.
-5. **Persisted active session** — the `[active]` block in `~/.mp/config.toml`.
-6. **Account default** — `account.default_project` for the project axis.
+4. **Persisted active session** — the `[active]` block in `~/.mp/config.toml`.
+5. **Account default** — `account.default_project` for the project axis.
 
 See [Configuration → Credential Resolution Chain](../getting-started/configuration.md#credential-resolution-chain) for examples.
-
-## Cowork Bridge (v2)
-
-The Cowork bridge is a v2 JSON file that lets a remote VM authenticate against Mixpanel using your host machine's account and tokens. It embeds the full `Account`, optional OAuth tokens, and optional pinned project/workspace/headers.
-
-```python
-from pathlib import Path
-import mixpanel_headless as mp
-
-# On the host
-mp.accounts.export_bridge(to=Path("~/.claude/mixpanel/auth.json").expanduser())
-mp.accounts.remove_bridge()
-```
-
-```bash
-# CLI equivalents
-mp account export-bridge --to ~/.claude/mixpanel/auth.json
-mp account remove-bridge
-mp session --bridge          # show bridge-resolved state
-```
-
-Default search order: `MP_AUTH_FILE` → `~/.claude/mixpanel/auth.json` → `./mixpanel_auth.json`.
-
-::: mixpanel_headless.auth_types.BridgeFile
-    options:
-      show_root_heading: true
-      show_root_toc_entry: true
-
-::: mixpanel_headless.auth_types.load_bridge
-    options:
-      show_root_heading: true
-      show_root_toc_entry: true
 
 ## OAuth Token Plumbing
 

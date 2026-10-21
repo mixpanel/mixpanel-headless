@@ -16,7 +16,7 @@ reason) in one assertion message.
 | Size budgets | A skill or reference file is over its size budget. |
 | Links | A relative link is broken, crosses skills, or a reference is orphaned. |
 | Frontmatter | Skill frontmatter breaks the name, length, or key rules. |
-| Forbidden text | Shipped text carries removed names, Cowork, plan codes, or all-caps rules. |
+| Forbidden text | Shipped text carries removed names, plan codes, or all-caps rules. |
 | Version floor | ``setup.sh`` pins a floor below the version the skills need, or shipped text names another minimum version. |
 | Plugin Python environment | A skill grants or runs the system Python or a bare ``mp``, or a ``!`` line uses a shell variable. |
 
@@ -339,15 +339,13 @@ class TestForbiddenText:
     """Shipped text carries no removed names, plan codes, or shouting."""
 
     def test_no_forbidden_text(self) -> None:
-        """No ``help.py``, ``ai-plugins``, Cowork, plan codes, or all-caps rule words.
+        """No ``help.py``, ``ai-plugins``, plan codes, or all-caps rule words.
 
         The all-caps check applies to markdown only, and not to the ``auth``
         skill, whose security rules are the one place firm rules stay.
         """
         violations: list[str] = []
         for path in shipped_text_files():
-            if "cowork" in rel(path).lower():
-                violations.append(f"{rel(path)}:1: file name mentions Cowork")
             caps_allowed = path.suffix != ".md" or path in CAPS_EXEMPT
             violations.extend(
                 forbidden_text_violations(path, read(path), caps_allowed=caps_allowed)

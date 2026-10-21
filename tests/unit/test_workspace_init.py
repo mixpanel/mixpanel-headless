@@ -162,48 +162,49 @@ class TestReadOnlyProperties:
             ws.project = ws.project  # type: ignore[misc]
 
 
-class TestBridgeTokenMaterialization:
-    """Bridge is the credential courier — startup MUST refresh on-disk tokens.
+class TestStrayAuthFileWritesNoTokens:
+    """``Workspace()`` never copies tokens from a credential file to disk.
 
-    The bridge file (``MP_AUTH_FILE`` / ``~/.claude/mixpanel/auth.json``) is
-    the authoritative source of truth at session start in the Cowork model:
-    when the host pushes a refreshed token through the bridge, the VM's
-    on-disk cache MUST pick it up. A stale local file must not short-circuit
-    the bridge's payload.
+    A stray auth file that names an existing ``oauth_browser`` account must
+    not replace that account's ``~/.mp/accounts/{name}/tokens.json``.
     """
 
-    def test_bridge_overwrites_stale_on_disk_tokens(
+    def test_on_disk_tokens_unchanged(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """An existing tokens.json must be overwritten by the bridge.
-
-        Regression: the original code wrote ``tokens.json`` only when the
-        file was absent; an expired local cache thus stranded the VM on
-        the old access token even when the host had refreshed and
-        re-emitted the bridge.
-        """
+        """A stray auth file with newer tokens leaves ``tokens.json`` byte-for-byte."""
         account_name = "personal"
+        accounts_ns.add(
+            account_name,
+            type="oauth_browser",
+            region="us",
+            default_project="3713224",
+        )
+        ConfigManager().set_active(account=account_name)
+
         accounts_dir = tmp_path / ".mp" / "accounts" / account_name
-        accounts_dir.mkdir(parents=True, mode=0o700)
-        stale_path = accounts_dir / "tokens.json"
-        stale_expires = datetime.now(timezone.utc) - timedelta(hours=1)
-        stale_path.write_text(
+        accounts_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        tokens_path = accounts_dir / "tokens.json"
+        old_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+        tokens_path.write_text(
             json.dumps(
                 {
-                    "access_token": "STALE",
-                    "expires_at": stale_expires.isoformat(),
+                    "access_token": "OLD",
+                    "refresh_token": "OLD-REFRESH",
+                    "expires_at": old_expires.isoformat(),
                     "scope": "read",
                     "token_type": "Bearer",
                 }
             ),
             encoding="utf-8",
         )
-        stale_path.chmod(0o600)
+        tokens_path.chmod(0o600)
+        before = tokens_path.read_bytes()
 
-        fresh_expires = datetime.now(timezone.utc) + timedelta(hours=1)
-        bridge_payload = {
+        new_expires = datetime.now(timezone.utc) + timedelta(hours=2)
+        stray_payload = {
             "version": 2,
             "account": {
                 "type": "oauth_browser",
@@ -211,22 +212,21 @@ class TestBridgeTokenMaterialization:
                 "region": "us",
             },
             "tokens": {
-                "access_token": "FRESH",
-                "refresh_token": "FRESH-REFRESH",
-                "expires_at": fresh_expires.isoformat(),
+                "access_token": "NEW",
+                "refresh_token": "NEW-REFRESH",
+                "expires_at": new_expires.isoformat(),
                 "scope": "read",
                 "token_type": "Bearer",
             },
             "project": "12345",
         }
-        bridge_path = tmp_path / "bridge.json"
-        bridge_path.write_text(json.dumps(bridge_payload), encoding="utf-8")
-        bridge_path.chmod(0o600)
-        monkeypatch.setenv("MP_AUTH_FILE", str(bridge_path))
+        stray_path = tmp_path / "planted-auth.json"
+        stray_path.write_text(json.dumps(stray_payload), encoding="utf-8")
+        stray_path.chmod(0o600)
+        monkeypatch.setenv("MP_AUTH_FILE", str(stray_path))
 
-        Workspace()
+        ws = Workspace()
 
-        on_disk = json.loads(stale_path.read_text(encoding="utf-8"))
-        assert on_disk["access_token"] == "FRESH"
-        assert on_disk["refresh_token"] == "FRESH-REFRESH"
-        assert on_disk["expires_at"] == fresh_expires.isoformat()
+        assert tokens_path.read_bytes() == before
+        assert ws.account.name == account_name
+        assert ws.project.id == "3713224"

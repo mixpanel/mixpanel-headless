@@ -25,7 +25,6 @@ from mixpanel_headless._internal.auth.account import (
     TokenResolver,
     WorkspaceId,
 )
-from mixpanel_headless._internal.auth.bridge import BridgeFile, load_bridge
 from mixpanel_headless._internal.auth.session import (
     ActiveSession,
     Project,
@@ -58,7 +57,4 @@ __all__ = [
     "OAuthTokens",
     "TokenResolver",
     "OnDiskTokenResolver",
-    # Cowork bridge
-    "BridgeFile",
-    "load_bridge",
 ]

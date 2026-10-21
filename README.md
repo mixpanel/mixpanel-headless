@@ -293,7 +293,7 @@ for event in ws.stream_events(from_date="2025-01-01", to_date="2025-01-31"):
 
 ## CLI Reference
 
-**`mp account`** — Manage accounts: `list`, `add`, `update`, `remove`, `use`, `show`, `test`, `login`, `logout`, `token`, `export-bridge`, `remove-bridge`
+**`mp account`** — Manage accounts: `list`, `add`, `update`, `remove`, `use`, `show`, `test`, `login`, `logout`, `token`
 
 **`mp project`** — Switch the active project: `list`, `use`, `show`
 
@@ -301,7 +301,7 @@ for event in ws.stream_events(from_date="2025-01-01", to_date="2025-01-31"):
 
 **`mp target`** — Saved (account, project, optional workspace) cursors: `list`, `add`, `use`, `show`, `remove`
 
-**`mp session`** — Show resolved auth state (`mp session [--bridge]`)
+**`mp session`** — Show resolved auth state
 
 **`mp query`** — Run analytics: `segmentation`, `funnel`, `retention`, `saved-report`, `flows`, `event-counts`, `property-counts`, `activity-feed`, `frequency`, `segmentation-numeric`, `segmentation-sum`, `segmentation-average`
 

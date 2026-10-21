@@ -903,7 +903,7 @@ def _client_info_path(region: Region) -> Path:
     Returns:
         Absolute path to the client info JSON (may not exist yet).
         Honors ``MP_STORAGE_DIR`` so a hermetic test environment
-        or Cowork-style sandbox sees the override-path; the prior
+        or a sandbox sees the override-path; the prior
         hard-coded ``~/.mp/oauth/`` lied to callers under override.
     """
     from mixpanel_headless._internal.auth.storage import OAuthStorage
@@ -956,73 +956,6 @@ def token(name: str | None = None) -> str | None:
     raise ConfigError(  # pragma: no cover — Literal exhaustiveness
         f"Unknown account type for {summary.name!r}"
     )
-
-
-def export_bridge(
-    *,
-    to: Path,
-    account: str | None = None,
-    project: str | None = None,
-    workspace: int | None = None,
-) -> Path:
-    """Export the named (or active) account as a v2 bridge file.
-
-    Resolves the account, attaches any ``[settings].custom_header`` as
-    ``bridge.headers`` (B5 — header attaches in memory at resolution time
-    for the consumer), and writes a 0o600 file at ``to`` via
-    :func:`bridge.export_bridge`.
-
-    Args:
-        to: Destination path for the bridge file.
-        account: Account to export; ``None`` means the active account.
-        project: Optional pinned project ID. ``None`` omits the field.
-        workspace: Optional pinned workspace ID. ``None`` omits the field.
-
-    Returns:
-        The path that was written (same as ``to``).
-
-    Raises:
-        ConfigError: Account not found, no active account, or
-            ``BridgeFile`` validation failure.
-        OAuthError: ``account.type == "oauth_browser"`` but no on-disk
-            tokens are available.
-    """
-    from mixpanel_headless._internal.auth.bridge import (
-        export_bridge as _bridge_export,
-    )
-
-    cm = _config()
-    name = account or cm.get_active().account
-    if name is None:
-        raise ConfigError("No account specified and no active account configured.")
-    acct = cm.get_account(name)
-    header = cm.get_custom_header()
-    headers = {header[0]: header[1]} if header is not None else None
-    return _bridge_export(
-        acct,
-        to=to,
-        project=project,
-        workspace=workspace,
-        headers=headers,
-        token_resolver=OnDiskTokenResolver(),
-    )
-
-
-def remove_bridge(*, at: Path | None = None) -> bool:
-    """Remove the v2 bridge file at ``at`` (or the default path).
-
-    Args:
-        at: Bridge file path; ``None`` means ``MP_AUTH_FILE`` then the
-            default search paths.
-
-    Returns:
-        ``True`` if a file was deleted; ``False`` if none was found.
-    """
-    from mixpanel_headless._internal.auth.bridge import (
-        remove_bridge as _bridge_remove,
-    )
-
-    return _bridge_remove(at=at)
 
 
 def login_unified(
@@ -1207,8 +1140,8 @@ def login_unified(
             detected_auth_type=detected_type,
         )
 
-    # Default progress to nullcontext so library callers (Cowork, scripts,
-    # tests) do not have to thread a CM through every invocation. The CLI
+    # Default progress to nullcontext so library callers (scripts, tests)
+    # do not have to thread a CM through every invocation. The CLI
     # passes a Rich-spinner factory; everyone else gets the no-op.
     if progress is None:
         progress = lambda _msg: contextlib.nullcontext()  # noqa: E731
@@ -2011,13 +1944,11 @@ def _resolve_project(
 
 __all__ = [
     "add",
-    "export_bridge",
     "list",
     "login",
     "login_unified",
     "logout",
     "remove",
-    "remove_bridge",
     "show",
     "test",
     "token",

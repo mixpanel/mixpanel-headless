@@ -966,6 +966,66 @@ class TestConfigCli:
         assert "no such command" in result.output.lower() or "config" in result.output
 
 
+class TestCredentialFileCommandsRemoved:
+    """The CLI has no commands or options for a credential file.
+
+    Each invocation must stop at Click's usage check (exit code 2), so no
+    command reads, writes, or deletes a credential file on disk.
+    """
+
+    @pytest.mark.parametrize(
+        ("argv", "expected"),
+        [
+            pytest.param(
+                ["account", "export-bridge", "--to", "{tmp}/x.json"],
+                "No such command 'export-bridge'",
+                id="account-export",
+            ),
+            pytest.param(
+                ["account", "remove-bridge"],
+                "No such command 'remove-bridge'",
+                id="account-remove",
+            ),
+            pytest.param(
+                ["session", "--bridge"],
+                "No such option: --bridge",
+                id="session-option",
+            ),
+        ],
+    )
+    def test_usage_error(
+        self,
+        runner: CliRunner,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        argv: list[str],
+        expected: str,
+    ) -> None:
+        """The command or option is unknown, so the CLI exits with code 2."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("MP_SECRET", "s")
+        runner.invoke(
+            app,
+            [
+                "account",
+                "add",
+                "a",
+                "--type",
+                "service_account",
+                "--region",
+                "us",
+                "--username",
+                "u",
+                "--project",
+                "3713224",
+            ],
+        )
+        args = [arg.replace("{tmp}", str(tmp_path)) for arg in argv]
+        result = runner.invoke(app, args)
+        assert result.exit_code == 2, result.output
+        assert expected in result.output
+
+
 class TestGlobals:
     """The new global options behave as documented."""
 

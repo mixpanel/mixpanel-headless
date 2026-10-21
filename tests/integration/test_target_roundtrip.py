@@ -56,7 +56,6 @@ def isolated_home(
         "MP_WORKSPACE_ID",
         "MP_ACCOUNT",
         "MP_TARGET",
-        "MP_AUTH_FILE",
     ):
         monkeypatch.delenv(var, raising=False)
     yield tmp_path

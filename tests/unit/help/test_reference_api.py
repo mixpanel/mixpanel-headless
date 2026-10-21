@@ -537,12 +537,12 @@ class TestAliasExceptionModuleConstant:
         assert len(entry.used_by) == 4
 
     def test_accounts_module(self) -> None:
-        """``accounts`` lists its 13 ``__all__`` members with signatures."""
+        """``accounts`` lists its 11 ``__all__`` members with signatures."""
         entry = ref.describe("accounts")
         assert entry.kind == "module"
         assert _group_titles(entry) == ["Members"]
         items = entry.groups[0].items
-        assert len(items) == 13
+        assert len(items) == 11
         assert all(item.signature is not None for item in items)
         assert all(item.kind == "function" for item in items)
 

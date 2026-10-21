@@ -143,7 +143,7 @@ class Session(BaseModel):
     headers: Mapping[str, str] = Field(default_factory=dict)
     """Custom HTTP headers attached at resolution time.
 
-    Populated from ``[settings].custom_header`` and/or ``bridge.headers``.
+    Populated from ``[settings].custom_header`` only.
     Never read from ``os.environ`` after Session construction (per FR-014).
 
     Wrapped in :class:`types.MappingProxyType` after validation, so any

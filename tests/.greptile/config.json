@@ -7,7 +7,7 @@
   "rules": [
     {
       "id": "test-isolation",
-      "rule": "Tests not marked live must not read or write the real ~/.mp directory, the real Cowork bridge file, or real MP_* environment variables. tests/conftest.py provides the isolation: the autouse `_clean_mp_env` fixture scrubs every variable in `_MP_ENV_VARS`, and the session-scoped `_no_test_writes_to_real_home_mp` fixture fails the run in CI if anything under the real ~/.mp changed. Tests point config and storage at tmp_path (for example MP_CONFIG_PATH or the `config_path` and `temp_dir` fixtures). Flag a new MP_* variable or alias that production code reads but `_MP_ENV_VARS` does not scrub, and flag a test that reaches a real home-directory path.",
+      "rule": "Tests not marked live must not read or write the real ~/.mp directory or real MP_* environment variables. tests/conftest.py provides the isolation: the autouse `_clean_mp_env` fixture scrubs every variable in `_MP_ENV_VARS`, and the session-scoped `_no_test_writes_to_real_home_mp` fixture fails the run in CI if anything under the real ~/.mp changed. Tests point config and storage at tmp_path (for example MP_CONFIG_PATH or the `config_path` and `temp_dir` fixtures). Flag a new MP_* variable or alias that production code reads but `_MP_ENV_VARS` does not scrub, and flag a test that reaches a real home-directory path.",
       "severity": "high"
     },
     {

@@ -114,7 +114,7 @@ class _AccountBase(BaseModel):
         Field(default=None, pattern=r"^\d+$"),
     ] = None
     """Account's home project (numeric string). Resolves the project axis when
-    no env / param / target / bridge source overrides it (FR-017). Required at
+    no env / param / target source overrides it. Required at
     add-time for ``service_account`` / ``oauth_token`` accounts; populated
     post-PKCE via ``/me`` for ``oauth_browser`` accounts."""
 
