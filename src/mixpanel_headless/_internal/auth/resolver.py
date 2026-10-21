@@ -175,7 +175,7 @@ def resolve_project_axis(
 ) -> str | None:
     """Resolve the project axis per the documented priority order.
 
-    Order (per FR-017): env > param > target > ``account.default_project``.
+    Order: env > param > target > ``account.default_project``.
 
     The chain ends at the resolved account; there is no ``[active].project``
     fallback. Project lives on the account itself (``Account.default_project``)
@@ -248,7 +248,7 @@ def resolve_workspace_axis(
 ) -> int | None:
     """Resolve the workspace axis per the documented priority order.
 
-    Order (per FR-017): env > param > target > ``[active].workspace``.
+    Order: env > param > target > ``[active].workspace``.
 
     ``None`` is a valid terminal value (lazy resolution on first
     workspace-scoped API call per FR-025).

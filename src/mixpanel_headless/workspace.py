@@ -706,7 +706,7 @@ class Workspace:
         new_workspace_obj: _WorkspaceRef | None = None
         if target is not None:
             # Route through the same resolver as Workspace() construction so
-            # env > param > target > config ordering applies (FR-017).
+            # env > param > target > config ordering applies.
             # Without this, mid-process env-var overrides would be honored at
             # construction but silently ignored on `ws.use(target=...)`.
             sess = _resolve_session(

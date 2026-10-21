@@ -997,8 +997,9 @@ class MixpanelAPIClient:
            :func:`get_user_agent` so backend telemetry can attribute traffic
            to this library.
         2. ``MP_CUSTOM_HEADER_NAME`` / ``MP_CUSTOM_HEADER_VALUE`` env pair.
-        3. ``self._session.headers`` (populated from ``[settings].custom_header``
-           per FR-014). It wins over the env pair on a collision.
+        3. ``self._session.headers`` (populated from
+           ``[settings].custom_header``). It wins over the env pair on a
+           collision.
         4. ``extra`` — typically ``{"Authorization": auth_header}`` plus any
            per-call ``Accept-Encoding`` etc. supplied by the caller.
 
