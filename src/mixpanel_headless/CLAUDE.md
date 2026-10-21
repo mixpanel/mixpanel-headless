@@ -28,7 +28,7 @@ Public API for the Mixpanel data library. Import from here, not from `_internal`
 
 ## Auth Mental Model — Account → Project → Workspace
 
-The 042 redesign organizes auth around three independent axes:
+Auth is organized around three independent axes:
 
 - **Account** — *who* is authenticating. Three types managed through one
   surface: `service_account` (Basic Auth), `oauth_browser` (PKCE flow,
