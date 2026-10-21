@@ -230,3 +230,73 @@ class TestBridgeTokenMaterialization:
         assert on_disk["access_token"] == "FRESH"
         assert on_disk["refresh_token"] == "FRESH-REFRESH"
         assert on_disk["expires_at"] == fresh_expires.isoformat()
+
+
+class TestStrayAuthFileWritesNoTokens:
+    """``Workspace()`` never copies tokens from a credential file to disk.
+
+    A stray auth file that names an existing ``oauth_browser`` account must
+    not replace that account's ``~/.mp/accounts/{name}/tokens.json``.
+    """
+
+    def test_on_disk_tokens_unchanged(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A stray auth file with newer tokens leaves ``tokens.json`` byte-for-byte."""
+        account_name = "personal"
+        accounts_ns.add(
+            account_name,
+            type="oauth_browser",
+            region="us",
+            default_project="3713224",
+        )
+        ConfigManager().set_active(account=account_name)
+
+        accounts_dir = tmp_path / ".mp" / "accounts" / account_name
+        accounts_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        tokens_path = accounts_dir / "tokens.json"
+        old_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+        tokens_path.write_text(
+            json.dumps(
+                {
+                    "access_token": "OLD",
+                    "refresh_token": "OLD-REFRESH",
+                    "expires_at": old_expires.isoformat(),
+                    "scope": "read",
+                    "token_type": "Bearer",
+                }
+            ),
+            encoding="utf-8",
+        )
+        tokens_path.chmod(0o600)
+        before = tokens_path.read_bytes()
+
+        new_expires = datetime.now(timezone.utc) + timedelta(hours=2)
+        stray_payload = {
+            "version": 2,
+            "account": {
+                "type": "oauth_browser",
+                "name": account_name,
+                "region": "us",
+            },
+            "tokens": {
+                "access_token": "NEW",
+                "refresh_token": "NEW-REFRESH",
+                "expires_at": new_expires.isoformat(),
+                "scope": "read",
+                "token_type": "Bearer",
+            },
+            "project": "12345",
+        }
+        stray_path = tmp_path / "planted-auth.json"
+        stray_path.write_text(json.dumps(stray_payload), encoding="utf-8")
+        stray_path.chmod(0o600)
+        monkeypatch.setenv("MP_AUTH_FILE", str(stray_path))
+
+        ws = Workspace()
+
+        assert tokens_path.read_bytes() == before
+        assert ws.account.name == account_name
+        assert ws.project.id == "3713224"

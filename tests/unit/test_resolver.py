@@ -7,9 +7,12 @@ setting a project override does NOT affect account or workspace resolution.
 
 from __future__ import annotations
 
+import inspect
+import json
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from pydantic import SecretStr
@@ -18,7 +21,13 @@ from mixpanel_headless._internal.auth.account import (
     OAuthTokenAccount,
     ServiceAccount,
 )
-from mixpanel_headless._internal.auth.resolver import resolve_session
+from mixpanel_headless._internal.auth.resolver import (
+    format_no_account_error,
+    resolve_account_axis,
+    resolve_project_axis,
+    resolve_session,
+    resolve_workspace_axis,
+)
 from mixpanel_headless._internal.config import ConfigManager
 from mixpanel_headless.exceptions import ConfigError
 
@@ -439,3 +448,146 @@ class TestCrossSourceOrdering:
         s = resolve_session(config=cm_with_active, bridge=bridge)
         assert s.workspace is not None
         assert s.workspace.id == 999
+
+
+# ── Stray credential files ────────────────────────────────────────────
+
+_StrayLocation = Literal["env_var", "home", "cwd"]
+
+_STRAY_LOCATIONS = [
+    pytest.param(("env_var",), id="env-var"),
+    pytest.param(("home",), id="home"),
+    pytest.param(("cwd",), id="cwd"),
+    pytest.param(("env_var", "home", "cwd"), id="all-three"),
+]
+
+
+def _stray_auth_payload() -> dict[str, Any]:
+    """Return a valid v2 credential file payload for a stray service account.
+
+    Returns:
+        A JSON-ready dict with an account, a project, a workspace, and a
+        header that no config source supplies.
+    """
+    return {
+        "version": 2,
+        "account": {
+            "type": "service_account",
+            "name": "stray",
+            "region": "eu",
+            "username": "stray.user",
+            "secret": "stray-secret",
+        },
+        "project": "5550001",
+        "workspace": 777,
+        "headers": {"X-Stray-Header": "planted"},
+    }
+
+
+def _write_stray_auth_file(path: Path) -> None:
+    """Write the stray credential payload to ``path`` with mode 0o600.
+
+    Args:
+        path: Destination file; missing parent directories are created.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(_stray_auth_payload()), encoding="utf-8")
+    path.chmod(0o600)
+
+
+def _plant_stray_auth_files(
+    locations: tuple[_StrayLocation, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Write the stray credential file at each named location.
+
+    The current directory always moves to an isolated directory under
+    ``tmp_path``, so no file from the real working directory is in scope.
+
+    Args:
+        locations: ``"env_var"`` writes a file and points ``MP_AUTH_FILE``
+            at it; ``"home"`` writes ``$HOME/.claude/mixpanel/auth.json``;
+            ``"cwd"`` writes ``<cwd>/mixpanel_auth.json``.
+        tmp_path: Test temp directory; ``$HOME`` already points here.
+        monkeypatch: Used to set ``MP_AUTH_FILE`` and change directory.
+    """
+    work_dir = tmp_path / "cloned-repo"
+    work_dir.mkdir()
+    monkeypatch.chdir(work_dir)
+    if "env_var" in locations:
+        env_path = tmp_path / "planted" / "auth.json"
+        _write_stray_auth_file(env_path)
+        monkeypatch.setenv("MP_AUTH_FILE", str(env_path))
+    if "home" in locations:
+        _write_stray_auth_file(tmp_path / ".claude" / "mixpanel" / "auth.json")
+    if "cwd" in locations:
+        _write_stray_auth_file(work_dir / "mixpanel_auth.json")
+
+
+class TestStrayAuthFileIgnored:
+    """A credential file on disk never feeds ``resolve_session``.
+
+    Three paths once held a JSON credential file that the resolver read
+    with no prompt: the path in ``MP_AUTH_FILE``,
+    ``~/.claude/mixpanel/auth.json``, and ``<cwd>/mixpanel_auth.json``. A
+    cloned repository can plant the last one. Each test writes a valid file
+    and checks that credentials come from env and config only.
+    """
+
+    @pytest.mark.parametrize("locations", _STRAY_LOCATIONS)
+    def test_config_supplies_every_axis(
+        self,
+        locations: tuple[_StrayLocation, ...],
+        cm_with_active: ConfigManager,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Account, project, workspace, and headers come from config only."""
+        cm_with_active.set_active(workspace=42)
+        cm_with_active.set_custom_header(name="X-Config-Header", value="kept")
+        _plant_stray_auth_files(locations, tmp_path, monkeypatch)
+
+        s = resolve_session(config=cm_with_active)
+
+        assert s.account.name == "team"
+        assert s.project.id == "3713224"
+        assert s.workspace is not None
+        assert s.workspace.id == 42
+        assert s.headers == {"X-Config-Header": "kept"}
+
+    @pytest.mark.parametrize("locations", _STRAY_LOCATIONS)
+    def test_empty_config_raises_no_account(
+        self,
+        locations: tuple[_StrayLocation, ...],
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """With no configured account, the standard no-account error is raised."""
+        empty = ConfigManager(config_path=tmp_path / "config.toml")
+        _plant_stray_auth_files(locations, tmp_path, monkeypatch)
+
+        with pytest.raises(ConfigError) as excinfo:
+            resolve_session(config=empty)
+
+        assert str(excinfo.value) == format_no_account_error()
+
+
+class TestResolverSignature:
+    """The resolver entry points take env, param, target, and config only."""
+
+    @pytest.mark.parametrize(
+        "func",
+        [
+            resolve_session,
+            resolve_account_axis,
+            resolve_project_axis,
+            resolve_workspace_axis,
+        ],
+        ids=lambda f: f.__name__,
+    )
+    def test_takes_no_credential_file_parameter(
+        self, func: Callable[..., object]
+    ) -> None:
+        """The function has no parameter for a pre-loaded credential file."""
+        assert "bridge" not in inspect.signature(func).parameters
