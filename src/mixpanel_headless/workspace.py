@@ -45,7 +45,6 @@ if TYPE_CHECKING:
 
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import Account as _AccountUnion
-from mixpanel_headless._internal.auth.bridge import load_bridge as _load_bridge
 from mixpanel_headless._internal.auth.resolver import (
     env_workspace_id as _env_workspace_id,
 )
@@ -562,9 +561,8 @@ class Workspace:
         """Create a new Workspace bound to a resolved :class:`Session`.
 
         Resolution priority follows FR-017: env vars > kwargs > target >
-        bridge > ``[active]`` > ``Account.default_project``. Pass
-        ``session=`` to bypass the resolver and use a pre-built
-        :class:`Session` directly.
+        ``[active]`` > ``Account.default_project``. Pass ``session=`` to
+        bypass the resolver and use a pre-built :class:`Session` directly.
 
         Args:
             account: Named account from ``~/.mp/config.toml``.
@@ -600,49 +598,12 @@ class Workspace:
         if session is not None:
             sess = session
         else:
-            from mixpanel_headless._internal.auth.bridge import load_bridge
-
-            br = load_bridge()
-            # If the bridge has oauth_browser tokens embedded, materialize them
-            # to the per-account on-disk path so the OnDiskTokenResolver can
-            # serve them downstream. This is the Cowork credential-courier
-            # contract: the bridge is the source of truth at startup.
-            if (
-                br is not None
-                and br.tokens is not None
-                and br.account.type == "oauth_browser"
-            ):
-                from mixpanel_headless._internal.auth.storage import (
-                    ensure_account_dir,
-                )
-                from mixpanel_headless._internal.auth.token import token_payload_bytes
-                from mixpanel_headless._internal.io_utils import atomic_write_bytes
-
-                tokens_path = ensure_account_dir(br.account.name) / "tokens.json"
-                # Always overwrite — the bridge is the authoritative
-                # source of truth at startup, so a refreshed payload from
-                # the host must replace any stale on-disk cache here.
-                # ``OAuthTokens.expires_at`` is always set (required, tz-aware
-                # per Fix 25) — no fall-through to None which would trip the
-                # OnDiskTokenResolver expiry check. Empty scopes from the
-                # bridge get a ``"read"`` default so the cached file matches
-                # what `mp account login` would have written.
-                tokens_to_persist = br.tokens
-                if not tokens_to_persist.scope:
-                    tokens_to_persist = tokens_to_persist.model_copy(
-                        update={"scope": "read"}
-                    )
-                # atomic_write_bytes creates the file with 0o600 via O_EXCL
-                # before any data is written, eliminating the umask-derived
-                # permission window left open by write_text + chmod.
-                atomic_write_bytes(tokens_path, token_payload_bytes(tokens_to_persist))
             sess = _resolve_session(
                 account=account,
                 project=project,
                 workspace=workspace,
                 target=target,
                 config=ConfigManager(),
-                bridge=br,
             )
         self._session = sess
         self._account_name: str = sess.account.name
@@ -745,13 +706,12 @@ class Workspace:
         new_workspace_obj: _WorkspaceRef | None = None
         if target is not None:
             # Route through the same resolver as Workspace() construction so
-            # env > param > target > bridge > config ordering applies (FR-017).
+            # env > param > target > config ordering applies (FR-017).
             # Without this, mid-process env-var overrides would be honored at
             # construction but silently ignored on `ws.use(target=...)`.
             sess = _resolve_session(
                 target=target,
                 config=cm,
-                bridge=_load_bridge(),
             )
             new_account_obj = sess.account
             new_project_obj = sess.project
@@ -769,11 +729,9 @@ class Workspace:
             # — explicit `workspace=` overrides the clear, and env override
             # via MP_WORKSPACE_ID still applies for parity with FR-017.
             new_account_obj = cm.get_account(account)
-            br = _load_bridge()
             project_id = _resolve_project_axis(
                 explicit=project,
                 target_project=None,
-                bridge=br,
                 account=new_account_obj,
             )
             if project_id is None:
@@ -958,7 +916,7 @@ class Workspace:
         Resolution order:
         1. Workspace ID already pinned on the resolved session (for example
            via ``Workspace(workspace=N)``, ``Workspace.use(workspace=N)``,
-           ``MP_WORKSPACE_ID``, saved targets, bridge pins, or persisted
+           ``MP_WORKSPACE_ID``, saved targets, or persisted
            ``[active].workspace`` state)
         2. Cached auto-discovered workspace ID
         3. Auto-discover across the cached ``/me`` view, then

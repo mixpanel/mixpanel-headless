@@ -327,8 +327,8 @@ class TestCredentialPathError:
     def test_is_oserror_subclass(self) -> None:
         """Existing ``except OSError`` handlers MUST catch ``CredentialPathError``.
 
-        The call sites in ``config.py``, ``bridge.py``, ``token_resolver.py``,
-        ``storage.py``, and ``me.py`` already catch ``OSError`` and translate
+        The call sites in ``config.py``, ``token_resolver.py``, ``storage.py``,
+        and ``me.py`` already catch ``OSError`` and translate
         to domain exceptions. If ``CredentialPathError`` ever drifts out of
         that hierarchy, those handlers silently miss every symlink-attack
         rejection — exactly the failure mode we're trying to prevent.

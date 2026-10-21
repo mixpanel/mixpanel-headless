@@ -912,17 +912,8 @@ FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         "spec or plan path",
         re.compile(r"\bspecs/0\d{2}-|\bcontext/[\w-]+(?:/[\w.-]+)*\.md"),
     ),
-    ("mentions Cowork", re.compile(r"cowork", re.IGNORECASE)),
-    (
-        "mentions the bridge",
-        re.compile(r"(?<![A-Za-z])bridges?(?![A-Za-z])", re.IGNORECASE),
-    ),
 )
 """Plan bookkeeping and removed names that must not appear in shipped text.
-
-The plugin does not mention Cowork or the Cowork credential bridge. "bridge"
-is matched as a word that may touch ``_`` or ``-``, so identifiers such as
-``bridge_status`` and ``export-bridge`` are caught, but "Bridgeport" is not.
 
 Bare decision codes (``D1``, ``D7``) are only flagged in parentheses or after
 "per" / "see" / "decision", because ``D1`` and ``D7`` are also the standard

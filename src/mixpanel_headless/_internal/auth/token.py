@@ -192,7 +192,7 @@ def token_payload_bytes(tokens: OAuthTokens) -> bytes:
     stays in lockstep with what ``OAuthTokens.model_validate_json`` reads
     back. Omits ``refresh_token`` when ``None`` (rather than emitting an
     explicit ``null``) — matches the loader's "missing key → ``None``"
-    behavior in :func:`bridge._read_browser_tokens`.
+    behavior (``OAuthTokens.refresh_token`` defaults to ``None``).
 
     Args:
         tokens: The tokens to serialize. ``expires_at`` must be tz-aware

@@ -554,10 +554,10 @@ class TestTokenPayloadBytes:
     def test_round_trip_without_refresh_token(self) -> None:
         """``refresh_token=None`` is omitted on write and restored as None on read.
 
-        Mirrors the loader contract in ``bridge._read_browser_tokens``: a
-        missing ``refresh_token`` key means "no refresh token", not "explicit
-        null". Emitting ``null`` would still round-trip but burns a key for
-        every CI account that never ships one.
+        Mirrors the loader contract (``OAuthTokens.refresh_token`` defaults
+        to ``None``): a missing ``refresh_token`` key means "no refresh
+        token", not "explicit null". Emitting ``null`` would still round-trip
+        but burns a key for every CI account that never ships one.
         """
         original = _make_tokens(refresh_token=None)
         raw = token_payload_bytes(original)

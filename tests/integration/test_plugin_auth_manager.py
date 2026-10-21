@@ -284,32 +284,33 @@ class TestSessionSubcommand:
     def test_session_matches_library_resolution(self, tmp_home: Path) -> None:
         """``session`` reports exactly what the library's resolver returns.
 
-        The config has no ``[active]`` block and no MP_* credentials, so the
-        axes come from a source the script does not read itself (an auth
-        file named by ``MP_AUTH_FILE``). The script must still report
+        The config supplies the ``[active]`` account and that account's
+        ``default_project``; ``MP_WORKSPACE_ID`` supplies the workspace and
+        ``[active]`` has none. A script that read ``[active].workspace``
+        itself would report no workspace. The script must report
         ``state="ok"`` with the same account / project / workspace as
         ``resolve_session``.
         """
-        auth_file = tmp_home / "auth.json"
-        auth_file.write_text(
-            json.dumps(
-                {
-                    "version": 2,
-                    "account": {
-                        "type": "service_account",
-                        "name": "courier",
-                        "region": "us",
-                        "username": "u",
-                        "secret": "s",
-                    },
-                    "project": "3713224",
-                    "workspace": 3448413,
-                }
+        config = tmp_home / ".mp" / "config.toml"
+        config.write_text(
+            "\n".join(
+                [
+                    "[active]",
+                    'account = "courier"',
+                    "",
+                    "[accounts.courier]",
+                    'type = "service_account"',
+                    'region = "us"',
+                    'default_project = "3713224"',
+                    'username = "u"',
+                    'secret = "s"',
+                    "",
+                ]
             ),
             encoding="utf-8",
         )
-        auth_file.chmod(0o600)
-        env_extra = {"MP_AUTH_FILE": str(auth_file)}
+        config.chmod(0o600)
+        env_extra = {"MP_WORKSPACE_ID": "3448413"}
         payload = _run("session", tmp_home=tmp_home, env_extra=env_extra)
         expected = _library_session(tmp_home, env_extra)
         assert payload["state"] == "ok"
@@ -317,6 +318,11 @@ class TestSessionSubcommand:
         assert payload["account"]["type"] == "service_account"
         assert payload["project"]["id"] == expected["project"] == "3713224"
         assert payload["workspace"]["id"] == expected["workspace"] == 3448413
+        assert payload["source"] == {
+            "account": "config",
+            "project": "config",
+            "workspace": "env",
+        }
 
 
 # =============================================================================

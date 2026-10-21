@@ -67,7 +67,6 @@ def _open_account_scoped_workspace() -> Workspace:
     Raises:
         ConfigError: No account could be resolved from any source.
     """
-    from mixpanel_headless._internal.auth.bridge import load_bridge
     from mixpanel_headless._internal.auth.resolver import (
         resolve_account_axis,
         resolve_session,
@@ -76,9 +75,8 @@ def _open_account_scoped_workspace() -> Workspace:
     from mixpanel_headless.workspace import Workspace
 
     cm = ConfigManager()
-    bridge = load_bridge()
     try:
-        return Workspace(session=resolve_session(config=cm, bridge=bridge))
+        return Workspace(session=resolve_session(config=cm))
     except ConfigError:
         # Resolver failed — most likely the project axis is missing.
         # Re-resolve account alone; if that also fails, surface the
@@ -86,7 +84,6 @@ def _open_account_scoped_workspace() -> Workspace:
         account = resolve_account_axis(
             explicit=None,
             target_account_name=None,
-            bridge=bridge,
             config=cm,
         )
         if account is None:

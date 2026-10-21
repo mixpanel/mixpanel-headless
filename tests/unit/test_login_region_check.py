@@ -116,8 +116,7 @@ class TestLoginRegionMismatch:
         Subsequent ``mp account test`` would authenticate happily
         against ``/me`` (which is project-agnostic) but every other
         request — using the now-cached default_project — would fail
-        with a confusing 401, and the bridge export would propagate
-        the wrong-region token to Cowork.
+        with a confusing 401.
         """
         from mixpanel_headless._internal.auth.storage import account_dir
 

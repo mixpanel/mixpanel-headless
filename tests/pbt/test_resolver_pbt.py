@@ -35,7 +35,7 @@ workspace_ids = st.integers(min_value=1, max_value=2**31 - 1)
 def _isolated_home(
     monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[None]:
-    """Isolate ``$HOME`` so the resolver doesn't pick up the dev's real bridge."""
+    """Isolate ``$HOME`` so no example reads the developer's real home directory."""
     with tempfile.TemporaryDirectory() as tmp:
         monkeypatch.setenv("HOME", tmp)
         yield

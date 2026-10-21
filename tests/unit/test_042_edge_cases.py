@@ -31,7 +31,6 @@ from mixpanel_headless._internal.auth.account import (
     OAuthTokenAccount,
     ServiceAccount,
 )
-from mixpanel_headless._internal.auth.bridge import BridgeFile, load_bridge
 from mixpanel_headless._internal.auth.resolver import resolve_session
 from mixpanel_headless._internal.auth.session import (
     Project,
@@ -317,7 +316,7 @@ class TestTokenResolverMalformed:
 
 @pytest.fixture
 def empty_cm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConfigManager:
-    """Fresh empty ConfigManager + isolated HOME (no accidental bridge load)."""
+    """Fresh empty ConfigManager + isolated HOME (no real home directory files)."""
     monkeypatch.setenv("HOME", str(tmp_path))
     return ConfigManager(config_path=tmp_path / "config.toml")
 
@@ -384,71 +383,6 @@ class TestResolverEdgeCases:
         monkeypatch.setenv("MP_WORKSPACE_ID", "")
         s = resolve_session(config=empty_cm)
         assert s.workspace is None
-
-
-# =============================================================================
-# BridgeFile + load_bridge edge cases
-# =============================================================================
-
-
-class TestBridgeEdgeCases:
-    """v2 bridge loader robustness."""
-
-    def test_oauth_browser_without_tokens_rejected(self, tmp_path: Path) -> None:
-        """oauth_browser bridge missing the `tokens` field fails validation."""
-        payload = {
-            "version": 2,
-            "account": {
-                "type": "oauth_browser",
-                "name": "personal",
-                "region": "us",
-            },
-            # No tokens.
-        }
-        with pytest.raises(ValidationError):
-            BridgeFile.model_validate(payload)
-
-    @pytest.mark.parametrize("bad_version", [1, 3, "2"])
-    def test_version_mismatch_rejected(self, bad_version: object) -> None:
-        """version != 2 (Literal[2]) is rejected."""
-        payload = {
-            "version": bad_version,
-            "account": {
-                "type": "service_account",
-                "name": "team",
-                "region": "us",
-                "username": "u",
-                "secret": "s",
-            },
-        }
-        with pytest.raises(ValidationError):
-            BridgeFile.model_validate(payload)
-
-    def test_load_bridge_returns_none_for_missing_path(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """MP_AUTH_FILE pointing at a nonexistent path → load_bridge returns None.
-
-        Note: also need to isolate HOME so the default search paths don't
-        find the dev's real bridge file.
-        """
-        monkeypatch.setenv("HOME", str(tmp_path))
-        monkeypatch.setenv("MP_AUTH_FILE", str(tmp_path / "nonexistent.json"))
-        # Cwd default search would find a stray mixpanel_auth.json; isolate cwd too.
-        monkeypatch.chdir(tmp_path)
-        result = load_bridge()
-        assert result is None
-
-    def test_load_bridge_malformed_json_raises_with_path(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """Corrupted JSON in bridge file → ConfigError mentioning the path."""
-        bridge_path = tmp_path / "bridge.json"
-        bridge_path.write_text('{"version": 2', encoding="utf-8")  # truncated
-        monkeypatch.setenv("MP_AUTH_FILE", str(bridge_path))
-        with pytest.raises(ConfigError) as excinfo:
-            load_bridge()
-        assert str(bridge_path) in str(excinfo.value)
 
 
 # =============================================================================

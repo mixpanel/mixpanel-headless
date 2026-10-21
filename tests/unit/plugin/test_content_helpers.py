@@ -353,12 +353,6 @@ class TestForbiddenText:
             "Details in specs/045-report-links/plan.md.",
             "You MUST do this.",
             "NEVER guess.",
-            "Set up Claude Cowork first.",
-            "Works in COWORK sessions.",
-            "Check the bridge file.",
-            "Run mp account export-bridge.",
-            "bridge_status = load()",
-            "Bridges are cached.",
         ],
     )
     def test_flagged(self, line: str) -> None:
@@ -377,7 +371,6 @@ class TestForbiddenText:
             "Always check the date range.",
             "The MUSTANG event.",
             "A 404 means the dashboard is gone.",
-            "The Bridgeport event is rare.",
         ],
     )
     def test_not_flagged(self, line: str) -> None:

@@ -1,9 +1,8 @@
-"""OAuth 2.0 PKCE authentication and Cowork bridge module.
+"""OAuth 2.0 PKCE authentication module.
 
 Implements the OAuth 2.0 Authorization Code + PKCE flow for Mixpanel,
-including Dynamic Client Registration (RFC 7591), token management,
-secure local storage, and the v2 JSON-based credential bridge for
-Claude Cowork VMs.
+including Dynamic Client Registration (RFC 7591), token management, and
+secure local storage.
 
 Components:
 - PkceChallenge: PKCE verifier/challenge generation (RFC 7636)
@@ -13,9 +12,6 @@ Components:
 - OAuthFlow: Flow orchestrator (login, token exchange, refresh)
 - CallbackResult: Authorization callback result model
 - ensure_client_registered: Dynamic Client Registration helper
-- BridgeFile: v2 Cowork credential bridge schema
-- load_bridge: Load and validate a bridge file from disk
-- default_bridge_search_paths: Default lookup paths consulted by load_bridge
 """
 
 from mixpanel_headless._internal.auth.account import (
@@ -26,11 +22,6 @@ from mixpanel_headless._internal.auth.account import (
     Region,
     ServiceAccount,
     TokenResolver,
-)
-from mixpanel_headless._internal.auth.bridge import (
-    BridgeFile,
-    default_bridge_search_paths,
-    load_bridge,
 )
 from mixpanel_headless._internal.auth.callback_server import CallbackResult
 from mixpanel_headless._internal.auth.client_registration import (
@@ -56,7 +47,6 @@ __all__ = [
     "Account",
     "AccountType",
     "ActiveSession",
-    "BridgeFile",
     "CallbackResult",
     "OAuthBrowserAccount",
     "OAuthClientInfo",
@@ -73,8 +63,6 @@ __all__ = [
     "TokenResolver",
     "WorkspaceRef",
     "account_dir",
-    "default_bridge_search_paths",
     "ensure_account_dir",
     "ensure_client_registered",
-    "load_bridge",
 ]

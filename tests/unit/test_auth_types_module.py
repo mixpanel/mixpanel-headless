@@ -52,14 +52,6 @@ def test_token_plumbing_matches_internal() -> None:
     assert auth_types.OnDiskTokenResolver is _tr_mod.OnDiskTokenResolver
 
 
-def test_bridge_matches_internal() -> None:
-    """``BridgeFile`` / ``load_bridge`` are canonical."""
-    from mixpanel_headless._internal.auth import bridge as _bridge_mod
-
-    assert auth_types.BridgeFile is _bridge_mod.BridgeFile
-    assert auth_types.load_bridge is _bridge_mod.load_bridge
-
-
 def test_no_credential_file_names_in_auth_types() -> None:
     """``auth_types`` exposes no credential file schema or loader."""
     for name in ("BridgeFile", "load_bridge"):

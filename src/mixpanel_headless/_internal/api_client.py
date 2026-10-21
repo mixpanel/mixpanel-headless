@@ -998,8 +998,7 @@ class MixpanelAPIClient:
            to this library.
         2. ``MP_CUSTOM_HEADER_NAME`` / ``MP_CUSTOM_HEADER_VALUE`` env pair.
         3. ``self._session.headers`` (populated from ``[settings].custom_header``
-           and bridge ``headers`` per FR-014). The resolver merged env into
-           the session earlier; the final session state is authoritative.
+           per FR-014). It wins over the env pair on a collision.
         4. ``extra`` — typically ``{"Authorization": auth_header}`` plus any
            per-call ``Accept-Encoding`` etc. supplied by the caller.
 
@@ -10191,7 +10190,7 @@ class MixpanelAPIClient:
         attaches ``signed_at`` and provides ``__repr__`` masking — happens
         one layer up in ``ReplaysService.sign``; this method intentionally
         stays raw so callers that want only the underlying CDN access
-        (e.g. the Cowork bridge, integration smoke tests) don't pay the
+        (e.g. integration smoke tests) don't pay the
         dataclass overhead.
 
         Args:

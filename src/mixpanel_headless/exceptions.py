@@ -456,7 +456,7 @@ class InvalidArgumentError(ConfigError):
     """Raised when a public API call combines mutually incompatible arguments.
 
     Carries a ``violation`` discriminator and the resolved
-    ``detected_auth_type`` so non-CLI callers (Cowork's ``auth_manager.py``,
+    ``detected_auth_type`` so non-CLI callers (the plugin's ``auth_manager.py``,
     JSON consumers) can dispatch programmatically without parsing the
     human message. The CLI ``handle_errors`` decorator maps this subclass
     to ``ExitCode.INVALID_ARGS`` (3) instead of the generic

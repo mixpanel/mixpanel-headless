@@ -11,7 +11,6 @@ import json as _json
 import os
 import sys
 import typing
-from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -636,54 +635,3 @@ def logout_account(
     """
     accounts_ns.logout(name)
     console.print(f"Removed tokens for '{name}'")
-
-
-@account_app.command("export-bridge")
-@handle_errors
-def export_bridge_command(
-    ctx: typer.Context,
-    name: Annotated[
-        str | None,
-        typer.Option("--account", help="Account to export (defaults to active)"),
-    ] = None,
-    to: Annotated[
-        Path,
-        typer.Option("--to", help="Destination bridge file path."),
-    ] = Path("./mixpanel_auth.json"),
-    project: Annotated[
-        str | None,
-        typer.Option("--project", help="Pin a project ID into the bridge."),
-    ] = None,
-    workspace: Annotated[
-        int | None,
-        typer.Option("--workspace", help="Pin a workspace ID into the bridge."),
-    ] = None,
-) -> None:
-    """Export the named (or active) account as a v2 bridge file at ``--to``.
-
-    For ``oauth_browser`` accounts, embeds the on-disk OAuth tokens so the
-    consumer side (typically a Cowork VM) authenticates without re-running
-    PKCE. Settings-side ``[settings].custom_header`` propagates into the
-    bridge's ``headers`` block.
-    """
-    written = accounts_ns.export_bridge(
-        to=to, account=name, project=project, workspace=workspace
-    )
-    console.print(f"Wrote bridge file to {written}")
-
-
-@account_app.command("remove-bridge")
-@handle_errors
-def remove_bridge_command(
-    ctx: typer.Context,
-    at: Annotated[
-        Path | None,
-        typer.Option("--at", help="Bridge file path (defaults to standard search)."),
-    ] = None,
-) -> None:
-    """Delete the bridge file at ``--at`` (or the resolved default path).
-
-    Idempotent — no error if the bridge is already absent (exit 0 either way).
-    """
-    removed = accounts_ns.remove_bridge(at=at)
-    console.print("Removed bridge file." if removed else "No bridge file to remove.")
