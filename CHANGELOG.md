@@ -36,6 +36,16 @@ may include API changes.
 - Plugin: the dashboard report pipeline builds a report for a number that
   the team defines from its saved metric, so the board follows later edits.
 
+- **A 429 with a long `Retry-After` raises at once.** The client waits at
+  most 60 seconds between retries. Before this change, when the server asked
+  for a longer wait, the client still retried after 60 seconds, up to
+  `max_retries` times. Each early retry got another 429. At the Query API's
+  hourly limit (`Retry-After: 3600`), one call sent 4 requests and took about
+  3 minutes before it raised `RateLimitError`. Now every retry loop raises
+  `RateLimitError` after the first such 429, with no sleep. The error carries
+  `retry_after`, so the caller decides how long to wait. A 429 whose
+  `Retry-After` is 60 seconds or less, or absent, still retries as before.
+
 ### Removed
 
 - The credential bridge is removed. The library no longer reads a bridge

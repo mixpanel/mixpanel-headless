@@ -3776,10 +3776,10 @@ class TestRetryAfterHardening:
 
         assert recorded_sleeps == [0.125]
 
-    def test_huge_retry_after_is_capped(
+    def test_huge_retry_after_raises_without_sleeping(
         self, test_credentials: Session, recorded_sleeps: list[float]
     ) -> None:
-        """A day-long Retry-After is clamped to the 60s backoff ceiling.
+        """A day-long Retry-After raises at once, clamped, with no sleep.
 
         Args:
             test_credentials: Session fixture.
@@ -3792,10 +3792,11 @@ class TestRetryAfterHardening:
             session=test_credentials, max_retries=2, _transport=transport
         )
 
-        with client:
-            assert client.get_events() == ["event1"]
+        with client, pytest.raises(RateLimitError) as exc_info:
+            client.get_events()
 
-        assert recorded_sleeps == [60.0]
+        assert exc_info.value.retry_after == 3600
+        assert recorded_sleeps == []
 
     def test_garbage_retry_after_uses_backoff(
         self,
@@ -3900,7 +3901,7 @@ class TestRetryAfterHardening:
         ``time.sleep(e.retry_after or 60)``. Mixpanel's rate-limit window is
         one rolling hour, so a longer (or many-digit) server value would only
         park caller code or crash it. Every retry loop's exhaustion branch
-        reports at most 3600 seconds, while its own sleeps stay at 60.
+        reports at most 3600 seconds, and none of them sleeps first.
 
         Args:
             test_credentials: Session fixture.
@@ -3938,7 +3939,7 @@ class TestRetryAfterHardening:
         assert exc_info.value.retry_after == 3600
         assert exc_info.value.details["retry_after"] == 3600
         assert "Retry after 3600 seconds" in str(exc_info.value)
-        assert recorded_sleeps == [60.0]
+        assert recorded_sleeps == []
 
     def test_app_request_negative_retry_after_uses_backoff(
         self,
@@ -3966,10 +3967,10 @@ class TestRetryAfterHardening:
 
         assert recorded_sleeps == [0.5]
 
-    def test_app_request_huge_retry_after_is_capped(
+    def test_app_request_huge_retry_after_raises_without_sleeping(
         self, test_credentials: Session, recorded_sleeps: list[float]
     ) -> None:
-        """app_request clamps an oversized Retry-After to the backoff ceiling.
+        """app_request raises at once on an oversized Retry-After, with no sleep.
 
         Args:
             test_credentials: Session fixture.
@@ -3982,10 +3983,11 @@ class TestRetryAfterHardening:
             session=test_credentials, max_retries=2, _transport=transport
         )
 
-        with client:
-            assert client.app_request("GET", "/projects/12345/dashboards") == [1]
+        with client, pytest.raises(RateLimitError) as exc_info:
+            client.app_request("GET", "/projects/12345/dashboards")
 
-        assert recorded_sleeps == [60.0]
+        assert exc_info.value.retry_after == 3600
+        assert recorded_sleeps == []
 
     def test_export_events_negative_retry_after_uses_backoff(
         self,
@@ -4029,6 +4031,162 @@ class TestRetryAfterHardening:
 
         assert len(events) == 1
         assert recorded_sleeps == [0.75]
+
+
+_RETRY_OPERATIONS = ["get_events", "app_request", "export_events", "resolve_short_link"]
+
+
+def _drive_operation(client: MixpanelAPIClient, operation: str) -> None:
+    """Call one client entry point that runs a 429 retry loop.
+
+    Args:
+        client: The client under test.
+        operation: Which entry point to call.
+    """
+    if operation == "get_events":
+        client.get_events()
+    elif operation == "app_request":
+        client.app_request("GET", "/projects/12345/dashboards")
+    elif operation == "export_events":
+        list(client.export_events("2024-01-01", "2024-01-31"))
+    else:
+        client.resolve_short_link("abc123")
+
+
+class TestLongRetryAfterStopsRetrying:
+    """A Retry-After longer than the retry ceiling raises at once.
+
+    The client never sleeps longer than 60 seconds between attempts. When the
+    server asks for a longer wait (the Query API sends ``Retry-After: 3600``
+    at the hourly limit), a retry after 60 seconds is sent too early. It only
+    gets another 429, and the server logs each one.
+    """
+
+    @staticmethod
+    def _always_429(
+        retry_after: str, calls: list[int]
+    ) -> Callable[[httpx.Request], httpx.Response]:
+        """Build a handler that always rate limits and counts its calls.
+
+        Args:
+            retry_after: The Retry-After header value to send.
+            calls: A list that gets one item per request.
+
+        Returns:
+            An httpx.MockTransport handler.
+        """
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Return a 429 with the given Retry-After.
+
+            Args:
+                _request: The outgoing request (unused).
+
+            Returns:
+                A 429 response.
+            """
+            calls.append(1)
+            return httpx.Response(429, headers={"Retry-After": retry_after})
+
+        return handler
+
+    @pytest.mark.parametrize("operation", _RETRY_OPERATIONS)
+    @pytest.mark.parametrize("retry_after", ["61", "3600"])
+    def test_long_retry_after_sends_one_request(
+        self,
+        test_credentials: Session,
+        recorded_sleeps: list[float],
+        operation: str,
+        retry_after: str,
+    ) -> None:
+        """Every retry loop raises after one request, with no sleep.
+
+        Args:
+            test_credentials: Session fixture.
+            recorded_sleeps: Captured sleep durations.
+            operation: Which client entry point to drive.
+            retry_after: A Retry-After value above the 60-second ceiling.
+        """
+        calls: list[int] = []
+        transport = httpx.MockTransport(self._always_429(retry_after, calls))
+        client = MixpanelAPIClient(
+            session=test_credentials, max_retries=3, _transport=transport
+        )
+
+        with client, pytest.raises(RateLimitError) as exc_info:
+            _drive_operation(client, operation)
+
+        assert len(calls) == 1
+        assert recorded_sleeps == []
+        assert exc_info.value.retry_after == int(retry_after)
+        assert exc_info.value.project_id == "12345"
+        assert "longer than the 60-second retry ceiling" in str(exc_info.value)
+
+    @pytest.mark.parametrize("operation", _RETRY_OPERATIONS)
+    @pytest.mark.parametrize("retry_after", ["10", "60"])
+    def test_short_retry_after_still_retries(
+        self,
+        test_credentials: Session,
+        recorded_sleeps: list[float],
+        operation: str,
+        retry_after: str,
+    ) -> None:
+        """A Retry-After at or below the ceiling keeps the retry loop.
+
+        Args:
+            test_credentials: Session fixture.
+            recorded_sleeps: Captured sleep durations.
+            operation: Which client entry point to drive.
+            retry_after: A Retry-After value at or below 60 seconds.
+        """
+        calls: list[int] = []
+        transport = httpx.MockTransport(self._always_429(retry_after, calls))
+        client = MixpanelAPIClient(
+            session=test_credentials, max_retries=2, _transport=transport
+        )
+
+        with client, pytest.raises(RateLimitError) as exc_info:
+            _drive_operation(client, operation)
+
+        assert len(calls) == 3
+        assert recorded_sleeps == [float(retry_after)] * 2
+        assert "after max retries" in str(exc_info.value)
+
+    def test_long_retry_after_on_a_later_attempt_stops_there(
+        self, test_credentials: Session, recorded_sleeps: list[float]
+    ) -> None:
+        """A long Retry-After after a short one stops the loop at that attempt.
+
+        Args:
+            test_credentials: Session fixture.
+            recorded_sleeps: Captured sleep durations.
+        """
+        headers = iter(["10", "3600", "10"])
+        calls: list[int] = []
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Return 429s whose Retry-After changes on each call.
+
+            Args:
+                _request: The outgoing request (unused).
+
+            Returns:
+                A 429 response.
+            """
+            calls.append(1)
+            return httpx.Response(429, headers={"Retry-After": next(headers)})
+
+        transport = httpx.MockTransport(handler)
+        client = MixpanelAPIClient(
+            session=test_credentials, max_retries=3, _transport=transport
+        )
+
+        with client, pytest.raises(RateLimitError) as exc_info:
+            client.get_events()
+
+        assert len(calls) == 2
+        assert recorded_sleeps == [10.0]
+        assert exc_info.value.retry_after == 3600
 
 
 # =============================================================================

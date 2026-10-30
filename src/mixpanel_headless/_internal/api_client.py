@@ -81,7 +81,9 @@ _FALLBACK_HTTP_STATUSES = frozenset({403, 404})
 # Exponential-backoff bounds shared by _calculate_backoff() and the
 # Retry-After sleep clamp. The client itself never sleeps longer than
 # _BACKOFF_MAX_SECONDS between attempts; anything larger would park the
-# process inside a single call.
+# process inside a single call. When a 429's Retry-After asks for a longer
+# wait, the retry loops raise RateLimitError at once instead of retrying
+# early (see _rate_limit_stop_reason).
 _BACKOFF_BASE_SECONDS = 1.0
 _BACKOFF_MAX_SECONDS = 60.0
 
@@ -1246,6 +1248,45 @@ class MixpanelAPIClient:
             return self._calculate_backoff(attempt)
         return min(float(retry_after), _BACKOFF_MAX_SECONDS)
 
+    def _rate_limit_stop_reason(
+        self, retry_after: int | None, attempt: int
+    ) -> str | None:
+        """Decide whether a 429 ends the retry loop, and say why.
+
+        A retry sent before the server's ``Retry-After`` has passed only gets
+        another 429. The client never sleeps longer than
+        ``_BACKOFF_MAX_SECONDS``, so a longer ``Retry-After`` ends the loop at
+        once. For example, the Query API sends ``Retry-After: 3600`` when a
+        project reaches its hourly limit. The caller then gets
+        ``RateLimitError.retry_after`` and decides how long to wait.
+
+        Args:
+            retry_after: Validated Retry-After value in seconds, or None when
+                the header was absent or unusable.
+            attempt: Zero-based attempt number.
+
+        Returns:
+            The ``RateLimitError`` message when the loop must stop, or None
+            when the loop may sleep and retry.
+
+        Example:
+            ```python
+            client._rate_limit_stop_reason(3600, 0)
+            # "Rate limit exceeded; the server's Retry-After is longer than ..."
+            client._rate_limit_stop_reason(10, 0)
+            # None
+            ```
+        """
+        if retry_after is not None and retry_after > _BACKOFF_MAX_SECONDS:
+            return (
+                "Rate limit exceeded; the server's Retry-After is longer than "
+                f"the {int(_BACKOFF_MAX_SECONDS)}-second retry ceiling, so the "
+                "request was not retried"
+            )
+        if attempt >= self._max_retries:
+            return "Rate limit exceeded after max retries"
+        return None
+
     def _execute_with_retry(
         self,
         method: str,
@@ -1302,8 +1343,9 @@ class MixpanelAPIClient:
                 )
 
                 if response.status_code == 429:
-                    if attempt >= self._max_retries:
-                        retry_after = self._parse_retry_after(response)
+                    retry_after = self._parse_retry_after(response)
+                    stop_reason = self._rate_limit_stop_reason(retry_after, attempt)
+                    if stop_reason is not None:
                         response_body: str | dict[str, Any] | None = None
                         try:
                             response_body = response.json()
@@ -1312,7 +1354,7 @@ class MixpanelAPIClient:
                                 response.text[:500] if response.text else None
                             )
                         raise RateLimitError(
-                            "Rate limit exceeded after max retries",
+                            stop_reason,
                             retry_after=retry_after,
                             status_code=response.status_code,
                             response_body=response_body,
@@ -1321,9 +1363,7 @@ class MixpanelAPIClient:
                             request_params=params,
                             project_id=self.project_id,
                         )
-                    wait_time = self._retry_wait_seconds(
-                        self._parse_retry_after(response), attempt
-                    )
+                    wait_time = self._retry_wait_seconds(retry_after, attempt)
                     logger.warning(
                         "Rate limited, retrying in %.1f seconds (attempt %d/%d)",
                         wait_time,
@@ -1873,8 +1913,9 @@ class MixpanelAPIClient:
 
                 # Handle 429 rate limiting with retry
                 if response.status_code == 429:
-                    if attempt >= self._max_retries:
-                        retry_after = self._parse_retry_after(response)
+                    retry_after = self._parse_retry_after(response)
+                    stop_reason = self._rate_limit_stop_reason(retry_after, attempt)
+                    if stop_reason is not None:
                         response_body: str | dict[str, Any] | None = None
                         try:
                             response_body = response.json()
@@ -1883,7 +1924,7 @@ class MixpanelAPIClient:
                                 response.text[:500] if response.text else None
                             )
                         raise RateLimitError(
-                            "Rate limit exceeded after max retries",
+                            stop_reason,
                             retry_after=retry_after,
                             status_code=response.status_code,
                             response_body=response_body,
@@ -1892,9 +1933,7 @@ class MixpanelAPIClient:
                             request_params=request_params,
                             project_id=self.project_id,
                         )
-                    wait_time = self._retry_wait_seconds(
-                        self._parse_retry_after(response), attempt
-                    )
+                    wait_time = self._retry_wait_seconds(retry_after, attempt)
                     logger.warning(
                         "Rate limited, retrying in %.1f seconds (attempt %d/%d)",
                         wait_time,
@@ -2449,10 +2488,11 @@ class MixpanelAPIClient:
                     timeout=self._export_timeout,
                 ) as response:
                     if response.status_code == 429:
-                        if attempt >= self._max_retries:
-                            retry_after = self._parse_retry_after(response)
+                        retry_after = self._parse_retry_after(response)
+                        stop_reason = self._rate_limit_stop_reason(retry_after, attempt)
+                        if stop_reason is not None:
                             raise RateLimitError(
-                                "Rate limit exceeded after max retries",
+                                stop_reason,
                                 retry_after=retry_after,
                                 status_code=response.status_code,
                                 request_method="GET",
@@ -2460,9 +2500,7 @@ class MixpanelAPIClient:
                                 request_params=params,
                                 project_id=self.project_id,
                             )
-                        wait_time = self._retry_wait_seconds(
-                            self._parse_retry_after(response), attempt
-                        )
+                        wait_time = self._retry_wait_seconds(retry_after, attempt)
                         time.sleep(wait_time)
                         continue
 
@@ -5318,8 +5356,10 @@ class MixpanelAPIClient:
             if response.status_code != 429:
                 return response
             retry_after = self._parse_retry_after(response)
-            if attempt >= self._max_retries:
+            stop_reason = self._rate_limit_stop_reason(retry_after, attempt)
+            if stop_reason is not None:
                 raise RateLimitError(
+                    stop_reason,
                     retry_after=retry_after,
                     status_code=response.status_code,
                     request_method="GET",
