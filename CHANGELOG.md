@@ -70,6 +70,10 @@ may include API changes.
 
 - Plugin: the insights reference no longer says that a formula needs two or
   more events. `Formula(expression, metrics=[...])` holds its own operands.
+- **A 429 whose body is not valid UTF-8 raises `RateLimitError`.** Before
+  this change, the Query API and App API retry loops raised
+  `UnicodeDecodeError` while they read such a body, so the caller did not get
+  `retry_after`. The error now carries the body as text.
 
 ## 0.4.0 — 2026-10-05
 

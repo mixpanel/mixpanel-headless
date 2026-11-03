@@ -1319,7 +1319,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: Invalid parameters (400).
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network/connection errors.
@@ -1350,7 +1351,7 @@ class MixpanelAPIClient:
                         response_body: str | dict[str, Any] | None = None
                         try:
                             response_body = response.json()
-                        except json.JSONDecodeError:
+                        except (json.JSONDecodeError, UnicodeDecodeError):
                             response_body = (
                                 response.text[:500] if response.text else None
                             )
@@ -1454,7 +1455,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: Invalid parameters (400).
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network/connection errors.
@@ -1533,7 +1535,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: Invalid parameters (400).
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network/connection errors.
@@ -1839,7 +1842,8 @@ class MixpanelAPIClient:
             ParamValidationError: Both ``json_body`` and ``form_body`` were
                 provided (``AC1_BODY_MUTUALLY_EXCLUSIVE``).
             AuthenticationError: Invalid credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: Invalid parameters or resource not found (400, 404, 422).
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network/connection errors.
@@ -1920,7 +1924,7 @@ class MixpanelAPIClient:
                         response_body: str | dict[str, Any] | None = None
                         try:
                             response_body = response.json()
-                        except json.JSONDecodeError:
+                        except (json.JSONDecodeError, UnicodeDecodeError):
                             response_body = (
                                 response.text[:500] if response.text else None
                             )
@@ -2060,7 +2064,8 @@ class MixpanelAPIClient:
             WorkspaceScopeError: If no workspace could be resolved for the
                 project from any source.
             AuthenticationError: Invalid credentials (401) during discovery.
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx) during discovery.
             QueryError: A non-403/404 client error during discovery.
             MixpanelHeadlessError: Network/connection errors during discovery.
@@ -2152,7 +2157,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: API error (400/403/404).
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network/connection errors.
@@ -2192,7 +2198,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
             QueryError: A non-403/404 client error from the metadata index.
             MixpanelHeadlessError: Network/connection errors.
@@ -2451,7 +2458,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid credentials.
-            RateLimitError: Rate limit exceeded after max retries.
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: Invalid parameters.
             ServerError: Server-side errors (5xx).
         """
@@ -2616,7 +2624,8 @@ class MixpanelAPIClient:
                 not a list (``AC5_BEHAVIORS_NOT_LIST``), or as_of_timestamp
                 is in the future (``AC6_AS_OF_TIMESTAMP_FUTURE``).
             AuthenticationError: Invalid credentials.
-            RateLimitError: Rate limit exceeded after max retries.
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
         """
         # Validate mutually exclusive parameters
@@ -3950,7 +3959,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid credentials.
-            RateLimitError: Rate limit exceeded after max retries.
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
         """
         # entity_type is a path parameter, not a query parameter
         # URL structure: /api/app/projects/{projectId}/schemas/{entity_type}
@@ -3999,7 +4009,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid credentials.
             QueryError: Schema not found (404 mapped to QueryError).
-            RateLimitError: Rate limit exceeded after max retries.
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
         """
         # URL structure: /api/app/projects/{projectId}/schemas/{entity_type}?entity_name={name}
         url = self._build_url(
@@ -5085,7 +5096,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid or expired credentials (401).
             QueryError: Invalid parameters (400/403).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
 
         Example:
@@ -5126,7 +5138,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid or expired credentials (401).
             QueryError: Invalid payload (400/422).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
 
         Example:
@@ -5161,7 +5174,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid or expired credentials (401).
             QueryError: Bookmark not found (404).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
 
         Example:
@@ -5203,7 +5217,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid or expired credentials (401).
             QueryError: Invalid payload or duplicate slug (400/404/422).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: The response was not a dict.
 
@@ -5248,7 +5263,8 @@ class MixpanelAPIClient:
             ReportLinkNotFoundError: ``REPORT_LINK_SLUG_NOT_FOUND`` on a 404.
             AuthenticationError: Invalid or expired credentials (401).
             QueryError: Other 4xx responses (400/403/422).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: The response was not a dict.
 
@@ -5332,7 +5348,8 @@ class MixpanelAPIClient:
             The first response whose status is not 429.
 
         Raises:
-            RateLimitError: 429 on every attempt.
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             MixpanelHeadlessError: ``HTTP_ERROR`` on a transport failure.
         """
         headers = self._request_headers({"Authorization": self._get_auth_header()})
@@ -5401,7 +5418,8 @@ class MixpanelAPIClient:
                 ``/login``.
             ReportLinkNotFoundError: ``SHORT_LINK_NOT_FOUND`` on a 404.
             QueryError: 403 (permission denied).
-            RateLimitError: 429 on every retry attempt.
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: 5xx.
             ShortLinkResolutionError: ``SHORT_LINK_NO_LOCATION`` for a 3xx
                 without ``Location``; ``SHORT_LINK_UNEXPECTED_RESPONSE`` for a
@@ -5520,7 +5538,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid or expired credentials (401).
             QueryError: Bookmark not found or invalid payload (400/404/422).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
 
         Example:
@@ -5548,7 +5567,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid or expired credentials (401).
             QueryError: Bookmark not found (404).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
 
         Example:
@@ -5569,7 +5589,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid or expired credentials (401).
             QueryError: One or more IDs not found (400/404).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
 
         Example:
@@ -5590,7 +5611,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid or expired credentials (401).
             QueryError: Invalid entries or IDs not found (400/404/422).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
 
         Example:
@@ -5616,7 +5638,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid or expired credentials (401).
             QueryError: Bookmark not found (404).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
 
         Example:
@@ -5654,7 +5677,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid or expired credentials (401).
             QueryError: Bookmark not found (404).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
 
         Example:
@@ -5715,7 +5739,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid or missing credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: Bad request (400/404).
             ServerError: Server-side errors (5xx).
 
@@ -5750,7 +5775,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid or missing credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: Cohort not found (404).
             ServerError: Server-side errors (5xx).
 
@@ -5780,7 +5806,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid or missing credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: Invalid cohort definition (400).
             ServerError: Server-side errors (5xx).
 
@@ -5811,7 +5838,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid or missing credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: Cohort not found or invalid update (400/404).
             ServerError: Server-side errors (5xx).
 
@@ -5838,7 +5866,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid or missing credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: Cohort not found (404).
             ServerError: Server-side errors (5xx).
 
@@ -5859,7 +5888,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid or missing credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: One or more IDs not found (400/404).
             ServerError: Server-side errors (5xx).
 
@@ -5881,7 +5911,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid or missing credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: Invalid entries or IDs not found (400/404).
             ServerError: Server-side errors (5xx).
 
@@ -9017,7 +9048,8 @@ class MixpanelAPIClient:
 
         Raises:
             AuthenticationError: Invalid credentials (401).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: Validation error (400, 422) — for example, duplicate
                 custom event name or unknown underlying event.
             ServerError: Server-side errors (5xx).
@@ -9197,7 +9229,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid credentials (401).
             QueryError: Missing permission (403) or another 4xx.
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network errors, or ``results`` is not an
                 id-keyed map of entity dicts.
@@ -9227,7 +9260,8 @@ class MixpanelAPIClient:
             AuthenticationError: Invalid credentials (401).
             QueryError: The metric is absent or deleted (404), or the caller
                 lacks permission (403).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network errors, or the map does not hold
                 exactly one entity dict.
@@ -9256,7 +9290,8 @@ class MixpanelAPIClient:
             AuthenticationError: Invalid credentials (401).
             QueryError: The caller cannot edit one of the metrics, or lacks
                 the warehouse permission for a warehouse metric (403).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network errors.
 
@@ -9292,7 +9327,8 @@ class MixpanelAPIClient:
             QueryError: Schema failure (400), plan gate, permission, or
                 unknown warehouse source (403), or a duplicate active name
                 (409).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx), including a name or
                 description longer than 255 characters.
             MixpanelHeadlessError: Network errors, including a timeout, or
@@ -9331,7 +9367,8 @@ class MixpanelAPIClient:
             AuthenticationError: Invalid credentials (401).
             QueryError: The metric is absent or deleted (404), the caller
                 cannot edit it (403), or the new name is taken (409).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx), including
                 ``owned_by: null``.
             MixpanelHeadlessError: Network errors, including a timeout, or
@@ -9369,7 +9406,8 @@ class MixpanelAPIClient:
             AuthenticationError: Invalid credentials (401).
             QueryError: The caller cannot edit one of the metrics (403), or
                 a new name is taken (409).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network errors, including a timeout, or
                 an unexpected response shape.
@@ -9397,7 +9435,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid credentials (401).
             QueryError: Missing permission (403) or another 4xx.
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network errors, or ``results`` is not an
                 id-keyed map of entity dicts.
@@ -9428,7 +9467,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid credentials (401).
             QueryError: The caller lacks permission (403) or another 4xx.
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx), including an unknown or
                 deleted behavior id.
             MixpanelHeadlessError: Network errors, or the map does not hold
@@ -9459,7 +9499,8 @@ class MixpanelAPIClient:
         Raises:
             AuthenticationError: Invalid credentials (401).
             QueryError: The caller cannot edit one of the behaviors (403).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network errors.
 
@@ -9492,7 +9533,8 @@ class MixpanelAPIClient:
             AuthenticationError: Invalid credentials (401).
             QueryError: Schema failure (400), plan gate or permission (403),
                 or a duplicate active name (409).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network errors, including a timeout, or
                 an unexpected response shape.
@@ -9528,7 +9570,8 @@ class MixpanelAPIClient:
             AuthenticationError: Invalid credentials (401).
             QueryError: The caller cannot edit the behavior (403), or the new
                 name is taken (409).
-            RateLimitError: Rate limit exceeded after max retries (429).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network errors, including a timeout, or
                 an unexpected response shape.

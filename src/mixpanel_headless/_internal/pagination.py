@@ -135,7 +135,8 @@ def paginate_all(
 
     Raises:
         AuthenticationError: Invalid credentials (401).
-        RateLimitError: Rate limit exceeded after max retries (429).
+        RateLimitError: Rate limit exceeded (429), when the retries run out
+            or at once when ``Retry-After`` is longer than 60 seconds.
         ServerError: Server-side errors (5xx).
         MixpanelHeadlessError: Client errors (400, 404, 422), network/connection
             errors, pagination limit exceeded, or a malformed body (non-JSON,
@@ -199,7 +200,11 @@ def paginate_all(
             # Handle 429 with retry/backoff
             if response.status_code == 429:
                 advertised = _parse_retry_after(response.headers.get("Retry-After"))
-                if attempt >= MAX_RATE_LIMIT_RETRIES:
+                # A retry sent before a longer Retry-After has passed only gets
+                # another 429, and the walk never sleeps past the backoff cap,
+                # so a longer Retry-After stops the walk at once.
+                wait_too_long = advertised is not None and advertised > _BACKOFF_MAX
+                if wait_too_long or attempt >= MAX_RATE_LIMIT_RETRIES:
                     # Report at most one hour (the rate-limit window): callers
                     # are documented to ``time.sleep(e.retry_after or 60)``.
                     retry_after = (
@@ -207,8 +212,16 @@ def paginate_all(
                         if advertised is None
                         else int(min(advertised, _RETRY_AFTER_MAX))
                     )
+                    message = (
+                        "Rate limit exceeded during pagination; the server's "
+                        "Retry-After is longer than the "
+                        f"{int(_BACKOFF_MAX)}-second retry ceiling, so the client "
+                        "stopped retrying"
+                        if wait_too_long
+                        else "Rate limit exceeded after max retries during pagination"
+                    )
                     raise RateLimitError(
-                        "Rate limit exceeded after max retries during pagination",
+                        message,
                         retry_after=retry_after,
                         status_code=429,
                         response_body=response.text,

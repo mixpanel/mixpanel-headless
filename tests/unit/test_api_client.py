@@ -4153,6 +4153,52 @@ class TestLongRetryAfterStopsRetrying:
         assert recorded_sleeps == [float(retry_after)] * 2
         assert "after max retries" in str(exc_info.value)
 
+    @pytest.mark.parametrize("operation", ["get_events", "app_request"])
+    @pytest.mark.parametrize("retry_after", ["61", "0"])
+    def test_undecodable_429_body_still_raises_rate_limit_error(
+        self,
+        test_credentials: Session,
+        recorded_sleeps: list[float],
+        operation: str,
+        retry_after: str,
+    ) -> None:
+        """A 429 body that is not valid UTF-8 still gives a RateLimitError.
+
+        ``response.json()`` raises ``UnicodeDecodeError`` on such a body, which
+        is not a ``json.JSONDecodeError``. Both the early stop (61) and the
+        exhausted retries (0) must fall back to the text body.
+
+        Args:
+            test_credentials: Session fixture.
+            recorded_sleeps: Captured sleep durations (guards real waits).
+            operation: Which client entry point to drive.
+            retry_after: A Retry-After that stops at once, or one that retries.
+        """
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Always rate limit with a body that is not valid UTF-8.
+
+            Args:
+                _request: The outgoing request (unused).
+
+            Returns:
+                A 429 response.
+            """
+            return httpx.Response(
+                429, headers={"Retry-After": retry_after}, content=b"\xff"
+            )
+
+        transport = httpx.MockTransport(handler)
+        client = MixpanelAPIClient(
+            session=test_credentials, max_retries=1, _transport=transport
+        )
+
+        with client, pytest.raises(RateLimitError) as exc_info:
+            _drive_operation(client, operation)
+
+        assert exc_info.value.retry_after == int(retry_after)
+        assert isinstance(exc_info.value.details["response_body"], str)
+
     def test_long_retry_after_on_a_later_attempt_stops_there(
         self, test_credentials: Session, recorded_sleeps: list[float]
     ) -> None:
