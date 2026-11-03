@@ -1085,7 +1085,7 @@ class MixpanelAPIClient:
         response_body: str | dict[str, Any] | None = None
         try:
             response_body = response.json()
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             response_body = response.text[:500] if response.text else None
 
         if response.status_code == 401:
@@ -1199,7 +1199,7 @@ class MixpanelAPIClient:
             return response_body
         try:
             return response.json()
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
             raise MixpanelHeadlessError(
                 f"Non-JSON response from {request_method} {request_url} "
                 f"(status {response.status_code}): {response.text[:500]}",
@@ -1953,7 +1953,7 @@ class MixpanelAPIClient:
                     err_body: str | dict[str, Any] | None = None
                     try:
                         err_body = response.json()
-                    except json.JSONDecodeError:
+                    except (json.JSONDecodeError, UnicodeDecodeError):
                         err_body = response.text[:500] if response.text else None
                     error_msg = _error_message(err_body, "Unprocessable entity")
                     raise QueryError(
@@ -2527,8 +2527,10 @@ class MixpanelAPIClient:
                         response_body: str | dict[str, Any] | None = None
                         try:
                             response_body = json.loads(body)
-                        except json.JSONDecodeError:
-                            response_body = body.decode()[:500] if body else None
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            response_body = (
+                                body.decode(errors="replace")[:500] if body else None
+                            )
                         raise QueryError(
                             _error_message(response_body, "Unknown error"),
                             status_code=response.status_code,
@@ -5490,7 +5492,7 @@ class MixpanelAPIClient:
             body: str | dict[str, Any] | None
             try:
                 body = response.json()
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, UnicodeDecodeError):
                 body = response.text[:500] if response.text else None
             raise QueryError(
                 _error_message(body, "Permission denied"),
@@ -8772,7 +8774,7 @@ class MixpanelAPIClient:
             )
         try:
             body: Any = response.json()
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
             raise MixpanelHeadlessError(
                 f"register_lookup_table returned non-JSON response "
                 f"(status {response.status_code}): {response.text[:500]}",

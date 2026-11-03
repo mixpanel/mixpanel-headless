@@ -4238,6 +4238,96 @@ class TestLongRetryAfterStopsRetrying:
         assert "so the client stopped retrying" in str(exc_info.value)
 
 
+class TestUndecodableResponseBodies:
+    """A response body that is not valid UTF-8 never escapes as UnicodeDecodeError.
+
+    ``response.json()`` and ``json.loads(bytes)`` raise ``UnicodeDecodeError``
+    on such a body, which is not a ``json.JSONDecodeError``.
+    """
+
+    BAD_BYTES = b"\xff"
+
+    def _client(self, credentials: Session, status: int) -> MixpanelAPIClient:
+        """Build a client whose every response has the given status and bad bytes.
+
+        Args:
+            credentials: Session fixture.
+            status: HTTP status for every response.
+
+        Returns:
+            A mock-transport client.
+        """
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Return the status with a body that is not valid UTF-8.
+
+            Args:
+                _request: The outgoing request (unused).
+
+            Returns:
+                The mocked response.
+            """
+            return httpx.Response(status, content=self.BAD_BYTES)
+
+        return create_mock_client(credentials, handler)
+
+    @pytest.mark.parametrize("status", [400, 401, 403, 500])
+    def test_error_status_raises_library_error(
+        self, test_credentials: Session, status: int
+    ) -> None:
+        """An error status reads the body as text and raises a library error.
+
+        Args:
+            test_credentials: Session fixture.
+            status: Error status under test.
+        """
+        with (
+            self._client(test_credentials, status) as client,
+            pytest.raises(MixpanelHeadlessError),
+        ):
+            client.get_events()
+
+    def test_success_status_raises_invalid_response(
+        self, test_credentials: Session
+    ) -> None:
+        """A 200 whose body is not valid UTF-8 is an INVALID_RESPONSE."""
+        with (
+            self._client(test_credentials, 200) as client,
+            pytest.raises(MixpanelHeadlessError) as exc_info,
+        ):
+            client.get_events()
+
+        assert exc_info.value.code == "INVALID_RESPONSE"
+
+    def test_app_request_422_raises_query_error(
+        self, test_credentials: Session
+    ) -> None:
+        """app_request's 422 handler reads the body as text."""
+        with (
+            self._client(test_credentials, 422) as client,
+            pytest.raises(QueryError),
+        ):
+            client.app_request("GET", "/projects/12345/dashboards")
+
+    def test_export_400_raises_query_error(self, test_credentials: Session) -> None:
+        """export_events's 400 handler reads the body as text, with replacement."""
+        with (
+            self._client(test_credentials, 400) as client,
+            pytest.raises(QueryError) as exc_info,
+        ):
+            list(client.export_events("2024-01-01", "2024-01-31"))
+
+        assert isinstance(exc_info.value.details["response_body"], str)
+
+    def test_short_link_403_raises_query_error(self, test_credentials: Session) -> None:
+        """resolve_short_link's 403 handler reads the body as text."""
+        with (
+            self._client(test_credentials, 403) as client,
+            pytest.raises(QueryError),
+        ):
+            client.resolve_short_link("abc123")
+
+
 # =============================================================================
 # Error-message fallbacks for blank error bodies
 # =============================================================================

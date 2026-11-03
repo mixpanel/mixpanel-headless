@@ -70,10 +70,16 @@ may include API changes.
 
 - Plugin: the insights reference no longer says that a formula needs two or
   more events. `Formula(expression, metrics=[...])` holds its own operands.
-- **A 429 whose body is not valid UTF-8 raises `RateLimitError`.** Before
-  this change, the Query API and App API retry loops raised
-  `UnicodeDecodeError` while they read such a body, so the caller did not get
-  `retry_after`. The error now carries the body as text.
+- **A response body that is not valid UTF-8 raises the library's own
+  error.** Before this change, the client raised `UnicodeDecodeError` when it
+  read such a body, in place of the documented error: `RateLimitError` for a
+  429 (so the caller did not get `retry_after`), `AuthenticationError`,
+  `QueryError`, or a server error for other error statuses, and
+  `MixpanelHeadlessError` with code `INVALID_RESPONSE` for a 200 (including
+  `register_lookup_table`). The same applied to the 400 handler of
+  `export_events`, to the 403 handler of shortlink resolution, and to OAuth
+  client registration, which now raises `OAuthError`. Error bodies are kept
+  as text, with undecodable bytes replaced.
 
 ## 0.4.0 — 2026-10-05
 
