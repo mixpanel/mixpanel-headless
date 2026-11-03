@@ -402,6 +402,37 @@ class TestEnsureClientRegisteredRobustness:
             )
         assert exc_info.value.code == "OAUTH_REGISTRATION_ERROR"
 
+    def test_registration_undecodable_response(self, tmp_path: Path) -> None:
+        """Verify OAuthError when the 200 response body is not valid UTF-8.
+
+        ``response.json()`` raises UnicodeDecodeError on such a body, which is
+        not a JSONDecodeError.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return 200 with a body that is not valid UTF-8.
+
+            Args:
+                request: The incoming request.
+
+            Returns:
+                A response whose body cannot be decoded.
+            """
+            return httpx.Response(200, content=b"\xff")
+
+        transport = httpx.MockTransport(handler)
+        client = httpx.Client(transport=transport)
+        storage = OAuthStorage(storage_dir=tmp_path)
+
+        with pytest.raises(OAuthError) as exc_info:
+            ensure_client_registered(
+                http_client=client,
+                region="us",
+                redirect_uri="http://localhost:19284/callback",
+                storage=storage,
+            )
+        assert exc_info.value.code == "OAUTH_REGISTRATION_ERROR"
+
     def test_registration_non_json_response(self, tmp_path: Path) -> None:
         """Verify OAuthError when the 200 response body is HTML, not JSON.
 

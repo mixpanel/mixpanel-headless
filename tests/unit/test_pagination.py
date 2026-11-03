@@ -780,19 +780,40 @@ class TestPaginateAllRetryAfter:
         ["999999", "1e9", "86400", "9" * 400],
         ids=["huge-int", "exponent", "one-day", "too-long-for-float"],
     )
-    def test_oversized_retry_after_is_clamped(
+    def test_oversized_retry_after_raises_without_sleeping(
         self, oauth_credentials: Session, retry_after: str
     ) -> None:
-        """A Retry-After beyond the backoff cap must be clamped, not obeyed.
+        """A Retry-After beyond the backoff cap stops the walk at once.
 
-        Sleeping for a server-chosen day inside a paginator is a hang, so the
-        wait is bounded by the same cap the computed backoff uses.
+        Sleeping for a server-chosen day inside a paginator is a hang, and a
+        retry after the 60-second cap only gets another 429. So the walk raises
+        on the first such 429, with no sleep, and reports at most one hour.
 
         Args:
             oauth_credentials: Session fixture.
             retry_after: Oversized header value under test.
         """
         durations, raised = run_rate_limited_pagination(oauth_credentials, retry_after)
+
+        assert durations == []
+        assert isinstance(raised[0], RateLimitError)
+        assert raised[0].retry_after == 3600
+        assert "so the client stopped retrying" in str(raised[0])
+
+    def test_retry_after_just_over_cap_raises_without_sleeping(
+        self, oauth_credentials: Session
+    ) -> None:
+        """A Retry-After of 61 seconds is over the cap, so the walk stops at once."""
+        durations, raised = run_rate_limited_pagination(oauth_credentials, "61")
+
+        assert durations == []
+        assert isinstance(raised[0], RateLimitError)
+        assert raised[0].retry_after == 61
+        assert "longer than the 60-second retry ceiling" in str(raised[0])
+
+    def test_retry_after_at_cap_still_retries(self, oauth_credentials: Session) -> None:
+        """A Retry-After of exactly 60 seconds is honored and retried."""
+        durations, raised = run_rate_limited_pagination(oauth_credentials, "60")
 
         assert durations == [_BACKOFF_MAX]
         assert raised == []
