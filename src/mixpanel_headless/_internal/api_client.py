@@ -1256,8 +1256,9 @@ class MixpanelAPIClient:
         A retry sent before the server's ``Retry-After`` has passed only gets
         another 429. The client never sleeps longer than
         ``_BACKOFF_MAX_SECONDS``, so a longer ``Retry-After`` ends the loop at
-        once. For example, the Query API sends ``Retry-After: 3600`` when a
-        project reaches its hourly limit. The caller then gets
+        once, even after earlier retries. For example, at a project's hourly
+        limit the Query API sends the time until the next query slot frees,
+        up to 3600 seconds. The caller then gets
         ``RateLimitError.retry_after`` and decides how long to wait.
 
         Args:
@@ -1281,7 +1282,7 @@ class MixpanelAPIClient:
             return (
                 "Rate limit exceeded; the server's Retry-After is longer than "
                 f"the {int(_BACKOFF_MAX_SECONDS)}-second retry ceiling, so the "
-                "request was not retried"
+                "client stopped retrying"
             )
         if attempt >= self._max_retries:
             return "Rate limit exceeded after max retries"

@@ -681,10 +681,12 @@ class RateLimitError(APIError):
     indicates when the request can be retried. The client's retry loops
     report at most 3600 seconds there: Mixpanel rate limits over a rolling
     one-hour window, so a larger server ``Retry-After`` is clamped. The
-    client retries a 429 only when the server asks for a wait of 60 seconds
-    or less. A longer ``Retry-After`` (for example 3600 at the Query API's
-    hourly limit) raises this error after one request, with no retry.
-    Inherits from APIError to provide full request context for debugging.
+    client retries a 429 when its ``Retry-After`` is 60 seconds or less, and
+    with exponential backoff when the header is missing or invalid. A longer
+    ``Retry-After`` stops the retries at once, on the first attempt or after
+    earlier retries; at the Query API's hourly limit, that is the time until
+    the next query slot frees, up to 3600 seconds. Inherits from APIError to
+    provide full request context for debugging.
 
     Example:
         ```python

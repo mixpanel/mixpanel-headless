@@ -4057,9 +4057,10 @@ class TestLongRetryAfterStopsRetrying:
     """A Retry-After longer than the retry ceiling raises at once.
 
     The client never sleeps longer than 60 seconds between attempts. When the
-    server asks for a longer wait (the Query API sends ``Retry-After: 3600``
-    at the hourly limit), a retry after 60 seconds is sent too early. It only
-    gets another 429, and the server logs each one.
+    server asks for a longer wait (at the hourly limit, the Query API sends
+    the time until the next query slot frees, up to 3600 seconds), a retry
+    after 60 seconds is sent too early. It only gets another 429, and the
+    server logs each one.
     """
 
     @staticmethod
@@ -4187,6 +4188,8 @@ class TestLongRetryAfterStopsRetrying:
         assert len(calls) == 2
         assert recorded_sleeps == [10.0]
         assert exc_info.value.retry_after == 3600
+        # One retry already happened, so the message must not say "not retried".
+        assert "so the client stopped retrying" in str(exc_info.value)
 
 
 # =============================================================================

@@ -39,12 +39,15 @@ may include API changes.
 - **A 429 with a long `Retry-After` raises at once.** The client waits at
   most 60 seconds between retries. Before this change, when the server asked
   for a longer wait, the client still retried after 60 seconds, up to
-  `max_retries` times. Each early retry got another 429. At the Query API's
-  hourly limit (`Retry-After: 3600`), one call sent 4 requests and took about
-  3 minutes before it raised `RateLimitError`. Now every retry loop raises
-  `RateLimitError` after the first such 429, with no sleep. The error carries
-  `retry_after`, so the caller decides how long to wait. A 429 whose
-  `Retry-After` is 60 seconds or less, or absent, still retries as before.
+  `max_retries` times, and each early retry got another 429. When the Query
+  API sent `Retry-After: 3600` at the hourly limit, one call sent 4 requests
+  and took about 3 minutes before it raised `RateLimitError`. Now every retry
+  loop raises `RateLimitError` at the first 429 whose `Retry-After` is longer
+  than 60 seconds, with no sleep. The error carries `retry_after`, so the
+  caller decides how long to wait. A 429 whose `Retry-After` is 60 seconds or
+  less, or absent, still retries as before. At the hourly limit, the Query
+  API now sends the time until the next query slot frees (0 when one is
+  already free), so a short wait retries and a long one raises.
 
 ### Removed
 
