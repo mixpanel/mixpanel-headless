@@ -17,12 +17,15 @@ Live (calls Mixpanel API):
 
 from __future__ import annotations
 
+import warnings
 from typing import Annotated
 
 import typer
+from rich.markup import escape as rich_escape
 
 from mixpanel_headless.cli.options import FormatOption, JqOption
 from mixpanel_headless.cli.utils import (
+    err_console,
     get_workspace,
     handle_errors,
     output_result,
@@ -96,6 +99,9 @@ def inspect_properties(
     Calls the Mixpanel API to retrieve property names tracked with an event.
     Shows both custom event properties and default Mixpanel properties.
 
+    If your account cannot read classified data, the classified properties
+    are left out, and a warning on stderr names them.
+
     Output Structure (JSON):
 
         ["country", "browser", "device", "$city", "$region", "plan_type"]
@@ -113,8 +119,17 @@ def inspect_properties(
         --jq 'length'                                     # Count properties
     """
     workspace = get_workspace(ctx)
-    with status_spinner(ctx, "Fetching properties..."):
+    with (
+        status_spinner(ctx, "Fetching properties..."),
+        warnings.catch_warnings(record=True) as caught,
+    ):
+        warnings.simplefilter("always", UserWarning)
         properties = workspace.properties(event)
+    for warning in caught:
+        if issubclass(warning.category, UserWarning):
+            err_console.print(
+                f"[yellow]Warning:[/yellow] {rich_escape(str(warning.message))}"
+            )
     output_result(ctx, properties, format=format, jq_filter=jq_filter)
 
 

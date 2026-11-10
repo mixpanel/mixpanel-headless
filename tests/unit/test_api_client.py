@@ -24,6 +24,7 @@ from mixpanel_headless._internal.api_client import (
     QUERY_API_SERVER_DEADLINE_S,
     MixpanelAPIClient,
     _iter_jsonl_lines,
+    split_event_properties,
 )
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Session
@@ -1012,25 +1013,70 @@ class TestDiscovery:
         assert captured_params["from_date"] == ""
         assert captured_params["to_date"] == ""
 
-    def test_get_event_properties(self, test_credentials: Session) -> None:
-        """Should list event properties from /events/properties/top endpoint."""
+    def test_get_event_property_types(self, test_credentials: Session) -> None:
+        """Should read the property map from the /events/properties/toptypes endpoint.
+
+        ``/events/properties/top`` fails the whole request with a 403 when
+        the project has any classified event property and the account cannot
+        read classified data. ``toptypes`` answers instead and marks each
+        classified property with ``"sensitive": true``.
+        """
         captured_params: dict[str, Any] = {}
         captured_path: str = ""
+        body = {
+            "prop1": {"count": 100, "type": "string"},
+            "email": {"count": 0, "type": "string", "sensitive": True},
+        }
 
         def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the path and params, then answer with the property map."""
             nonlocal captured_path
             captured_path = request.url.path
             for key, value in request.url.params.items():
                 captured_params[key] = value
-            # /events/properties/top returns dict with property names as keys
-            return httpx.Response(200, json={"prop1": 100.0, "prop2": 50.5})
+            return httpx.Response(200, json=body)
 
         with create_mock_client(test_credentials, handler) as client:
-            props = client.get_event_properties("Purchase")
+            types = client.get_event_property_types("Purchase")
 
-        assert captured_path.endswith("/events/properties/top")
+        assert captured_path.endswith("/events/properties/toptypes")
         assert captured_params["event"] == "Purchase"
-        assert set(props) == {"prop1", "prop2"}
+        assert types == body
+
+    def test_get_event_properties(self, test_credentials: Session) -> None:
+        """Should return the sorted names that the account can query.
+
+        A classified property (``sensitive`` with a ``count`` of 0) and a
+        zero-count entry (which ``/events/properties/top`` drops) are left out.
+        """
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Answer with readable, classified, and zero-count properties."""
+            return httpx.Response(
+                200,
+                json={
+                    "zeta": {"count": 5, "type": "string"},
+                    "alpha": {"count": 9, "type": "number"},
+                    "email": {"count": 0, "type": "string", "sensitive": True},
+                    "$event_name": {"count": 0, "type": "string"},
+                },
+            )
+
+        with create_mock_client(test_credentials, handler) as client:
+            assert client.get_event_properties("Purchase") == ["alpha", "zeta"]
+
+    def test_get_event_properties_non_object_response(
+        self, test_credentials: Session
+    ) -> None:
+        """A response that is not an object reads as no properties."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Answer with a list instead of the property map."""
+            return httpx.Response(200, json=[])
+
+        with create_mock_client(test_credentials, handler) as client:
+            assert client.get_event_property_types("Purchase") == {}
+            assert client.get_event_properties("Purchase") == []
 
     def test_get_property_values(self, test_credentials: Session) -> None:
         """Should list property values with limit."""
@@ -1749,48 +1795,231 @@ class TestPublicRequest:
         assert "authorization" in captured_headers
         assert captured_headers["x-custom-header"] == "custom-value"
 
-    def test_request_auto_injects_query_origin(self, test_credentials: Session) -> None:
-        """request() should auto-inject query_origin even when caller omits it.
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://mixpanel.com/api/query/segmentation",
+            "https://mixpanel.com/api/query/engage",
+            "https://mixpanel.com/api/2.0/segmentation",
+            "https://eu.mixpanel.com/api/query/segmentation",
+            "https://example.com/api/query/segmentation",
+        ],
+    )
+    def test_request_adds_query_origin_to_query_api_urls(
+        self, test_credentials: Session, url: str
+    ) -> None:
+        """request() adds query_origin to a Query API URL when the caller omits it.
 
-        Locks the literal value so a future typo or accidental deletion of
-        the telemetry tag is caught at PR time rather than silently
-        corrupting Mixpanel-internal analytics dashboards.
+        That covers the query and engage bases of the client's region, the
+        older ``/api/2.0`` paths on the main host, and a Query API path on
+        another host. Locks the literal value so a future typo or accidental
+        deletion of the telemetry tag is caught at PR time rather than
+        silently corrupting Mixpanel-internal analytics dashboards.
+
+        Args:
+            test_credentials: US service-account session.
+            url: A Query API URL.
         """
         captured_params: dict[str, str] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the query params."""
             captured_params.update(dict(request.url.params))
+            return httpx.Response(200, json={})
+
+        with create_mock_client(test_credentials, handler) as client:
+            client.request("GET", url)
+
+        assert captured_params["query_origin"] == "mixpanel-headless"
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://mixpanel.com/api/app/me",
+            "https://mixpanel.com/api/app/projects/12345/schemas/event/Purchase",
+            "https://eu.mixpanel.com/api/app/me",
+            "https://data.mixpanel.com/api/2.0/export",
+            "https://example.com/v1/data",
+        ],
+    )
+    def test_request_sends_no_query_origin_outside_the_query_api(
+        self, test_credentials: Session, url: str
+    ) -> None:
+        """request() adds no query_origin to App API, export, or other URLs.
+
+        App API endpoints such as ``/me`` refuse unknown query parameters
+        ("Additional properties are not allowed ('query_origin' was
+        unexpected)"), so the escape hatch must not add one, also on the App
+        API host of another region.
+
+        Args:
+            test_credentials: US service-account session.
+            url: A URL outside the Query API.
+        """
+        captured_params: dict[str, str] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the query params."""
+            captured_params.update(dict(request.url.params))
+            return httpx.Response(200, json={})
+
+        with create_mock_client(test_credentials, handler) as client:
+            client.request("GET", url)
+
+        assert "query_origin" not in captured_params
+
+    def test_request_sends_app_api_params_as_given(
+        self, test_credentials: Session
+    ) -> None:
+        """request() sends the caller's params to an App API URL unchanged.
+
+        A list value goes out as a repeated key, which is the form the App
+        API list filters read (for example ``id[]=1&id[]=2``).
+        """
+        captured: list[list[tuple[str, str]]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the query params in order."""
+            captured.append(request.url.params.multi_items())
             return httpx.Response(200, json={})
 
         with create_mock_client(test_credentials, handler) as client:
             client.request(
                 "GET",
-                "https://mixpanel.com/api/app/test",
+                "https://mixpanel.com/api/app/projects/12345/bookmarks",
+                params={"v": "2", "id[]": ["1", "2"]},
             )
 
-        assert captured_params["query_origin"] == "mixpanel-headless"
+        assert captured == [[("v", "2"), ("id[]", "1"), ("id[]", "2")]]
 
     def test_canonical_query_origin_wins_over_caller(
         self, test_credentials: Session
     ) -> None:
         """Caller-supplied ``query_origin`` cannot override the canonical value.
 
-        The telemetry tag is non-negotiable: even if a caller passes a spoofed
-        ``query_origin`` in ``params``, the canonical ``mixpanel-headless``
-        value must win.
+        The telemetry tag is non-negotiable on a Query API URL: even if a
+        caller passes a spoofed ``query_origin`` in ``params``, the canonical
+        ``mixpanel-headless`` value must win.
         """
         captured_params: dict[str, str] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the query params."""
             captured_params.update(dict(request.url.params))
             return httpx.Response(200, json={})
 
         with create_mock_client(test_credentials, handler) as client:
             client.request(
                 "GET",
-                "https://mixpanel.com/api/app/test",
+                "https://mixpanel.com/api/query/segmentation",
                 params={"query_origin": "spoofed-by-caller"},
             )
+
+        assert captured_params["query_origin"] == "mixpanel-headless"
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://mixpanel.com/api/query/events/properties/top",
+            "https://mixpanel.com/api/app/me",
+        ],
+    )
+    def test_request_does_not_change_the_callers_params(
+        self, test_credentials: Session, url: str
+    ) -> None:
+        """request() works on a copy: the caller's params dict stays as it was.
+
+        Args:
+            test_credentials: US service-account session.
+            url: A Query API URL (which gets query_origin) or an App API URL.
+        """
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Answer with an empty object."""
+            return httpx.Response(200, json={})
+
+        params: dict[str, Any] = {"event": "Signup"}
+        with create_mock_client(test_credentials, handler) as client:
+            client.request("GET", url, params=params)
+
+        assert params == {"event": "Signup"}
+
+    def test_request_classifies_urls_by_the_client_region(
+        self, eu_credentials: Session
+    ) -> None:
+        """An EU client tags its Query host and leaves its App API host alone."""
+        seen: dict[str, dict[str, str]] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Record the query params per path."""
+            seen[request.url.path] = dict(request.url.params)
+            return httpx.Response(200, json={})
+
+        with create_mock_client(eu_credentials, handler) as client:
+            client.request("GET", "https://eu.mixpanel.com/api/query/segmentation")
+            client.request("GET", "https://eu.mixpanel.com/api/app/me")
+
+        assert seen["/api/query/segmentation"]["query_origin"] == "mixpanel-headless"
+        assert "query_origin" not in seen["/api/app/me"]
+
+    def test_request_classifies_urls_under_a_base_url_override(
+        self, test_credentials: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With MP_API_BASE_URL set, the override base decides the API family.
+
+        Under the override, ``/api/2.0`` is the export family, so it gets no
+        tag there.
+
+        Args:
+            test_credentials: US service-account session.
+            monkeypatch: Sets the override for this test only.
+        """
+        monkeypatch.setenv("MP_API_BASE_URL", "http://127.0.0.1:8080")
+        seen: dict[str, dict[str, str]] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Record the query params per path."""
+            seen[request.url.path] = dict(request.url.params)
+            return httpx.Response(200, json={})
+
+        with create_mock_client(test_credentials, handler) as client:
+            client.request("GET", "http://127.0.0.1:8080/api/query/segmentation")
+            client.request("GET", "http://127.0.0.1:8080/api/app/me")
+            client.request("GET", "http://127.0.0.1:8080/api/2.0/export")
+
+        assert seen["/api/query/segmentation"]["query_origin"] == "mixpanel-headless"
+        assert "query_origin" not in seen["/api/app/me"]
+        assert "query_origin" not in seen["/api/2.0/export"]
+
+    def test_internal_app_api_call_sends_no_query_origin(
+        self, test_credentials: Session
+    ) -> None:
+        """An internal call to an App API URL (Lexicon schemas) has no query_origin."""
+        captured_params: dict[str, str] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the query params."""
+            captured_params.update(dict(request.url.params))
+            return httpx.Response(200, json={"results": []})
+
+        with create_mock_client(test_credentials, handler) as client:
+            client.get_schemas()
+
+        assert "query_origin" not in captured_params
+
+    def test_internal_query_api_call_keeps_query_origin(
+        self, test_credentials: Session
+    ) -> None:
+        """An internal Query API call still carries the query_origin tag."""
+        captured_params: dict[str, str] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the query params."""
+            captured_params.update(dict(request.url.params))
+            return httpx.Response(200, json={"plan": {"count": 10, "type": "string"}})
+
+        with create_mock_client(test_credentials, handler) as client:
+            client.get_event_properties("Signup")
 
         assert captured_params["query_origin"] == "mixpanel-headless"
 
@@ -4530,3 +4759,43 @@ class TestCodedExportProfilesCodes:
                 list(client.export_profiles(include_all_users=True))
             assert isinstance(excinfo.value, ParamValidationError)
             assert excinfo.value.code == "AC4_INCLUDE_ALL_USERS_REQUIRES_COHORT"
+
+
+class TestSplitEventProperties:
+    """split_event_properties() separates queryable and classified names."""
+
+    @pytest.mark.parametrize(
+        ("types", "expected"),
+        [
+            ({}, ([], [])),
+            (
+                {
+                    "plan": {"count": 5, "type": "string"},
+                    "email": {"count": 0, "type": "string", "sensitive": True},
+                },
+                (["plan"], ["email"]),
+            ),
+            # toptypes keeps a zero-count $event_name for an event with no
+            # data; /events/properties/top drops it, so the split drops it.
+            ({"$event_name": {"count": 0, "type": "string"}}, ([], [])),
+            # A sensitive flag with a real count is never hidden.
+            ({"ssn": {"count": 7, "sensitive": True}}, (["ssn"], [])),
+            # A classified entry without a count is still classified.
+            ({"phone": {"sensitive": True}}, ([], ["phone"])),
+            # An entry without a count, or not an object, stays queryable.
+            ({"b": {"type": "string"}, "a": 3}, (["a", "b"], [])),
+        ],
+        ids=["empty", "mixed", "zero-count", "sensitive-with-count", "no-count", "odd"],
+    )
+    def test_split(
+        self,
+        types: dict[str, Any],
+        expected: tuple[list[str], list[str]],
+    ) -> None:
+        """Each answer splits as the server's marking means.
+
+        Args:
+            types: A toptypes answer.
+            expected: The (queryable, classified) names.
+        """
+        assert split_event_properties(types) == expected

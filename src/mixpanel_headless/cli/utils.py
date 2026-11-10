@@ -316,10 +316,13 @@ def _wrap_errors(func: F, *, redact_request: bool) -> F:
                     err_console.print(
                         f"  [dim]{rich_escape(str(key))}:[/dim] {rich_escape(val_str)}"
                     )
-            # Provide contextual hints
+            # Provide contextual hints. A 403 reaches users of every account
+            # type, so the hint must not assume a service account.
             if e.status_code == 403:
                 err_console.print(
-                    "[yellow]Hint:[/yellow] Check service account permissions."
+                    "[yellow]Hint:[/yellow] The server refused this request for "
+                    "the current account. Check the account's role and data "
+                    "access in this project, or ask a project admin."
                 )
             raise typer.Exit(ExitCode.INVALID_ARGS) from None
         except ServerError as e:

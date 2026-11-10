@@ -534,8 +534,12 @@ class TestCodedResponseValidationCodes:
         self._assert_coded(excinfo.value)
 
     def test_get_property_definitions_invalid_item_raises_coded_error(self) -> None:
-        """Lexicon-definitions family: invalid property definition is wrapped."""
-        ws = _make_results_workspace([{}])
+        """Lexicon-definitions family: invalid property definition is wrapped.
+
+        A name lookup answers with one object; this one has an ``id`` (so it
+        is not the unknown-name placeholder) but no ``name``.
+        """
+        ws = _make_results_workspace({"id": 5})
         with pytest.raises(ResponseValidationError) as excinfo:
             ws.get_property_definitions(names=["p"])
         self._assert_coded(excinfo.value)

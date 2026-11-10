@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
+import httpx
 from typer.testing import CliRunner
 
+from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless.cli.main import app
 from mixpanel_headless.types import (
     FunnelInfo,
@@ -16,6 +18,8 @@ from mixpanel_headless.types import (
     SavedCohort,
     TopEvent,
 )
+from mixpanel_headless.workspace import Workspace
+from tests.conftest import make_session
 
 
 class TestInspectEvents:
@@ -75,6 +79,57 @@ class TestInspectProperties:
         data = json.loads(result.stdout)
         assert data == ["prop1", "prop2", "prop3"]
         mock_workspace.properties.assert_called_once_with("Sign Up")
+
+    def test_classified_properties_are_left_out_with_a_warning(
+        self, cli_runner: CliRunner
+    ) -> None:
+        """Classified properties do not fail the command: it lists the rest.
+
+        Runs the real client and discovery service on a mock transport that
+        answers ``toptypes`` the way the server answers an account without
+        classified-data access.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer the toptypes request with one classified property.
+
+            Args:
+                request: The properties request.
+
+            Returns:
+                The property map.
+            """
+            assert request.url.path == "/api/query/events/properties/toptypes"
+            return httpx.Response(
+                200,
+                json={
+                    "plan": {"count": 50, "type": "string"},
+                    "amount": {"count": 9, "type": "number"},
+                    "email": {"count": 0, "type": "string", "sensitive": True},
+                },
+            )
+
+        session = make_session(project_id="12345", region="us", oauth_token="t")
+        client = MixpanelAPIClient(
+            session=session, _transport=httpx.MockTransport(handler)
+        )
+        workspace = Workspace(session=session, _api_client=client)
+
+        with patch(
+            "mixpanel_headless.cli.commands.inspect.get_workspace",
+            return_value=workspace,
+        ):
+            result = cli_runner.invoke(
+                app,
+                ["inspect", "properties", "--event", "Purchase", "--format", "json"],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout) == ["amount", "plan"]
+        assert "Warning:" in result.stderr
+        assert "1 property of event 'Purchase' is classified" in result.stderr
+        assert "email" in result.stderr
+        assert "UserWarning" not in result.stderr
 
 
 class TestInspectValues:

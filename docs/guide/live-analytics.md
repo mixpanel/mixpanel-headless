@@ -555,6 +555,8 @@ client.request(
 
 Authentication is handled automatically — the client adds the proper `Authorization` header to all requests.
 
+The client adds no other parameters, with one exception: a Query API URL (an `/api/query/...` or older `/api/2.0/...` path, other than your region's export host) also gets the `query_origin` telemetry parameter. App API URLs (`/api/app/...`) get exactly the parameters you pass, because some App API endpoints refuse an unknown parameter. A list value goes out as a repeated key: `params={"id[]": ["1", "2"]}` sends `id[]=1&id[]=2`. The client does not change the dict that you pass.
+
 The client also exposes `project_id` and `region` properties, which are useful when constructing URLs for APIs that require these values in the path.
 
 ## Share a Result as a Link

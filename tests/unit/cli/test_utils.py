@@ -480,6 +480,32 @@ class TestHandleErrors:
         assert "permission" in captured.err.lower()
         assert "403" in captured.err or "Forbidden" in captured.err
 
+    def test_403_hint_does_not_assume_a_service_account(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The 403 hint fits every account type, not only service accounts.
+
+        An OAuth user who saw "Check service account permissions." had no
+        service account to check.
+        """
+
+        @handle_errors
+        def permission_denied() -> None:
+            """Raise a 403 QueryError, as a refused request does."""
+            raise QueryError(
+                "Permission denied",
+                status_code=403,
+                response_body={"error": "Permission denied"},
+            )
+
+        with pytest.raises(click.exceptions.Exit):
+            permission_denied()
+
+        captured = capsys.readouterr()
+        assert "service account" not in captured.err.lower()
+        assert "Hint:" in captured.err
+        assert "role" in captured.err
+
     def test_event_not_found_error_with_suggestions(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

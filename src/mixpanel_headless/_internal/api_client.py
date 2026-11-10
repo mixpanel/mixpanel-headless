@@ -21,7 +21,7 @@ import os
 import random
 import re
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal, TypeGuard
 from urllib.parse import quote, urljoin, urlsplit, urlunsplit
@@ -116,6 +116,93 @@ def _explicit_workspace_params(workspace_id: int | None) -> dict[str, Any] | Non
     if workspace_id is None:
         return None
     return {"workspace_id": workspace_id}
+
+
+# Most IDs that one request of an ``id[]`` list filter carries. Each
+# percent-encoded ``id%5B%5D=12345678&`` adds about 18 bytes to the request
+# line, and the App API server refuses a request line longer than about 4 KB
+# (the gunicorn default), so 100 IDs leave room for the path and the other
+# params.
+_ID_FILTER_BATCH_SIZE = 100
+
+
+def _id_filter_params(
+    ids: Sequence[int] | None,
+    base: Mapping[str, str] | None = None,
+) -> list[dict[str, str | list[str]]]:
+    """Build the query params of each request of an ID-filtered list call.
+
+    The bookmarks, dashboards, and cohorts list endpoints filter by ID only
+    through a repeated ``id[]`` parameter. They ignore ``ids=1,2`` (bookmarks
+    and cohorts then return every row; dashboards refuses it with a 400). A
+    long ID list goes out in several requests (see ``_ID_FILTER_BATCH_SIZE``),
+    and a repeated ID is sent once, so no row comes back twice.
+
+    Args:
+        ids: The IDs to filter by; ``None`` or empty means no ID filter.
+        base: The other params, repeated on every request.
+
+    Returns:
+        ``[base]`` (one unfiltered request) when there are no IDs; otherwise
+        one dict per batch of at most ``_ID_FILTER_BATCH_SIZE`` distinct IDs,
+        in the order of their first appearance, each ``base`` plus ``id[]``.
+
+    Example:
+        ```python
+        _id_filter_params([7, 5, 7], {"v": "2"})
+        # [{"v": "2", "id[]": ["7", "5"]}]
+        _id_filter_params(None, {"v": "2"})
+        # [{"v": "2"}]
+        ```
+    """
+    params: dict[str, str | list[str]] = dict(base or {})
+    if not ids:
+        return [params]
+    unique = [str(i) for i in dict.fromkeys(ids)]
+    return [
+        {**params, "id[]": unique[start : start + _ID_FILTER_BATCH_SIZE]}
+        for start in range(0, len(unique), _ID_FILTER_BATCH_SIZE)
+    ]
+
+
+def split_event_properties(types: Mapping[str, Any]) -> tuple[list[str], list[str]]:
+    """Split a ``toptypes`` answer into queryable and classified property names.
+
+    For an account without access to classified data, the server marks
+    each classified property with ``"sensitive": true`` and sets its
+    ``count`` to 0. A property is classified here only when both hold, so a
+    ``sensitive`` flag with a real count is never hidden. ``toptypes`` also
+    keeps other entries with a ``count`` of 0 (for example ``$event_name``
+    for an event that has no data), which ``/events/properties/top`` drops;
+    they are dropped here too.
+
+    Args:
+        types: The ``toptypes`` answer: property name mapped to its info.
+
+    Returns:
+        ``(queryable, classified)``, each sorted. A name whose info is not
+        an object counts as queryable.
+
+    Example:
+        ```python
+        split_event_properties({
+            "plan": {"count": 5, "type": "string"},
+            "email": {"count": 0, "type": "string", "sensitive": True},
+            "$event_name": {"count": 0, "type": "string"},
+        })
+        # (["plan"], ["email"])
+        ```
+    """
+    queryable: list[str] = []
+    classified: list[str] = []
+    for name, info in types.items():
+        if not isinstance(info, dict):
+            queryable.append(name)
+        elif info.get("sensitive") is True and not info.get("count"):
+            classified.append(name)
+        elif info.get("count") != 0:
+            queryable.append(name)
+    return sorted(queryable), sorted(classified)
 
 
 def _error_message(response_body: str | dict[str, Any] | None, default: str) -> str:
@@ -513,6 +600,18 @@ def _endpoints_for(region: str) -> dict[str, str]:
 # classified it; keeping it here preserves that behaviour exactly.
 _WORKSPACE_SCOPED_FAMILIES = frozenset({"query", "engage"})
 
+# Families that get the ``query_origin`` telemetry parameter: the Query API
+# (engage lives under its prefix). App API endpoints such as ``/me`` refuse
+# unknown query parameters ("Additional properties are not allowed"), and the
+# raw export stream never sends the tag, so no other family gets it. See
+# ``_wants_query_origin`` for URLs outside every family of the region.
+_QUERY_ORIGIN_FAMILIES = frozenset({"query", "engage"})
+
+# Path prefixes of the Query API on any host. The server routes both the
+# current ``/api/query`` paths and the older ``/api/2.0`` paths to the Query
+# API, which reads ``query_origin`` as the traffic source.
+_QUERY_API_PATH_PREFIXES = ("/api/query", "/api/2.0")
+
 
 def _api_family_for(url: str, endpoints: Mapping[str, str]) -> str | None:
     """Classify ``url`` by the API family whose base is its longest prefix.
@@ -548,6 +647,43 @@ def _api_family_for(url: str, endpoints: Mapping[str, str]) -> str | None:
         if len(base) > best_len and url.startswith(base):
             best, best_len = family, len(base)
     return best
+
+
+def _wants_query_origin(url: str, endpoints: Mapping[str, str]) -> bool:
+    """Return whether a request to ``url`` gets the ``query_origin`` parameter.
+
+    A URL under the query or engage base of ``endpoints`` gets it, and a URL
+    under the App API or export base does not. A URL under no base (another
+    region's host, an older ``/api/2.0`` Query API path on the main host, or
+    a foreign host) gets it only when its path is a Query API path, so an
+    App API URL of another region never gets it.
+
+    Args:
+        url: The full request URL.
+        endpoints: A family → base-URL table, normally from
+            :func:`_endpoints_for`.
+
+    Returns:
+        ``True`` when the request should carry ``query_origin``.
+
+    Example:
+        ```python
+        _wants_query_origin("https://mixpanel.com/api/query/insights", ENDPOINTS["us"])
+        # True
+        _wants_query_origin("https://mixpanel.com/api/2.0/segmentation", ENDPOINTS["us"])
+        # True
+        _wants_query_origin("https://mixpanel.com/api/app/me", ENDPOINTS["eu"])
+        # False
+        ```
+    """
+    family = _api_family_for(url, endpoints)
+    if family is not None:
+        return family in _QUERY_ORIGIN_FAMILIES
+    path = urlsplit(url).path
+    return any(
+        path == prefix or path.startswith(f"{prefix}/")
+        for prefix in _QUERY_API_PATH_PREFIXES
+    )
 
 
 _VALID_REGIONS: tuple[Region, ...] = ("us", "eu", "in")
@@ -1263,6 +1399,12 @@ class MixpanelAPIClient:
         request(). Handles rate limiting with exponential backoff and error
         response parsing.
 
+        A Query API URL gets the canonical ``query_origin`` parameter,
+        which replaces any caller value (see :func:`_wants_query_origin`).
+        App API and export URLs, and other paths, go out with the given
+        params only. The method works on a copy of ``params``, so the
+        caller's dict is never changed.
+
         Args:
             method: HTTP method (GET, POST, etc.).
             url: Full URL to request.
@@ -1284,9 +1426,9 @@ class MixpanelAPIClient:
         """
         client = self._ensure_client()
         request_body = json_data or form_data
-        if params is None:
-            params = {}
-        params["query_origin"] = QUERY_ORIGIN
+        params = dict(params) if params else {}
+        if _wants_query_origin(url, _endpoints_for(self._session.account.region)):
+            params["query_origin"] = QUERY_ORIGIN
         request_headers = self._request_headers(headers)
 
         for attempt in range(self._max_retries + 1):
@@ -1477,7 +1619,17 @@ class MixpanelAPIClient:
         """Make an authenticated request to any Mixpanel API endpoint.
 
         This is the escape hatch for calling Mixpanel APIs not covered by the
-        Workspace class. Authentication is handled automatically.
+        Workspace class. Authentication is handled automatically. The method
+        adds no ``project_id`` and no ``workspace_id``; put them in ``url``
+        or ``params`` yourself.
+
+        A Query API URL (an ``/api/query/...`` or older ``/api/2.0/...``
+        path, other than the export host of your region) gets the
+        ``query_origin`` telemetry parameter. App API URLs (``/api/app/...``), export URLs,
+        and other paths get exactly the params you pass, because some App
+        API endpoints refuse an unknown query parameter. A list value in
+        ``params`` goes out as a repeated key (``{"id[]": ["1", "2"]}``
+        sends ``id[]=1&id[]=2``). Your ``params`` dict is not changed.
 
         Args:
             method: HTTP method (GET, POST, PUT, DELETE, etc.).
@@ -1498,13 +1650,15 @@ class MixpanelAPIClient:
             MixpanelHeadlessError: Network/connection errors.
 
         Example:
-            Get event schema from the Lexicon API::
-
-                client = ws.api
-                schema = client.request(
-                    "GET",
-                    f"https://mixpanel.com/api/app/projects/{client.project_id}/schemas/event/Purchase"
-                )
+            ```python
+            client = ws.api
+            me = client.request("GET", "https://mixpanel.com/api/app/me")
+            schema = client.request(
+                "GET",
+                f"https://mixpanel.com/api/app/projects/{client.project_id}"
+                "/schemas/event/Purchase",
+            )
+            ```
         """
         request_headers = {"Authorization": self._get_auth_header()}
         if headers:
@@ -1759,7 +1913,7 @@ class MixpanelAPIClient:
         method: str,
         path: str,
         *,
-        params: dict[str, str] | None = None,
+        params: Mapping[str, str | list[str]] | None = None,
         json_body: dict[str, Any] | None = None,
         form_body: dict[str, str] | None = None,
         timeout: float | None = None,
@@ -1774,7 +1928,9 @@ class MixpanelAPIClient:
         Args:
             method: HTTP method (GET, POST, PATCH, DELETE, etc.).
             path: API path (e.g., ``/projects/12345/dashboards``).
-            params: Optional query parameters.
+            params: Optional query parameters. A list value goes out as a
+                repeated key (``{"id[]": ["1", "2"]}`` sends
+                ``id[]=1&id[]=2``).
             json_body: Optional JSON request body. Mutually exclusive with
                 ``form_body``.
             form_body: Optional ``application/x-www-form-urlencoded`` request
@@ -1837,7 +1993,7 @@ class MixpanelAPIClient:
 
         # Pass through caller-supplied params only (no query_origin —
         # some App API endpoints reject unknown query parameters).
-        request_params: dict[str, str] = {}
+        request_params: dict[str, str | list[str]] = {}
         if params:
             request_params.update(params)
 
@@ -2998,25 +3154,70 @@ class MixpanelAPIClient:
             return [str(e) for e in response]
         return []
 
-    def get_event_properties(self, event: str) -> list[str]:
-        """List properties for a specific event.
+    def get_event_property_types(self, event: str) -> dict[str, Any]:
+        """List the properties of one event, with their top type.
+
+        Calls ``GET /api/query/events/properties/toptypes``, the endpoint
+        that the Mixpanel web app uses for its property menus. It does not
+        use ``/events/properties/top``: for an account without access to
+        classified data, that endpoint fails the whole request with a 403
+        ("... marked classified ...") for every event of a project that has
+        any classified event property. ``toptypes`` answers instead, and
+        marks each classified property with ``"sensitive": true`` and a
+        ``count`` of 0. Use :func:`split_event_properties` to separate the
+        names that the account can query from the classified ones.
 
         Args:
             event: Event name.
 
         Returns:
-            List of property name strings.
+            Property name mapped to its info dict (``count``, ``type``, and
+            ``sensitive`` for a classified property that the account cannot
+            read). An empty dict when the response is not an object.
 
         Raises:
             AuthenticationError: Invalid credentials.
             QueryError: Invalid event name.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session=session) as client:
+                types = client.get_event_property_types("Purchase")
+                # {"amount": {"count": 9, "type": "number"}, ...}
+            ```
         """
-        url = self._build_url("query", "/events/properties/top")
+        url = self._build_url("query", "/events/properties/toptypes")
         response = self._request("GET", url, params={"event": event})
-        # Response is a dict with property names as keys and counts as values
         if isinstance(response, dict):
-            return list(response.keys())
-        return []
+            return response
+        return {}
+
+    def get_event_properties(self, event: str) -> list[str]:
+        """List the property names of one event that the account can query.
+
+        Reads :meth:`get_event_property_types` and keeps the names that
+        :func:`split_event_properties` counts as queryable. A classified
+        property that the account cannot read is left out with no warning;
+        :meth:`Workspace.properties` warns about it.
+
+        Args:
+            event: Event name.
+
+        Returns:
+            Alphabetically sorted property names.
+
+        Raises:
+            AuthenticationError: Invalid credentials.
+            QueryError: Invalid event name.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session=session) as client:
+                names = client.get_event_properties("Purchase")
+                # ["amount", "plan"]
+            ```
+        """
+        return split_event_properties(self.get_event_property_types(event))[0]
 
     def get_property_values(
         self,
@@ -4249,6 +4450,9 @@ class MixpanelAPIClient:
         """List dashboards for the current project/workspace.
 
         Calls ``GET /api/app/projects/{pid}/dashboards`` (or workspace-scoped).
+        The ID filter goes out as a repeated ``id[]`` parameter, in batches
+        for a long list (see :func:`_id_filter_params`). The endpoint's
+        request schema refuses any other parameter with a 400.
 
         Args:
             ids: Optional list of dashboard IDs to filter. When provided, only
@@ -4273,16 +4477,16 @@ class MixpanelAPIClient:
             ```
         """
         path = self.maybe_scoped_path("dashboards")
-        params: dict[str, str] = {}
-        if ids:
-            params["ids"] = ",".join(str(i) for i in ids)
-        result = self.app_request("GET", path, params=params if params else None)
-        if not isinstance(result, list):
-            raise MixpanelHeadlessError(
-                f"Unexpected response from list_dashboards: "
-                f"expected list, got {type(result).__name__}",
-            )
-        return result
+        rows: list[dict[str, Any]] = []
+        for params in _id_filter_params(ids):
+            result = self.app_request("GET", path, params=params)
+            if not isinstance(result, list):
+                raise MixpanelHeadlessError(
+                    f"Unexpected response from list_dashboards: "
+                    f"expected list, got {type(result).__name__}",
+                )
+            rows.extend(result)
+        return rows
 
     def create_dashboard(self, body: dict[str, Any]) -> dict[str, Any]:
         """Create a new dashboard.
@@ -5034,6 +5238,11 @@ class MixpanelAPIClient:
         and other report types. Supports filtering by type and by explicit
         bookmark IDs.
 
+        The ID filter goes out as a repeated ``id[]`` parameter, in batches
+        for a long list (see :func:`_id_filter_params`). That is the only
+        form the endpoint reads: it ignores a comma list such as ``ids=1,2``
+        and returns every report of the project.
+
         Args:
             bookmark_type: Optional report-type filter (e.g., ``"insights"``,
                 ``"funnels"``, ``"retention"``).
@@ -5048,31 +5257,34 @@ class MixpanelAPIClient:
             QueryError: Invalid parameters (400/403).
             RateLimitError: Rate limit exceeded after max retries (429).
             ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: The response is neither a list nor the v2
+                envelope.
 
         Example:
             ```python
             with MixpanelAPIClient(credentials) as client:
                 bookmarks = client.list_bookmarks_v2(bookmark_type="funnels")
+                picked = client.list_bookmarks_v2(ids=[28584863, 28584870])
             ```
         """
         path = self.maybe_scoped_path("bookmarks")
-        params: dict[str, str] = {"v": "2"}
+        base = {"v": "2"}
         if bookmark_type:
-            params["type"] = bookmark_type
-        if ids:
-            params["ids"] = ",".join(str(i) for i in ids)
-        result = self.app_request("GET", path, params=params)
-        # v2 envelope: {"results": {"results": [...]}}
-        if isinstance(result, dict) and "results" in result:
-            inner = result["results"]
-            if isinstance(inner, list):
-                return inner
-        if isinstance(result, list):
-            return result
-        raise MixpanelHeadlessError(
-            f"Unexpected response from list_bookmarks_v2: "
-            f"expected list or v2 envelope, got {type(result).__name__}",
-        )
+            base["type"] = bookmark_type
+        rows: list[dict[str, Any]] = []
+        for params in _id_filter_params(ids, base):
+            result = self.app_request("GET", path, params=params)
+            # v2 envelope: {"results": {"results": [...]}}
+            if isinstance(result, dict) and isinstance(result.get("results"), list):
+                rows.extend(result["results"])
+            elif isinstance(result, list):
+                rows.extend(result)
+            else:
+                raise MixpanelHeadlessError(
+                    f"Unexpected response from list_bookmarks_v2: "
+                    f"expected list or v2 envelope, got {type(result).__name__}",
+                )
+        return rows
 
     def create_bookmark(self, body: dict[str, Any]) -> dict[str, Any]:
         """Create a new bookmark (saved report).
@@ -5665,6 +5877,11 @@ class MixpanelAPIClient:
     ) -> list[dict[str, Any]]:
         """List cohorts via the App API.
 
+        The ID filter goes out as a repeated ``id[]`` parameter, in batches
+        for a long list (see :func:`_id_filter_params`). That is the only
+        form the endpoint reads: it ignores a comma list such as ``ids=1,2``
+        and returns every cohort.
+
         Args:
             data_group_id: Optional data group filter.
             ids: Optional list of cohort IDs to retrieve.
@@ -5677,6 +5894,7 @@ class MixpanelAPIClient:
             RateLimitError: Rate limit exceeded after max retries (429).
             QueryError: Bad request (400/404).
             ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: The response is not a list.
 
         Example:
             ```python
@@ -5685,18 +5903,17 @@ class MixpanelAPIClient:
             ```
         """
         path = self.maybe_scoped_path("cohorts")
-        params: dict[str, str] = {}
-        if data_group_id:
-            params["data_group_id"] = data_group_id
-        if ids:
-            params["ids"] = ",".join(str(i) for i in ids)
-        result = self.app_request("GET", path, params=params if params else None)
-        if not isinstance(result, list):
-            raise MixpanelHeadlessError(
-                f"Unexpected response from list_cohorts_app: "
-                f"expected list, got {type(result).__name__}",
-            )
-        return result
+        base = {"data_group_id": data_group_id} if data_group_id else None
+        rows: list[dict[str, Any]] = []
+        for params in _id_filter_params(ids, base):
+            result = self.app_request("GET", path, params=params)
+            if not isinstance(result, list):
+                raise MixpanelHeadlessError(
+                    f"Unexpected response from list_cohorts_app: "
+                    f"expected list, got {type(result).__name__}",
+                )
+            rows.extend(result)
+        return rows
 
     def get_cohort(self, cohort_id: int) -> dict[str, Any]:
         """Get a single cohort by ID via the App API.
@@ -7428,7 +7645,7 @@ class MixpanelAPIClient:
         params: dict[str, str | list[str]] = {}
         if names is not None:
             params["name[]"] = names
-        result = self.app_request("GET", path, params=params)  # type: ignore[arg-type]
+        result = self.app_request("GET", path, params=params)
         if not isinstance(result, list):
             raise MixpanelHeadlessError(
                 f"Unexpected response from event definitions: "
@@ -7590,75 +7807,6 @@ class MixpanelAPIClient:
             )
         return result
 
-    def _property_definitions(
-        self,
-        *,
-        names: list[str] | None = None,
-        resource_type: str | None = None,
-        include_events: bool = False,
-        include_density: bool = False,
-        include_custom: bool | None = None,
-        include_zero_counts: bool | None = None,
-    ) -> list[dict[str, Any]]:
-        """Fetch property definitions from the Lexicon (shared core).
-
-        Single implementation behind ``get_property_definitions`` (by-name
-        lookup) and ``list_property_definitions`` (bulk enumerate). It owns the
-        endpoint path, the ``resourceType`` contract, and the bare-list shape
-        validation, so the two public methods encode the wire format in exactly
-        one place.
-
-        The App API accepts only the camelCase ``resourceType`` query param with
-        a capitalized value (``"Event"`` / ``"User"``); a lowercase value is
-        rejected and the snake_case ``resource_type`` param is silently ignored
-        (both verified live), so caller-supplied spellings are normalized via
-        :func:`_canonical_resource_type`. The boolean ``include_*`` toggles are
-        sent only when not ``None``, preserving each public method's wire format.
-
-        Args:
-            names: Property names to look up; ``None`` omits the ``name[]`` filter
-                (whole-project enumerate).
-            resource_type: Resource family filter, normalized to the canonical
-                value. ``None`` omits the param (the API then defaults to events).
-            include_events: Attach the events each property appears on
-                (``includeEvents``).
-            include_density: Request the property-level density (``includeDensity``).
-            include_custom: Include custom (computed) properties (``includeCustom``);
-                omitted when ``None``.
-            include_zero_counts: Include properties with no recorded data points
-                (``includeZeroCounts``); omitted when ``None``.
-
-        Returns:
-            List of property definition dictionaries.
-
-        Raises:
-            AuthenticationError: Invalid credentials (401).
-            QueryError: API error (400/404), including an invalid resource type.
-            ServerError: Server-side errors (5xx).
-            MixpanelHeadlessError: Network/connection errors, or a non-list response.
-        """
-        path = self.maybe_scoped_path("data-definitions/properties/")
-        params: dict[str, str | list[str]] = {}
-        if names is not None:
-            params["name[]"] = names
-        if resource_type is not None:
-            params["resourceType"] = _canonical_resource_type(resource_type)
-        if include_events:
-            params["includeEvents"] = "true"
-        if include_density:
-            params["includeDensity"] = "true"
-        if include_custom is not None:
-            params["includeCustom"] = "true" if include_custom else "false"
-        if include_zero_counts is not None:
-            params["includeZeroCounts"] = "true" if include_zero_counts else "false"
-        result = self.app_request("GET", path, params=params)  # type: ignore[arg-type]
-        if not isinstance(result, list):
-            raise MixpanelHeadlessError(
-                f"Unexpected response from property definitions: "
-                f"expected list, got {type(result).__name__}",
-            )
-        return result
-
     def get_property_definitions(
         self,
         names: list[str],
@@ -7667,29 +7815,63 @@ class MixpanelAPIClient:
         """Get property definitions by name from the Lexicon.
 
         Calls ``GET /api/app/projects/{pid}/data-definitions/properties/``
-        (optionally workspace-scoped).
+        (optionally workspace-scoped) once per distinct name, with the
+        singular ``name`` parameter. That is the only name filter the endpoint
+        reads: it ignores ``name[]`` and returns every property of the
+        project. A name lookup answers with one definition object, and the
+        match is exact.
+
+        A name that the project neither tracks nor defines in Lexicon comes
+        back as an empty placeholder (``id`` 0 and no ``count``). It is left
+        out of the result, as the list form of the endpoint leaves it out. A
+        property with tracked data but no Lexicon row also has ``id`` 0, but
+        it carries a ``count``, so it stays.
+
+        The App API accepts only the camelCase ``resourceType`` query param
+        with a capitalized value (``"Event"`` / ``"User"``), so a caller's
+        spelling is normalized via :func:`_canonical_resource_type`.
 
         Args:
-            names: List of property names to look up.
+            names: Property names to look up. A repeated name is looked up
+                once. An empty list sends no request.
             resource_type: Optional resource type filter (e.g. ``"event"`` /
                 ``"user"``); normalized to the App API's canonical value.
+                Without it, the server looks up the event property.
 
         Returns:
-            List of property definition dictionaries.
+            One property definition dictionary per name that exists, in the
+            order of ``names``.
 
         Raises:
             AuthenticationError: Invalid credentials (401).
-            QueryError: API error (400/404).
+            QueryError: API error (400/404), including an invalid resource type.
             ServerError: Server-side errors (5xx).
-            MixpanelHeadlessError: Network/connection errors.
+            MixpanelHeadlessError: Network/connection errors, or a lookup that
+                does not answer with one definition object.
 
         Example:
             ```python
             with MixpanelAPIClient(credentials) as client:
                 props = client.get_property_definitions(["plan", "country"])
+                cities = client.get_property_definitions(["$city"], "user")
             ```
         """
-        return self._property_definitions(names=names, resource_type=resource_type)
+        path = self.maybe_scoped_path("data-definitions/properties/")
+        base: dict[str, str] = {}
+        if resource_type is not None:
+            base["resourceType"] = _canonical_resource_type(resource_type)
+        definitions: list[dict[str, Any]] = []
+        for name in dict.fromkeys(names):
+            result = self.app_request("GET", path, params={"name": name, **base})
+            if not isinstance(result, dict):
+                raise MixpanelHeadlessError(
+                    f"Unexpected response from property definitions: expected "
+                    f"one definition object, got {type(result).__name__}",
+                )
+            if result.get("id") == 0 and "count" not in result:
+                continue  # placeholder: neither tracked nor defined in Lexicon
+            definitions.append(result)
+        return definitions
 
     def list_property_definitions(
         self,
@@ -7709,6 +7891,14 @@ class MixpanelAPIClient:
         event<->property relationship graph (one request for the project, rather
         than a schema lookup per entity).
 
+        The App API accepts only the camelCase ``resourceType`` query param with
+        a capitalized value (``"Event"`` / ``"User"``); a lowercase value is
+        rejected and the snake_case ``resource_type`` param is silently ignored
+        (both verified live), so caller-supplied spellings are normalized via
+        :func:`_canonical_resource_type`. The server reads ``includeEvents``
+        and ``includeCustom`` as raw strings, so any value, even ``"false"``,
+        turns them on; each toggle goes out only when it is true.
+
         Args:
             resource_type: Property family — ``"Event"`` or ``"User"``.
             include_events: Attach the events each property appears on.
@@ -7725,7 +7915,8 @@ class MixpanelAPIClient:
             AuthenticationError: Invalid credentials (401).
             QueryError: API error (400/404).
             ServerError: Server-side errors (5xx).
-            MixpanelHeadlessError: Network/connection errors.
+            MixpanelHeadlessError: Network/connection errors, or a non-list
+                response.
 
         Example:
             ```python
@@ -7734,13 +7925,24 @@ class MixpanelAPIClient:
                 rows[0]["events"]  # [{"name": "Purchase"}, ...]
             ```
         """
-        return self._property_definitions(
-            resource_type=resource_type,
-            include_events=include_events,
-            include_density=include_density,
-            include_custom=include_custom,
-            include_zero_counts=include_zero_counts,
-        )
+        path = self.maybe_scoped_path("data-definitions/properties/")
+        params: dict[str, str] = {
+            "resourceType": _canonical_resource_type(resource_type),
+            "includeZeroCounts": "true" if include_zero_counts else "false",
+        }
+        if include_events:
+            params["includeEvents"] = "true"
+        if include_density:
+            params["includeDensity"] = "true"
+        if include_custom:
+            params["includeCustom"] = "true"
+        result = self.app_request("GET", path, params=params)
+        if not isinstance(result, list):
+            raise MixpanelHeadlessError(
+                f"Unexpected response from property definitions: "
+                f"expected list, got {type(result).__name__}",
+            )
+        return result
 
     def list_per_event_properties(self) -> list[dict[str, Any]]:
         """List every event with the properties observed on it (query API).

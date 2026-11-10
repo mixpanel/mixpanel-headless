@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, NoReturn
 if TYPE_CHECKING:
     from mixpanel_headless._internal.me import MeService
 
-from mixpanel_headless._internal.api_client import MixpanelAPIClient
+from mixpanel_headless._internal.api_client import MixpanelAPIClient, _error_message
 from mixpanel_headless._internal.auth.account import Account as _AccountUnion
 from mixpanel_headless._internal.auth.resolver import (
     env_workspace_id as _env_workspace_id,
@@ -514,6 +514,35 @@ def _flow_mode_from_params(params: dict[str, Any]) -> str:
     if isinstance(chart_type, str):
         return _FLOW_CHART_TYPE_TO_MODE.get(chart_type, "sankey")
     return "sankey"
+
+
+# Most targets that an explained edit refusal reads one by one to name the
+# refused entities and their creators. A larger batch gets the explanation
+# without names, so the error never waits for many reads.
+_EDIT_REFUSAL_READ_LIMIT = 10
+
+
+def _describe_saved_entity(row: dict[str, Any]) -> str:
+    """Name a saved metric or behavior row for an error message.
+
+    Args:
+        row: The entity row as the App API returns it.
+
+    Returns:
+        The id, the quoted name, and the creator's email when the row has it.
+
+    Example:
+        ```python
+        _describe_saved_entity(
+            {"id": 7, "name": "Signups", "created_by": {"email": "a@b.co"}}
+        )
+        # "7 ('Signups', created by a@b.co)"
+        ```
+    """
+    creator = row.get("created_by")
+    email = creator.get("email") if isinstance(creator, dict) else None
+    by = f", created by {email}" if email else ""
+    return f"{row.get('id')} ({row.get('name')!r}{by})"
 
 
 class Workspace:
@@ -1174,9 +1203,14 @@ class Workspace:
         )
 
     def properties(self, event: str) -> list[str]:
-        """List all property names for an event.
+        """List the property names of an event that this account can query.
 
         Results are cached per event for the lifetime of the Workspace.
+
+        When the account cannot read classified data, the classified
+        properties are left out, because a query on one of them fails. A
+        ``UserWarning`` then names the left-out properties (also on a cached
+        call). An account with access to classified data gets every property.
 
         Args:
             event: Event name to get properties for.
@@ -1186,6 +1220,15 @@ class Workspace:
 
         Raises:
             ConfigError: If API credentials not available.
+            EventNotFoundError: The event does not exist (includes
+                suggestions).
+
+        Example:
+            ```python
+            ws = Workspace()
+            names = ws.properties("Purchase")
+            # ["amount", "plan"]; a UserWarning names any classified ones
+            ```
         """
         return self._discovery_service.list_properties(event)
 
@@ -7776,15 +7819,20 @@ class Workspace:
         """Get property definitions from Lexicon by name.
 
         Retrieves metadata (description, tags, visibility, etc.) for the
-        specified properties from the Mixpanel Lexicon.
+        specified properties from the Mixpanel Lexicon. The Lexicon API
+        looks up one name per request, so this method sends one request per
+        distinct name. The match is exact. A name that the project neither
+        tracks nor defines in Lexicon is left out of the result.
 
         Args:
             names: List of property names to look up.
             resource_type: Optional resource type filter (e.g. ``"event"``,
-                ``"user"``, ``"groupprofile"``).
+                ``"user"``, ``"groupprofile"``). Without it, the event
+                property of each name is looked up.
 
         Returns:
-            List of ``PropertyDefinition`` objects for the requested properties.
+            List of ``PropertyDefinition`` objects for the requested properties
+            that exist, in the order of ``names``.
 
         Raises:
             ResponseValidationError: Malformed API response payload
@@ -9279,7 +9327,9 @@ class Workspace:
             AuthenticationError: Invalid credentials (401).
             QueryError: The metric does not exist or is deleted (404), the
                 caller cannot edit it or the pricing-plan gate blocks the write
-                (403), or the new name is taken (409).
+                (403), or the new name is taken (409). When the caller cannot
+                edit it, the method reads the metric after the 403, and the
+                message names the metric, its creator, and who can edit it.
             RateLimitError: Rate limit exceeded after retries (429).
             ServerError: Server-side errors (5xx).
 
@@ -9315,7 +9365,13 @@ class Workspace:
             body["owned_by"] = {"id": params.owned_by}
         if params.verified is not None:
             body["verified"] = params.verified
-        row = client.update_metric(metric_id, body)
+        try:
+            row = client.update_metric(metric_id, body)
+        except QueryError as exc:
+            refusal = self._explain_edit_refusal("metric", [metric_id], exc)
+            if refusal is None:
+                raise
+            raise refusal from exc
         return validate_response_model(SavedMetric, row, endpoint="update_metric")
 
     def bulk_update_metrics(
@@ -9356,7 +9412,9 @@ class Workspace:
             AuthenticationError: Invalid credentials (401).
             QueryError: The read of an entry's metric failed (404), the
                 caller cannot edit one of the metrics (403), or a new name
-                is taken (409).
+                is taken (409). After that 403 the method reads the metrics
+                one by one (at most 10), and the message names each refused
+                metric and its creator; nothing was changed.
             RateLimitError: Rate limit exceeded after retries (429).
             ServerError: Server-side errors (5xx).
 
@@ -9399,7 +9457,14 @@ class Workspace:
             if entry.verified is not None:
                 item["verified"] = entry.verified
             wire_entries.append(item)
-        rows = client.bulk_update_metrics(wire_entries)
+        try:
+            rows = client.bulk_update_metrics(wire_entries)
+        except QueryError as exc:
+            target_ids = [entry.id for entry, _ in prepared]
+            refusal = self._explain_edit_refusal("metric", target_ids, exc)
+            if refusal is None:
+                raise
+            raise refusal from exc
         return validate_response_models(
             SavedMetric, rows, endpoint="bulk_update_metrics"
         )
@@ -9590,6 +9655,121 @@ class Workspace:
             details={f"{entity}_ids": ids},
         )
 
+    def _explain_edit_refusal(
+        self,
+        entity: Literal["metric", "behavior"],
+        target_ids: Sequence[int],
+        exc: QueryError,
+    ) -> QueryError | None:
+        """Explain the server's blank 403 on a saved metric or behavior update.
+
+        The server refuses an edit of a saved metric or behavior with a 403
+        whose JSON ``error`` is blank when the account did not create it, it
+        is not shared with the account for editing, and the account is not a
+        project owner. The routes check every target before they write, so
+        nothing was changed. A 403 with its own text (for example the
+        pricing-plan gate), or with no JSON body, stays as it is.
+
+        To name each refused entity and its creator, the method reads up to
+        ``_EDIT_REFUSAL_READ_LIMIT`` targets one by one. A failed read gives
+        the explanation without names. On the behaviors routes a missing
+        ``write_behaviors`` permission gives the same blank 403: a read that
+        shows the behavior editable (``can_update_basic`` true) names that
+        permission, and a read that cannot tell names both causes.
+
+        Args:
+            entity: ``"metric"`` or ``"behavior"``.
+            target_ids: The ids that the update sent.
+            exc: The error that the update raised.
+
+        Returns:
+            A ``QueryError`` (403) with the explanation and the response and
+            request context of ``exc``, or ``None`` when ``exc`` is not a
+            blank 403.
+        """
+        body = exc.response_body
+        if (
+            exc.status_code != 403
+            or not isinstance(body, dict)
+            or _error_message(body, "")
+        ):
+            return None
+        noun = f"saved {entity}"
+        ids = list(dict.fromkeys(target_ids))
+        rows = self._read_edit_targets(entity, ids)
+        refused = [row for row in rows if row.get("can_update_basic") is False]
+        if len(ids) == 1:
+            target = _describe_saved_entity(rows[0]) if rows else str(ids[0])
+            subject = f"This account cannot edit {noun} {target}."
+        elif refused:
+            listed = ", ".join(_describe_saved_entity(row) for row in refused)
+            subject = f"This account cannot edit {noun}s {listed}."
+        else:
+            listed = ", ".join(str(i) for i in ids)
+            subject = f"This account cannot edit one or more of {noun}s {listed}."
+        rule = (
+            f"Only the creator of a {noun}, the users and teams that it is "
+            f"shared with for editing, and project owners can edit it."
+        )
+        if entity == "behavior" and not refused:
+            editable = bool(rows) and all(
+                row.get("can_update_basic") is True for row in rows
+            )
+            reason = (
+                "It lacks the write_behaviors permission in this project; a "
+                "project admin can grant it."
+                if editable
+                else "Either it lacks the write_behaviors permission in this "
+                f"project, or the {noun} is not shared with it for editing. "
+                f"{rule}"
+            )
+        else:
+            reason = f"{rule} Ask the creator to share it with edit access."
+            if len(ids) > 1 and not refused:
+                reason += (
+                    " The can_update_basic flag in list_metrics() (CLI: mp "
+                    "metrics list) shows which ones."
+                )
+        return QueryError(
+            f"{subject} {reason} Nothing was changed.",
+            status_code=exc.status_code,
+            response_body=exc.response_body,
+            request_method=exc.request_method,
+            request_url=exc.request_url,
+            request_params=exc.request_params,
+            request_body=exc.request_body,
+        )
+
+    def _read_edit_targets(
+        self, entity: Literal["metric", "behavior"], ids: list[int]
+    ) -> list[dict[str, Any]]:
+        """Read the rows of an update's targets one by one, to explain a refusal.
+
+        The read is best effort: it only adds names to an error that is
+        raised anyway. A target whose read fails is skipped. More than
+        ``_EDIT_REFUSAL_READ_LIMIT`` targets are not read at all, because the
+        error should not wait for many reads (the full metric list can take
+        minutes on a large project).
+
+        Args:
+            entity: ``"metric"`` or ``"behavior"``.
+            ids: The distinct target ids.
+
+        Returns:
+            The rows that the reads found, in the order of ``ids``.
+        """
+        if len(ids) > _EDIT_REFUSAL_READ_LIMIT:
+            return []
+        client = self._require_api_client()
+        read = client.get_metric if entity == "metric" else client.get_behavior
+        rows: list[dict[str, Any]] = []
+        for entity_id in ids:
+            try:
+                rows.append(read(entity_id))
+            except MixpanelHeadlessError:
+                continue
+        return rows
+
     def list_behaviors(
         self,
         *,
@@ -9779,8 +9959,11 @@ class Workspace:
                 (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
-            QueryError: The caller cannot edit the behavior (403), or the new
-                name is taken (409).
+            QueryError: The caller cannot edit the behavior or lacks the
+                ``write_behaviors`` permission (403), or the new name is taken
+                (409). After that 403 the method reads the behavior, and the
+                message says which of the two causes applies, or names both
+                when the read cannot tell.
             RateLimitError: Rate limit exceeded after retries (429).
             ServerError: Server-side errors (5xx), including the read of an
                 unknown behavior id.
@@ -9821,7 +10004,13 @@ class Workspace:
             body["definition"] = definition
         if params.verified is not None:
             body["verified"] = params.verified
-        row = client.update_behavior(behavior_id, body)
+        try:
+            row = client.update_behavior(behavior_id, body)
+        except QueryError as exc:
+            refusal = self._explain_edit_refusal("behavior", [behavior_id], exc)
+            if refusal is None:
+                raise
+            raise refusal from exc
         return validate_response_model(SavedBehavior, row, endpoint="update_behavior")
 
     @staticmethod

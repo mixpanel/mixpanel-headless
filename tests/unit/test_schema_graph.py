@@ -350,16 +350,41 @@ class TestApiClientBulkLexicon:
         assert "includeEvents" not in seen["params"]
         assert "includeDensity" not in seen["params"]
 
-    def test_get_property_definitions_normalizes_resource_type(self) -> None:
-        """get_* sends the name filter and the normalized camelCase resourceType."""
+    def test_list_property_definitions_include_custom_false_omits_param(
+        self,
+    ) -> None:
+        """include_custom=False sends no includeCustom param.
+
+        The server reads ``includeCustom`` as a raw string, so any value,
+        even ``"false"``, turns custom properties on. Leaving the param out
+        is the only way to leave them out.
+        """
         seen: dict[str, Any] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the params and answer with an empty list."""
             seen["params"] = dict(request.url.params)
             return httpx.Response(200, json=[])
 
-        _client(handler).get_property_definitions(["amount"], resource_type="user")
-        assert seen["params"]["name[]"] == "amount"
+        _client(handler).list_property_definitions(include_custom=False)
+        assert "includeCustom" not in seen["params"]
+        assert seen["params"]["includeZeroCounts"] == "true"
+
+    def test_get_property_definitions_normalizes_resource_type(self) -> None:
+        """get_* sends the singular name filter and the normalized resourceType."""
+        seen: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the params and answer with one definition object."""
+            seen["params"] = dict(request.url.params)
+            return httpx.Response(200, json={"id": 5, "name": "amount", "count": 1})
+
+        rows = _client(handler).get_property_definitions(
+            ["amount"], resource_type="user"
+        )
+        assert rows == [{"id": 5, "name": "amount", "count": 1}]
+        assert seen["params"]["name"] == "amount"
+        assert "name[]" not in seen["params"]
         assert seen["params"]["resourceType"] == "User"
         # get_* must not send the bulk-only include toggles.
         assert "includeCustom" not in seen["params"]
