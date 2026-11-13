@@ -535,7 +535,9 @@ class DiscoveryService:
 
         Raises:
             AuthenticationError: Invalid credentials.
-            EventNotFoundError: Event does not exist (includes suggestions).
+            EventNotFoundError: The server rejected the event name (400);
+                the error lists similar names. An event that the project
+                does not track is not rejected, and returns an empty list.
 
         Note:
             Results are cached per event for the lifetime of this service

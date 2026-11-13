@@ -1220,8 +1220,10 @@ class Workspace:
 
         Raises:
             ConfigError: If API credentials not available.
-            EventNotFoundError: The event does not exist (includes
-                suggestions).
+            EventNotFoundError: The server rejected the event name (400).
+                The error lists similar names. An event that the project
+                does not track is not rejected. The call returns an empty
+                list for it.
 
         Example:
             ```python
@@ -9413,8 +9415,10 @@ class Workspace:
             QueryError: The read of an entry's metric failed (404), the
                 caller cannot edit one of the metrics (403), or a new name
                 is taken (409). After that 403 the method reads the metrics
-                one by one (at most 10), and the message names each refused
-                metric and its creator; nothing was changed.
+                one by one, to name each refused metric and its creator. It
+                reads them only for a batch of 10 metrics or fewer. A larger
+                batch gets a message that lists the ids only. Nothing was
+                changed.
             RateLimitError: Rate limit exceeded after retries (429).
             ServerError: Server-side errors (5xx).
 
@@ -9670,12 +9674,14 @@ class Workspace:
         nothing was changed. A 403 with its own text (for example the
         pricing-plan gate), or with no JSON body, stays as it is.
 
-        To name each refused entity and its creator, the method reads up to
-        ``_EDIT_REFUSAL_READ_LIMIT`` targets one by one. A failed read gives
-        the explanation without names. On the behaviors routes a missing
-        ``write_behaviors`` permission gives the same blank 403: a read that
-        shows the behavior editable (``can_update_basic`` true) names that
-        permission, and a read that cannot tell names both causes.
+        To name each refused entity and its creator, the method reads the
+        targets one by one. It reads them only for a batch of
+        ``_EDIT_REFUSAL_READ_LIMIT`` targets or fewer. A larger batch, and a
+        failed read, give the explanation without names. On the behaviors
+        routes a missing ``write_behaviors`` permission gives the same blank
+        403: a read that shows the behavior editable (``can_update_basic``
+        true) names that permission, and a read that cannot tell names both
+        causes.
 
         Args:
             entity: ``"metric"`` or ``"behavior"``.
