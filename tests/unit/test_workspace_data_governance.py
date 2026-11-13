@@ -395,51 +395,55 @@ class TestGetPropertyDefinitions:
     """Tests for Workspace.get_property_definitions()."""
 
     def test_returns_list_of_property_definitions(self, temp_dir: Path) -> None:
-        """get_property_definitions() returns list of PropertyDefinition."""
+        """get_property_definitions() returns one PropertyDefinition per name.
+
+        The endpoint answers each singular ``name`` lookup with one
+        definition object.
+        """
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Return property definition list."""
+            """Return the definition object of the requested name."""
+            name = request.url.params["name"]
             return httpx.Response(
                 200,
-                json={
-                    "status": "ok",
-                    "results": [_property_def_json()],
-                },
+                json={"status": "ok", "results": _property_def_json(name=name)},
             )
 
         ws = _make_workspace(temp_dir, handler)
-        result = ws.get_property_definitions(names=["$browser"])
+        result = ws.get_property_definitions(names=["$browser", "$city"])
 
-        assert len(result) == 1
-        assert isinstance(result[0], PropertyDefinition)
-        assert result[0].name == "$browser"
+        assert [d.name for d in result] == ["$browser", "$city"]
+        assert all(isinstance(d, PropertyDefinition) for d in result)
 
     def test_with_resource_type_filter(self, temp_dir: Path) -> None:
         """get_property_definitions() passes resource_type to API."""
         captured_url: list[str] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Capture URL and return property definitions."""
+            """Capture URL and return one property definition."""
             captured_url.append(str(request.url))
             return httpx.Response(
                 200,
-                json={
-                    "status": "ok",
-                    "results": [_property_def_json()],
-                },
+                json={"status": "ok", "results": _property_def_json()},
             )
 
         ws = _make_workspace(temp_dir, handler)
         result = ws.get_property_definitions(names=["$browser"], resource_type="event")
 
         assert len(result) == 1
+        assert "resourceType=Event" in captured_url[0]
 
     def test_returns_empty_list(self, temp_dir: Path) -> None:
-        """get_property_definitions() returns empty list when no matches."""
+        """get_property_definitions() returns [] for a name the project lacks.
+
+        The endpoint answers an unknown name with a placeholder object (id 0,
+        no count), which the client leaves out.
+        """
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Return empty list."""
-            return httpx.Response(200, json={"status": "ok", "results": []})
+            """Return the placeholder for an unknown name."""
+            placeholder = {"id": 0, "name": "nonexistent", "type": "unknown"}
+            return httpx.Response(200, json={"status": "ok", "results": placeholder})
 
         ws = _make_workspace(temp_dir, handler)
         result = ws.get_property_definitions(names=["nonexistent"])

@@ -84,19 +84,39 @@ class TestListDashboards:
         assert result[1]["title"] == "Dashboard 2"
 
     def test_filters_by_ids(self, oauth_credentials: Session) -> None:
-        """list_dashboards(ids=[1,2]) passes ids as query param."""
-        captured_urls: list[str] = []
+        """list_dashboards(ids=[1, 2]) sends a repeated id[] and nothing else.
+
+        The dashboards endpoint reads only ``id[]``, and its request schema
+        refuses any other parameter: ``ids=1,2`` gets a 400 ("Additional
+        properties are not allowed ('ids' was unexpected)").
+        """
+        captured: list[httpx.QueryParams] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Capture URL and return empty list."""
-            captured_urls.append(str(request.url))
+            """Capture the query params and return an empty list."""
+            captured.append(request.url.params)
             return httpx.Response(200, json={"status": "ok", "results": []})
 
         client = create_mock_client(oauth_credentials, handler)
         with client:
             client.list_dashboards(ids=[1, 2])
 
-        assert "ids=1%2C2" in captured_urls[0] or "ids=1,2" in captured_urls[0]
+        assert captured[0].multi_items() == [("id[]", "1"), ("id[]", "2")]
+
+    def test_no_ids_sends_no_params(self, oauth_credentials: Session) -> None:
+        """list_dashboards() sends no query params, which the strict schema needs."""
+        captured: list[httpx.QueryParams] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the query params and return an empty list."""
+            captured.append(request.url.params)
+            return httpx.Response(200, json={"status": "ok", "results": []})
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client:
+            client.list_dashboards()
+
+        assert captured[0].multi_items() == []
 
     def test_uses_maybe_scoped_path(self, oauth_credentials: Session) -> None:
         """list_dashboards() uses maybe_scoped_path for URL building."""
@@ -665,19 +685,44 @@ class TestListBookmarksV2:
         assert "type=funnels" in captured_urls[0]
 
     def test_filters_by_ids(self, oauth_credentials: Session) -> None:
-        """list_bookmarks_v2(ids=[1,2]) passes ids as query param."""
-        captured_urls: list[str] = []
+        """list_bookmarks_v2(ids=[10, 20]) sends one repeated id[] per bookmark.
+
+        The bookmarks endpoint reads only ``id[]``. It ignores ``ids=10,20``
+        and returns every report of the project, which on a large project
+        is a dump of many megabytes.
+        """
+        captured: list[httpx.QueryParams] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Capture URL."""
-            captured_urls.append(str(request.url))
+            """Capture the query params."""
+            captured.append(request.url.params)
             return httpx.Response(200, json={"status": "ok", "results": []})
 
         client = create_mock_client(oauth_credentials, handler)
         with client:
-            client.list_bookmarks_v2(ids=[10, 20])
+            client.list_bookmarks_v2(ids=[10, 20], bookmark_type="funnels")
 
-        assert "ids=" in captured_urls[0]
+        params = captured[0]
+        assert params.get_list("id[]") == ["10", "20"]
+        assert "ids" not in params
+        assert params["v"] == "2"
+        assert params["type"] == "funnels"
+
+    def test_no_ids_sends_no_id_filter(self, oauth_credentials: Session) -> None:
+        """list_bookmarks_v2() without ids sends no id[] key."""
+        captured: list[httpx.QueryParams] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the query params."""
+            captured.append(request.url.params)
+            return httpx.Response(200, json={"status": "ok", "results": []})
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client:
+            client.list_bookmarks_v2()
+
+        assert "id[]" not in captured[0]
+        assert "ids" not in captured[0]
 
 
 class TestBookmarkCRUD:
@@ -931,19 +976,95 @@ class TestListCohortsApp:
         assert "data_group_id=abc" in captured_urls[0]
 
     def test_filters_by_ids(self, oauth_credentials: Session) -> None:
-        """list_cohorts_app(ids=[1,2]) passes ids param."""
-        captured_urls: list[str] = []
+        """list_cohorts_app(ids=[1, 2]) sends one repeated id[] per cohort.
+
+        The cohorts endpoint reads only ``id[]``. It ignores ``ids=1,2`` and
+        returns every cohort.
+        """
+        captured: list[httpx.QueryParams] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Capture URL."""
-            captured_urls.append(str(request.url))
+            """Capture the query params."""
+            captured.append(request.url.params)
             return httpx.Response(200, json={"status": "ok", "results": []})
 
         client = create_mock_client(oauth_credentials, handler)
         with client:
-            client.list_cohorts_app(ids=[1, 2])
+            client.list_cohorts_app(ids=[1, 2], data_group_id="abc")
 
-        assert "ids=" in captured_urls[0]
+        params = captured[0]
+        assert params.get_list("id[]") == ["1", "2"]
+        assert "ids" not in params
+        assert params["data_group_id"] == "abc"
+
+
+class TestIdFilterBatches:
+    """A long ID filter goes out in batches of at most 100 distinct IDs.
+
+    Each percent-encoded ``id[]=N`` adds about 18 bytes to the request
+    line, and the server refuses a request line longer than about 4 KB.
+    """
+
+    @pytest.mark.parametrize(
+        ("method", "kwargs", "base"),
+        [
+            (
+                "list_bookmarks_v2",
+                {"bookmark_type": "funnels"},
+                [("v", "2"), ("type", "funnels")],
+            ),
+            ("list_dashboards", {}, []),
+            ("list_cohorts_app", {"data_group_id": "abc"}, [("data_group_id", "abc")]),
+        ],
+    )
+    def test_long_id_list_is_split(
+        self,
+        oauth_credentials: Session,
+        method: str,
+        kwargs: dict[str, Any],
+        base: list[tuple[str, str]],
+    ) -> None:
+        """250 IDs go out as 100, 100, and 50, and the rows join in order.
+
+        Args:
+            oauth_credentials: OAuth session for the App API.
+            method: The client list method.
+            kwargs: Its other filters.
+            base: The params that every batch must repeat.
+        """
+        captured: list[list[tuple[str, str]]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer each batch with one row per requested ID."""
+            items = request.url.params.multi_items()
+            captured.append(items)
+            rows = [{"id": int(v), "name": v} for k, v in items if k == "id[]"]
+            return httpx.Response(200, json={"status": "ok", "results": rows})
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client:
+            rows = getattr(client, method)(ids=list(range(1, 251)), **kwargs)
+
+        assert [row["id"] for row in rows] == list(range(1, 251))
+        sizes = [sum(1 for k, _ in items if k == "id[]") for items in captured]
+        assert sizes == [100, 100, 50]
+        for items in captured:
+            assert [pair for pair in items if pair[0] != "id[]"] == base
+
+    def test_duplicate_ids_are_sent_once(self, oauth_credentials: Session) -> None:
+        """A repeated ID is requested once, so its row cannot come back twice."""
+        captured: list[list[str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the id[] values."""
+            captured.append(request.url.params.get_list("id[]"))
+            return httpx.Response(200, json={"status": "ok", "results": []})
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client:
+            client.list_bookmarks_v2(ids=[7, 5, 7, 5])
+
+        assert captured == [["7", "5"]]
 
 
 class TestCohortCRUD:

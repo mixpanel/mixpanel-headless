@@ -55,6 +55,8 @@ Get properties for a specific event:
 
 Properties include both event-specific and common properties.
 
+If your account cannot read classified data, the classified properties are left out of the list, because a query on one of them fails. A warning names the left-out properties: a `UserWarning` in Python, or a `Warning:` line on stderr in the CLI. A project admin can give your account access to classified data.
+
 ## Property Values
 
 Sample values for a property:

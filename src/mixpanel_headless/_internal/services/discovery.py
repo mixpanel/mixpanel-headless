@@ -13,6 +13,7 @@ import warnings
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from mixpanel_headless._internal.api_client import split_event_properties
 from mixpanel_headless._literal_types import CustomPropertyType
 from mixpanel_headless.exceptions import EventNotFoundError, QueryError
 from mixpanel_headless.types import (
@@ -169,6 +170,36 @@ _MAX_SAMPLE_VALUES = 5
 # called Workspace.subproperties. If you reorganize the call chain,
 # recount and update both this constant and the stacklevel test.
 _USER_FRAME_STACKLEVEL = 4
+
+
+def _classified_properties_message(event: str, names: list[str]) -> str:
+    """Build the warning for event properties left out because they are classified.
+
+    Args:
+        event: The event name.
+        names: The left-out property names, sorted.
+
+    Returns:
+        One message that gives the count and the names.
+
+    Example:
+        ```python
+        _classified_properties_message("Purchase", ["email"])
+        # "1 property of event 'Purchase' is classified, and this account
+        #  cannot read classified data, so it is left out: email. ..."
+        ```
+    """
+    if len(names) == 1:
+        lead = f"1 property of event {event!r} is classified"
+        pronoun = "it is"
+    else:
+        lead = f"{len(names)} properties of event {event!r} are classified"
+        pronoun = "they are"
+    return (
+        f"{lead}, and this account cannot read classified data, so {pronoun} "
+        f"left out: {', '.join(names)}. A project admin can give the account "
+        f"access to classified data."
+    )
 
 
 def _is_valid_iso(s: str) -> bool:
@@ -485,41 +516,62 @@ class DiscoveryService:
         return list(sorted_result)
 
     def list_properties(self, event: str) -> list[str]:
-        """List all properties for a specific event.
+        """List the properties of an event that this account can query.
+
+        For an account without access to classified data, the server marks
+        each classified property (Lexicon ``sensitive``) with
+        ``"sensitive": true`` and a ``count`` of 0. A query on such a
+        property fails, so it is left out of the result, and a
+        ``UserWarning`` names the left-out properties. An account with
+        access gets every property. The split follows
+        :func:`~mixpanel_headless._internal.api_client.split_event_properties`.
 
         Args:
             event: Event name to get properties for.
 
         Returns:
-            Alphabetically sorted list of property names.
+            Alphabetically sorted list of the property names that this
+            account can query.
 
         Raises:
             AuthenticationError: Invalid credentials.
-            EventNotFoundError: Event does not exist (includes suggestions).
+            EventNotFoundError: The server rejected the event name (400);
+                the error lists similar names. An event that the project
+                does not track is not rejected, and returns an empty list.
 
         Note:
-            Results are cached per event for the lifetime of this service instance.
+            Results are cached per event for the lifetime of this service
+            instance. A cached result warns again about its left-out
+            properties.
         """
         cache_key = ("list_properties", event)
-        if cache_key in self._cache:
-            return list(self._cache[cache_key])
+        classified_key = ("list_properties_classified", event)
+        if cache_key not in self._cache:
+            try:
+                types = self._api_client.get_event_property_types(event)
+            except QueryError as e:
+                # If event not found (400 error), provide helpful suggestions
+                if e.status_code == 400:
+                    available_events = self.list_events()
+                    similar = self._find_similar_events(event, available_events)
+                    raise EventNotFoundError(
+                        event_name=event,
+                        similar_events=similar,
+                    ) from e
+                raise
+            queryable, classified = split_event_properties(types)
+            self._cache[cache_key] = queryable
+            self._cache[classified_key] = classified
 
-        try:
-            result = self._api_client.get_event_properties(event)
-        except QueryError as e:
-            # If event not found (400 error), provide helpful suggestions
-            if e.status_code == 400:
-                available_events = self.list_events()
-                similar = self._find_similar_events(event, available_events)
-                raise EventNotFoundError(
-                    event_name=event,
-                    similar_events=similar,
-                ) from e
-            raise
-
-        sorted_result = sorted(result)
-        self._cache[cache_key] = sorted_result
-        return list(sorted_result)
+        classified = self._cache[classified_key]
+        if classified:
+            # stacklevel=3 points at the caller of Workspace.properties.
+            warnings.warn(
+                _classified_properties_message(event, classified),
+                UserWarning,
+                stacklevel=3,
+            )
+        return list(self._cache[cache_key])
 
     def _find_similar_events(self, query: str, events: list[str]) -> list[str]:
         """Find events with similar names for suggestions.

@@ -55,6 +55,59 @@ may include API changes.
 
 ### Fixed
 
+- The ID filters of `Workspace.list_bookmarks_v2(ids=...)`,
+  `list_dashboards(ids=...)`, and `list_cohorts_full(ids=...)` (CLI:
+  `mp reports list --ids`, `mp dashboards list --ids`, `mp cohorts list
+  --ids`) work. The client sent `ids=1,2`, which none of these endpoints
+  reads:
+  - The bookmarks and cohorts endpoints ignored it and returned every row.
+    On a large project the bookmarks response is many megabytes, and the
+    call could run for minutes and end in a server error.
+  - The dashboards endpoint refused it with a 400 ("Additional properties
+    are not allowed ('ids' was unexpected)").
+
+  The filter now goes out as one repeated `id[]` parameter per ID. A list
+  of more than 100 IDs goes out in several requests, because the server
+  refuses a request line longer than about 4 KB. A repeated ID is sent
+  once.
+- `Workspace.get_property_definitions(names=...)` and
+  `mp lexicon properties get --names` return only the named properties.
+  The Lexicon properties endpoint ignores `name[]` and returned every
+  property of the project. It reads only a singular `name`, one name per
+  request, so the client now sends one request per distinct name. A name
+  that the project neither tracks nor defines in Lexicon is left out of the
+  result.
+- `mp inspect properties` and `Workspace.properties()` no longer fail when
+  the project has classified properties and the account cannot read
+  classified data. The client used `/events/properties/top`, which then
+  refuses every event with "You do not have access to this report because
+  it may contain data that has been marked classified". It now uses
+  `/events/properties/toptypes`, the endpoint that the Mixpanel web app
+  uses. It returns the readable properties and leaves out the classified
+  ones, and a warning names them (in the CLI, a `Warning:` line on stderr).
+- `update_metric()`, `bulk_update_metrics()`, and `update_behavior()` (CLI:
+  `mp metrics update`, `mp metrics verify`, `mp behaviors update`) say why
+  the server refused an edit. For a saved metric or behavior that the
+  account did not create and that is not shared with it for editing, the
+  server answers 403 with no message, and the client showed only
+  "Permission denied". The error now names the entity and its creator, and
+  it says that only the creator, the users and teams that it is shared with
+  for editing, and project owners can edit it. When a behavior is editable
+  but the account lacks the `write_behaviors` permission, the error says
+  so. When the client cannot tell these two causes apart, the error names
+  both. The error stays a `QueryError` with status 403.
+- The CLI hint for a 403 error no longer says "Check service account
+  permissions." Users of OAuth accounts saw it too, and they have no
+  service account to check. The hint now fits every account type.
+- `ws.api.request()` adds the `query_origin` parameter to Query API URLs
+  only (`/api/query/...` and the older `/api/2.0/...` paths). App API
+  endpoints such as `/me` refused it with "Additional properties are not
+  allowed ('query_origin' was unexpected)". App API, export, and other URLs
+  now get exactly the parameters that you pass, and `request()` no longer
+  changes the `params` dict that you give it.
+- `MixpanelAPIClient.list_property_definitions(include_custom=False)` leaves
+  custom properties out. The server reads `includeCustom` as a raw string,
+  so the `includeCustom=false` that the client sent turned them on.
 - Plugin: the insights reference no longer says that a formula needs two or
   more events. `Formula(expression, metrics=[...])` holds its own operands.
 

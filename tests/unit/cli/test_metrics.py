@@ -768,6 +768,47 @@ def _workspace_on(handler: Any) -> Workspace:
     return Workspace(session=session, _api_client=client)
 
 
+class TestEditRefusalOutput:
+    """The CLI says why the server refused an edit of a saved metric."""
+
+    @patch("mixpanel_headless.cli.commands.metrics.get_workspace")
+    def test_update_of_another_users_metric_names_the_creator(
+        self, mock_get_ws: MagicMock
+    ) -> None:
+        """A blank 403 prints the creator and the edit rule, with no service-account hint.
+
+        The workspace runs on an OAuth session, as the customer's did.
+        """
+        stored = behavior_metric_json(117786, "Weekly signups", can_view=False)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Refuse the update, then answer the read.
+
+            Args:
+                request: The update or the read request.
+
+            Returns:
+                The blank 403, or the stored metric.
+            """
+            assert request.url.path == f"{_METRICS_PATH}/117786"
+            if request.method == "PATCH":
+                return httpx.Response(403, json={"error": "", "status": "error"})
+            return httpx.Response(200, json=envelope(stored))
+
+        mock_get_ws.return_value = _workspace_on(handler)
+        result = runner.invoke(
+            app, ["metrics", "update", "117786", "--name", "Weekly signups"]
+        )
+
+        assert result.exit_code == 3, result.output
+        stderr = " ".join(result.stderr.split())
+        assert "This account cannot edit saved metric 117786" in stderr
+        assert "created by ana@example.com" in stderr
+        assert "project owners" in stderr
+        assert "Permission denied" not in stderr
+        assert "service account" not in stderr.lower()
+
+
 class TestWriteErrorsHideTheRequest:
     """An error of a write command shows the message, never the request."""
 

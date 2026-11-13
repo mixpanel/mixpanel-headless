@@ -351,6 +351,153 @@ class TestListProperties:
 
         assert properties == []
 
+    def test_list_properties_leaves_out_classified_properties_with_a_warning(
+        self,
+        discovery_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], DiscoveryService
+        ],
+    ) -> None:
+        """A property marked sensitive is left out, and a warning names it.
+
+        For an account without classified-data access, ``toptypes`` marks
+        each classified property with ``"sensitive": true``; a query on such
+        a property fails, so the list keeps the readable properties only.
+        """
+        import warnings
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Answer with one readable and two classified properties."""
+            return httpx.Response(
+                200,
+                json={
+                    "plan": {"count": 50, "type": "string"},
+                    "email": {"count": 0, "type": "string", "sensitive": True},
+                    "$phone": {"count": 0, "type": "string", "sensitive": True},
+                    "amount": {"count": 9, "type": "number", "sensitive": False},
+                },
+            )
+
+        discovery = discovery_factory(handler)
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            properties = discovery.list_properties("Purchase")
+
+        assert properties == ["amount", "plan"]
+        messages = [str(w.message) for w in captured if w.category is UserWarning]
+        assert len(messages) == 1
+        assert "2 properties of event 'Purchase' are classified" in messages[0]
+        assert "$phone, email" in messages[0]
+
+    def test_list_properties_warns_again_from_the_cache(
+        self,
+        discovery_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], DiscoveryService
+        ],
+    ) -> None:
+        """A cached result sends no request but still names its classified property."""
+        import warnings
+
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Count the requests and answer with one classified property."""
+            calls.append(request.url.path)
+            return httpx.Response(
+                200,
+                json={
+                    "plan": {"count": 50, "type": "string"},
+                    "email": {"count": 0, "type": "string", "sensitive": True},
+                },
+            )
+
+        discovery = discovery_factory(handler)
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            first = discovery.list_properties("Purchase")
+            second = discovery.list_properties("Purchase")
+
+        assert first == second == ["plan"]
+        assert len(calls) == 1
+        messages = [str(w.message) for w in captured if w.category is UserWarning]
+        assert len(messages) == 2
+        assert "1 property of event 'Purchase' is classified" in messages[0]
+
+    def test_list_properties_of_an_event_with_no_data_is_empty(
+        self,
+        discovery_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], DiscoveryService
+        ],
+    ) -> None:
+        """An event with no data lists no properties and gives no warning.
+
+        ``toptypes`` answers such an event with a zero-count
+        ``$event_name``, which ``/events/properties/top`` dropped.
+        """
+        import warnings
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Answer as toptypes answers an event that has no data."""
+            return httpx.Response(
+                200, json={"$event_name": {"count": 0, "type": "string"}}
+            )
+
+        discovery = discovery_factory(handler)
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            properties = discovery.list_properties("NoSuchEvent")
+
+        assert properties == []
+        assert [w for w in captured if w.category is UserWarning] == []
+
+    def test_list_properties_sends_no_warning_without_classified_properties(
+        self,
+        discovery_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], DiscoveryService
+        ],
+    ) -> None:
+        """An event with no classified property gives no warning."""
+        import warnings
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Answer with readable properties only."""
+            return httpx.Response(200, json={"plan": {"count": 50, "type": "string"}})
+
+        discovery = discovery_factory(handler)
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            properties = discovery.list_properties("Purchase")
+
+        assert properties == ["plan"]
+        assert [w for w in captured if w.category is UserWarning] == []
+
+    def test_classified_warning_points_at_the_caller_of_workspace_properties(
+        self,
+        mock_client_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], MixpanelAPIClient
+        ],
+    ) -> None:
+        """The warning names this test file, the line that called Workspace.properties."""
+        import warnings
+
+        from mixpanel_headless.workspace import Workspace
+        from tests.conftest import make_session
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Answer with one classified property."""
+            return httpx.Response(
+                200,
+                json={"email": {"count": 0, "type": "string", "sensitive": True}},
+            )
+
+        client = mock_client_factory(handler)
+        session = make_session(project_id="12345", region="us", oauth_token="t")
+        workspace = Workspace(session=session, _api_client=client)
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            workspace.properties("Purchase")  # the caller's line
+
+        assert [w.filename for w in captured] == [__file__]
+
 
 # =============================================================================
 # Fuzzy Matching Tests
