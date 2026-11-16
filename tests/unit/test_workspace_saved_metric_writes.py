@@ -27,7 +27,10 @@ import pytest
 from pydantic import SecretStr
 
 from mixpanel_headless._internal import saved_definitions
-from mixpanel_headless._internal.api_client import MixpanelAPIClient
+from mixpanel_headless._internal.api_client import (
+    DEFAULT_APP_TIMEOUT_S,
+    MixpanelAPIClient,
+)
 from mixpanel_headless._internal.auth.account import ServiceAccount
 from mixpanel_headless._internal.auth.session import Project, Session
 from mixpanel_headless._internal.query.metric_builders import (
@@ -1225,15 +1228,30 @@ _METRIC_RULE = (
 )
 """The edit rule that every explained metric refusal states."""
 
+_ASK_ONE = "Ask the creator to share it with edit access."
+"""The remedy when the message names one entity."""
+
+_ASK_EACH = "Ask the creator of each saved metric to share it with edit access."
+"""The remedy when the message is about several metrics."""
+
+_METRIC_HINT = (
+    "The can_update_basic flag in list_metrics() (CLI: mp metrics list) shows "
+    "which saved metrics this account can edit."
+)
+"""The hint of a bulk refusal when the client did not check every target."""
+
 _BEHAVIOR_REASON = (
-    "The server gives one answer for two causes. Either the account lacks the "
-    "write_behaviors permission in this project, or the saved behavior is not "
-    "shared with the account for editing. Only the creator of a saved behavior, "
-    "the users and teams that it is shared with for editing, and project owners "
-    "can edit it. A project admin can grant the permission, and the creator can "
-    "share the saved behavior with edit access. Nothing was changed."
+    "The server gives one answer for two causes. First cause: the account lacks "
+    "the write_behaviors permission in this project. A project admin can grant "
+    "it. Second cause: the saved behavior is not shared with the account for "
+    "editing. Only the creator of a saved behavior, the users and teams that it "
+    "is shared with for editing, and project owners can edit it. Ask the creator "
+    "to share it with edit access. Nothing was changed."
 )
 """The text that follows the subject of every explained behavior refusal."""
+
+_THEIRS_2 = "2 ('Theirs', created by ana@example.com)"
+"""How a message names metric 2 of the fixtures below."""
 
 
 def _blank_403() -> httpx.Response:
@@ -1243,6 +1261,15 @@ def _blank_403() -> httpx.Response:
         The response.
     """
     return httpx.Response(403, json=dict(_BLANK_403))
+
+
+def _not_found() -> httpx.Response:
+    """Build the server's answer to a read of an absent or deleted metric.
+
+    Returns:
+        The response.
+    """
+    return httpx.Response(404, json={"status": "error", "error": "Metric not found"})
 
 
 @pytest.fixture
@@ -1258,6 +1285,21 @@ def recorded_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     calls: list[float] = []
     monkeypatch.setattr("time.sleep", calls.append)
     return calls
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Replace ``time.monotonic`` with a clock that the test moves by hand.
+
+    Args:
+        monkeypatch: pytest monkeypatch fixture (restores ``time.monotonic``).
+
+    Returns:
+        A one-item list that holds the current time of the clock.
+    """
+    now = [1000.0]
+    monkeypatch.setattr("time.monotonic", lambda: now[0])
+    return now
 
 
 class TestEditRefusals:
@@ -1288,8 +1330,8 @@ class TestEditRefusals:
         assert err.status_code == 403
         assert err.message == (
             "This account cannot edit saved metric 4107 ('Weekly signups', "
-            f"created by ana@example.com). {_METRIC_RULE} Ask the creator to "
-            "share it with edit access. Nothing was changed."
+            f"created by ana@example.com). {_METRIC_RULE} {_ASK_ONE} Nothing was "
+            "changed."
         )
         assert err.response_body == _BLANK_403
         assert isinstance(err.__cause__, QueryError)
@@ -1373,13 +1415,17 @@ class TestEditRefusals:
 
     @pytest.mark.parametrize(
         "body",
-        [{"error": ""}, {"error": "  ", "status": "error"}],
-        ids=["empty", "whitespace"],
+        [
+            {"error": ""},
+            {"error": "  ", "status": "error"},
+            {"error": "", "status": "error", "message": ""},
+        ],
+        ids=["empty", "whitespace", "empty-message"],
     )
     def test_blank_error_string_is_the_refusal(
         self, temp_dir: Path, body: dict[str, str]
     ) -> None:
-        """A 403 whose ``error`` is a blank string gets the explanation.
+        """A 403 whose ``error`` is a blank string, with no other text, is explained.
 
         Args:
             temp_dir: Temporary directory fixture.
@@ -1409,16 +1455,31 @@ class TestEditRefusals:
             {"detail": "Forbidden"},
             {"Message": "User is not authorized to access this resource"},
             {"error": "", "message": "Error ID: 7f73"},
+            {"error": "", "message": ["Session expired"]},
+            {"error": "", "detail": "Request blocked"},
+            {"error": "", "status": "ok"},
         ],
-        ids=["empty", "no-error-key", "null", "detail", "gateway", "message"],
+        ids=[
+            "empty",
+            "no-error-key",
+            "null",
+            "detail",
+            "gateway",
+            "message",
+            "message-list",
+            "blank-error-with-detail",
+            "status-ok",
+        ],
     )
-    def test_403_without_a_blank_error_string_propagates_without_a_read(
+    def test_403_of_another_shape_propagates_without_a_read(
         self, temp_dir: Path, body: dict[str, Any]
     ) -> None:
-        """Only the recorded shape is explained: an ``error`` that is a blank string.
+        """Only the recorded shape is explained; each other JSON 403 stays as it is.
 
-        A JSON 403 of another shape (for example from a gateway or a proxy)
-        stays as it is, because the client does not know its cause.
+        The recorded shape is a blank ``error`` string, a ``status`` of
+        ``"error"`` (or none), and no value under another key. A JSON 403 of
+        another shape (for example from a gateway or a proxy) has a cause
+        that the client does not know.
 
         Args:
             temp_dir: Temporary directory fixture.
@@ -1526,142 +1587,180 @@ class TestEditRefusals:
 
     # ---- bulk updates ------------------------------------------------------
 
+    def _bulk_message(
+        self, temp_dir: Path, reads: dict[int, httpx.Response]
+    ) -> tuple[str, list[tuple[str, str]]]:
+        """Refuse a bulk update of the given metrics and return the explanation.
+
+        Args:
+            temp_dir: Temporary directory fixture.
+            reads: The answer to the read of each target, keyed by metric id.
+                The bulk update sends one entry per key, in this order.
+
+        Returns:
+            The message of the raised ``QueryError`` and the request log.
+        """
+        routes: dict[tuple[str, str], httpx.Response] = {
+            ("PATCH", _METRICS_PATH): _blank_403()
+        }
+        for metric_id, response in reads.items():
+            routes[("GET", f"{_METRICS_PATH}/{metric_id}")] = response
+        server = _Server(routes)
+        ws = _make_workspace(temp_dir, server)
+        with pytest.raises(QueryError) as exc_info:
+            ws.bulk_update_metrics(
+                [BulkUpdateMetricEntry(id=i, verified=True) for i in reads]
+            )
+        assert isinstance(exc_info.value.__cause__, QueryError)
+        return exc_info.value.message, server.calls()
+
     def test_bulk_refusal_names_each_refused_metric(self, temp_dir: Path) -> None:
         """A bulk update reads each target and names every refused metric.
 
         It reads the targets one by one, not the full metric list, which can
         take more than 30 seconds on a large project.
         """
-        server = _Server(
+        message, calls = self._bulk_message(
+            temp_dir,
             {
-                ("PATCH", _METRICS_PATH): _blank_403(),
-                ("GET", f"{_METRICS_PATH}/1"): _ok(behavior_metric_json(1, "Mine")),
-                ("GET", f"{_METRICS_PATH}/2"): _ok(
-                    behavior_metric_json(2, "Theirs", can_view=False)
-                ),
-                ("GET", f"{_METRICS_PATH}/3"): _ok(
-                    behavior_metric_json(3, "Also theirs", can_view=False)
-                ),
-            }
+                1: _ok(behavior_metric_json(1, "Mine")),
+                2: _ok(behavior_metric_json(2, "Theirs", can_view=False)),
+                3: _ok(behavior_metric_json(3, "Also theirs", can_view=False)),
+            },
         )
-        ws = _make_workspace(temp_dir, server)
-        with pytest.raises(QueryError) as exc_info:
-            ws.bulk_update_metrics(
-                [BulkUpdateMetricEntry(id=i, verified=True) for i in (1, 2, 3)]
-            )
-        assert exc_info.value.message == (
-            "This account cannot edit saved metrics 2 ('Theirs', created by "
-            "ana@example.com), 3 ('Also theirs', created by ana@example.com). "
-            f"{_METRIC_RULE} Ask the creator to share it with edit access. "
+        assert message == (
+            f"This account cannot edit saved metrics {_THEIRS_2}, 3 ('Also "
+            f"theirs', created by ana@example.com). {_METRIC_RULE} {_ASK_EACH} "
             "Nothing was changed."
         )
-        assert isinstance(exc_info.value.__cause__, QueryError)
-        assert server.calls() == [
+        assert calls == [
             ("PATCH", _METRICS_PATH),
             ("GET", f"{_METRICS_PATH}/1"),
             ("GET", f"{_METRICS_PATH}/2"),
             ("GET", f"{_METRICS_PATH}/3"),
         ]
 
-    def test_bulk_refusal_names_only_the_rows_with_a_false_flag(
+    def test_bulk_refusal_with_one_refused_metric_names_it_alone(
         self, temp_dir: Path
     ) -> None:
-        """A row that has no ``can_update_basic`` key is not named as refused."""
+        """One refused metric in a batch reads as one metric.
+
+        A row that has no ``can_update_basic`` key is not named as refused.
+        """
         no_flag = {
             k: v
             for k, v in behavior_metric_json(1, "No flag").items()
             if k != "can_update_basic"
         }
-        server = _Server(
+        message, _ = self._bulk_message(
+            temp_dir,
             {
-                ("PATCH", _METRICS_PATH): _blank_403(),
-                ("GET", f"{_METRICS_PATH}/1"): _ok(no_flag),
-                ("GET", f"{_METRICS_PATH}/2"): _ok(
-                    behavior_metric_json(2, "Theirs", can_view=False)
-                ),
-            }
+                1: _ok(no_flag),
+                2: _ok(behavior_metric_json(2, "Theirs", can_view=False)),
+            },
         )
-        ws = _make_workspace(temp_dir, server)
-        with pytest.raises(QueryError) as exc_info:
-            ws.bulk_update_metrics(
-                [BulkUpdateMetricEntry(id=i, verified=True) for i in (1, 2)]
-            )
-        assert exc_info.value.message.startswith(
-            "This account cannot edit saved metrics 2 ('Theirs', created by "
-            "ana@example.com). Only the creator"
+        assert message == (
+            f"This account cannot edit saved metric {_THEIRS_2}. {_METRIC_RULE} "
+            f"{_ASK_ONE} Nothing was changed."
         )
 
     def test_bulk_refusal_without_a_refused_row_lists_the_targets(
         self, temp_dir: Path
     ) -> None:
         """When no read finds a refused target, the message names every target."""
-        not_found = httpx.Response(404, json={"error": "Metric not found"})
-        server = _Server(
+        message, _ = self._bulk_message(
+            temp_dir,
             {
-                ("PATCH", _METRICS_PATH): _blank_403(),
-                ("GET", f"{_METRICS_PATH}/1"): not_found,
-                ("GET", f"{_METRICS_PATH}/2"): not_found,
-            }
+                1: _ok(behavior_metric_json(1, "Mine")),
+                2: _ok(behavior_metric_json(2, "Also mine")),
+            },
         )
-        ws = _make_workspace(temp_dir, server)
-        with pytest.raises(QueryError) as exc_info:
-            ws.bulk_update_metrics(
-                [BulkUpdateMetricEntry(id=i, verified=True) for i in (1, 2)]
-            )
-        assert exc_info.value.message == (
+        assert message == (
             "This account cannot edit one or more of these saved metrics: 1, 2. "
-            f"{_METRIC_RULE} Ask the creator to share it with edit access. The "
-            "can_update_basic flag in list_metrics() (CLI: mp metrics list) "
-            "shows which ones. Nothing was changed."
+            f"{_METRIC_RULE} {_ASK_EACH} {_METRIC_HINT} Nothing was changed."
         )
 
-    def test_list_metrics_hint_only_when_no_metric_is_named(
+    def test_bulk_refusal_names_a_target_that_was_not_found(
         self, temp_dir: Path
     ) -> None:
-        """A single update and a bulk update with a named metric give no hint."""
-        server = _Server(
-            {
-                ("PATCH", f"{_METRICS_PATH}/1"): _blank_403(),
-                ("GET", f"{_METRICS_PATH}/1"): httpx.Response(
-                    404, json={"error": "Metric not found"}
-                ),
-                ("PATCH", _METRICS_PATH): _blank_403(),
-                ("GET", f"{_METRICS_PATH}/2"): _ok(
-                    behavior_metric_json(2, "Theirs", can_view=False)
-                ),
-                ("GET", f"{_METRICS_PATH}/3"): _ok(behavior_metric_json(3, "Mine")),
-            }
+        """A 404 on a read says that the metric may be deleted.
+
+        The bulk route also refuses a deleted metric that is not shared with
+        the account, and the read of a deleted metric answers 404. The
+        metric list cannot show such a metric, so the message gives no hint
+        to look there.
+        """
+        message, calls = self._bulk_message(
+            temp_dir, {1: _ok(behavior_metric_json(1, "Mine")), 2: _not_found()}
         )
-        ws = _make_workspace(temp_dir, server)
-        with pytest.raises(QueryError) as single:
-            ws.update_metric(1, UpdateMetricParams(name="X"))
-        assert "list_metrics()" not in single.value.message
-        with pytest.raises(QueryError) as bulk:
-            ws.bulk_update_metrics(
-                [BulkUpdateMetricEntry(id=i, verified=True) for i in (2, 3)]
-            )
-        assert "list_metrics()" not in bulk.value.message
+        assert message == (
+            "This account cannot edit one or more of these saved metrics: 1, 2. "
+            "Saved metric 2 was not found; it may be deleted. "
+            f"{_METRIC_RULE} {_ASK_EACH} Nothing was changed."
+        )
+        assert calls == [
+            ("PATCH", _METRICS_PATH),
+            ("GET", f"{_METRICS_PATH}/1"),
+            ("GET", f"{_METRICS_PATH}/2"),
+        ]
+
+    def test_bulk_refusal_names_several_targets_that_were_not_found(
+        self, temp_dir: Path
+    ) -> None:
+        """Several 404s give one sentence in the plural, after the refused metric."""
+        message, _ = self._bulk_message(
+            temp_dir,
+            {
+                1: _not_found(),
+                2: _ok(behavior_metric_json(2, "Theirs", can_view=False)),
+                3: _not_found(),
+            },
+        )
+        assert message == (
+            f"This account cannot edit saved metric {_THEIRS_2}. Saved metrics "
+            "1, 3 were not found; they may be deleted. "
+            f"{_METRIC_RULE} {_ASK_ONE} Nothing was changed."
+        )
+
+    def test_bulk_refusal_names_a_target_that_the_client_could_not_read(
+        self, temp_dir: Path
+    ) -> None:
+        """A 403 on one read skips that target, and the message says so.
+
+        The message must not read as the full list of the refused metrics.
+        """
+        message, calls = self._bulk_message(
+            temp_dir,
+            {
+                1: httpx.Response(403, json={"error": "No access to this metric"}),
+                2: _ok(behavior_metric_json(2, "Theirs", can_view=False)),
+            },
+        )
+        assert message == (
+            f"This account cannot edit saved metric {_THEIRS_2}. The client "
+            f"could not read saved metric 1 to check it. {_METRIC_RULE} "
+            f"{_ASK_ONE} {_METRIC_HINT} Nothing was changed."
+        )
+        assert calls == [
+            ("PATCH", _METRICS_PATH),
+            ("GET", f"{_METRICS_PATH}/1"),
+            ("GET", f"{_METRICS_PATH}/2"),
+        ]
 
     def test_bulk_refusal_reads_exactly_the_read_limit(self, temp_dir: Path) -> None:
         """A batch of exactly 10 targets is read, one request per target."""
-        routes: dict[tuple[str, str], httpx.Response] = {
-            ("PATCH", _METRICS_PATH): _blank_403()
-        }
-        for i in range(1, 11):
-            routes[("GET", f"{_METRICS_PATH}/{i}")] = _ok(
-                behavior_metric_json(i, f"M{i}", can_view=(i != 10))
-            )
-        server = _Server(routes)
-        ws = _make_workspace(temp_dir, server)
-        with pytest.raises(QueryError) as exc_info:
-            ws.bulk_update_metrics(
-                [BulkUpdateMetricEntry(id=i, verified=True) for i in range(1, 11)]
-            )
-        assert exc_info.value.message.startswith(
-            "This account cannot edit saved metrics 10 ('M10', created by "
-            "ana@example.com)."
+        message, calls = self._bulk_message(
+            temp_dir,
+            {
+                i: _ok(behavior_metric_json(i, f"M{i}", can_view=(i != 10)))
+                for i in range(1, 11)
+            },
         )
-        assert server.calls() == [
+        assert message.startswith(
+            "This account cannot edit saved metric 10 ('M10', created by "
+            "ana@example.com). Only the creator"
+        )
+        assert calls == [
             ("PATCH", _METRICS_PATH),
             *[("GET", f"{_METRICS_PATH}/{i}") for i in range(1, 11)],
         ]
@@ -1677,9 +1776,10 @@ class TestEditRefusals:
             ws.bulk_update_metrics(
                 [BulkUpdateMetricEntry(id=i, verified=True) for i in ids]
             )
-        assert exc_info.value.message.startswith(
+        assert exc_info.value.message == (
             "This account cannot edit one or more of these saved metrics: "
-            "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11."
+            f"1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11. {_METRIC_RULE} {_ASK_EACH} "
+            f"{_METRIC_HINT} Nothing was changed."
         )
         assert server.calls() == [("PATCH", _METRICS_PATH)]
 
@@ -1701,9 +1801,9 @@ class TestEditRefusals:
                     BulkUpdateMetricEntry(id=2, name="Renamed"),
                 ]
             )
-        assert exc_info.value.message.startswith(
-            "This account cannot edit saved metric 2 ('Theirs', created by "
-            "ana@example.com)."
+        assert exc_info.value.message == (
+            f"This account cannot edit saved metric {_THEIRS_2}. {_METRIC_RULE} "
+            f"{_ASK_ONE} Nothing was changed."
         )
         assert server.calls() == [
             ("PATCH", _METRICS_PATH),
@@ -1712,8 +1812,10 @@ class TestEditRefusals:
 
     # ---- the reads after the 403 -------------------------------------------
 
-    def test_reads_use_one_attempt_and_a_short_timeout(self, temp_dir: Path) -> None:
-        """Each read after the 403 has a 10 s timeout; the update keeps its own."""
+    def test_read_gets_the_time_budget_as_its_timeout(
+        self, temp_dir: Path, clock: list[float]
+    ) -> None:
+        """The first read has the whole 10 s budget; the update keeps its own timeout."""
         server = _Server(
             {
                 ("PATCH", f"{_METRICS_PATH}/7"): _blank_403(),
@@ -1727,43 +1829,64 @@ class TestEditRefusals:
             ws.update_metric(7, UpdateMetricParams(name="X"))
         patch_request, get_request = server.requests
         assert get_request.extensions["timeout"]["read"] == 10.0
-        assert patch_request.extensions["timeout"]["read"] != 10.0
+        assert patch_request.extensions["timeout"]["read"] == DEFAULT_APP_TIMEOUT_S
 
-    @pytest.mark.parametrize("status", [403, 404])
-    def test_unreadable_target_does_not_stop_the_other_reads(
-        self, temp_dir: Path, status: int
+    def test_reads_share_one_time_budget(
+        self,
+        temp_dir: Path,
+        clock: list[float],
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """A 403 or a 404 on one read skips that target only.
+        """All the reads together get 10 s: each read gets the time that is left.
 
-        Args:
-            temp_dir: Temporary directory fixture.
-            status: The HTTP status of the read of the first target.
+        Each read below takes 6 s on the test clock. The second read gets a
+        4 s timeout, and the third read does not start. The message names
+        the target that the client did not read.
         """
         server = _Server(
             {
                 ("PATCH", _METRICS_PATH): _blank_403(),
-                ("GET", f"{_METRICS_PATH}/1"): httpx.Response(
-                    status, json={"error": "No access to this metric"}
-                ),
+                ("GET", f"{_METRICS_PATH}/1"): _ok(behavior_metric_json(1, "Mine")),
                 ("GET", f"{_METRICS_PATH}/2"): _ok(
                     behavior_metric_json(2, "Theirs", can_view=False)
                 ),
             }
         )
-        ws = _make_workspace(temp_dir, server)
-        with pytest.raises(QueryError) as exc_info:
+
+        def slow_server(request: httpx.Request) -> httpx.Response:
+            """Answer from the scripted server; a read takes 6 s on the test clock.
+
+            Args:
+                request: The outgoing request.
+
+            Returns:
+                The scripted response.
+            """
+            response = server(request)
+            if request.method == "GET":
+                clock[0] += 6.0
+            return response
+
+        ws = _make_workspace(temp_dir, slow_server)
+        with (
+            caplog.at_level(logging.WARNING, logger="mixpanel_headless.workspace"),
+            pytest.raises(QueryError) as exc_info,
+        ):
             ws.bulk_update_metrics(
-                [BulkUpdateMetricEntry(id=i, verified=True) for i in (1, 2)]
+                [BulkUpdateMetricEntry(id=i, verified=True) for i in (1, 2, 3)]
             )
-        assert exc_info.value.message.startswith(
-            "This account cannot edit saved metrics 2 ('Theirs', created by "
-            "ana@example.com)."
-        )
-        assert server.calls() == [
-            ("PATCH", _METRICS_PATH),
-            ("GET", f"{_METRICS_PATH}/1"),
-            ("GET", f"{_METRICS_PATH}/2"),
+        reads = [r for r in server.requests if r.method == "GET"]
+        assert [r.url.path for r in reads] == [
+            f"{_METRICS_PATH}/1",
+            f"{_METRICS_PATH}/2",
         ]
+        assert [r.extensions["timeout"]["read"] for r in reads] == [10.0, 4.0]
+        assert exc_info.value.message == (
+            f"This account cannot edit saved metric {_THEIRS_2}. The client "
+            f"could not read saved metric 3 to check it. {_METRIC_RULE} "
+            f"{_ASK_ONE} {_METRIC_HINT} Nothing was changed."
+        )
+        assert "time budget" in caplog.text
 
     def test_failed_read_still_explains_the_refusal(self, temp_dir: Path) -> None:
         """When the read is refused too, the message explains the refusal without a creator."""
@@ -1777,8 +1900,8 @@ class TestEditRefusals:
         with pytest.raises(QueryError) as exc_info:
             ws.update_metric(4107, UpdateMetricParams(name="X"))
         assert exc_info.value.message == (
-            f"This account cannot edit saved metric 4107. {_METRIC_RULE} Ask the "
-            "creator to share it with edit access. Nothing was changed."
+            f"This account cannot edit saved metric 4107. {_METRIC_RULE} "
+            f"{_ASK_ONE} Nothing was changed."
         )
 
     def test_rate_limit_on_a_read_stops_the_reads_at_once(
@@ -1807,8 +1930,9 @@ class TestEditRefusals:
             ws.bulk_update_metrics(
                 [BulkUpdateMetricEntry(id=i, verified=True) for i in (1, 2, 3)]
             )
-        assert exc_info.value.message.startswith(
-            "This account cannot edit one or more of these saved metrics: 1, 2, 3."
+        assert exc_info.value.message == (
+            "This account cannot edit one or more of these saved metrics: 1, 2, 3. "
+            f"{_METRIC_RULE} {_ASK_EACH} {_METRIC_HINT} Nothing was changed."
         )
         assert server.calls() == [
             ("PATCH", _METRICS_PATH),
@@ -1821,14 +1945,19 @@ class TestEditRefusals:
     def test_server_error_on_a_read_stops_the_reads(
         self, temp_dir: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """A 5xx on a read stops the reads; the rows read before it stay."""
+        """A 5xx on a read stops the reads, and the message names the unread targets.
+
+        The row that was read before the error stays in the message. The
+        message must not read as the full list of the refused metrics,
+        because the client did not check the other targets.
+        """
         server = _Server(
             {
                 ("PATCH", _METRICS_PATH): _blank_403(),
-                ("GET", f"{_METRICS_PATH}/1"): _ok(
-                    behavior_metric_json(1, "Theirs", can_view=False)
+                ("GET", f"{_METRICS_PATH}/2"): _ok(
+                    behavior_metric_json(2, "Theirs", can_view=False)
                 ),
-                ("GET", f"{_METRICS_PATH}/2"): httpx.Response(
+                ("GET", f"{_METRICS_PATH}/5"): httpx.Response(
                     500, json={"error": "Internal error"}
                 ),
             }
@@ -1839,18 +1968,19 @@ class TestEditRefusals:
             pytest.raises(QueryError) as exc_info,
         ):
             ws.bulk_update_metrics(
-                [BulkUpdateMetricEntry(id=i, verified=True) for i in (1, 2, 3)]
+                [BulkUpdateMetricEntry(id=i, verified=True) for i in (2, 5, 6)]
             )
-        assert exc_info.value.message.startswith(
-            "This account cannot edit saved metrics 1 ('Theirs', created by "
-            "ana@example.com)."
+        assert exc_info.value.message == (
+            f"This account cannot edit saved metric {_THEIRS_2}. The client "
+            f"could not read saved metrics 5, 6 to check them. {_METRIC_RULE} "
+            f"{_ASK_ONE} {_METRIC_HINT} Nothing was changed."
         )
         assert server.calls() == [
             ("PATCH", _METRICS_PATH),
-            ("GET", f"{_METRICS_PATH}/1"),
             ("GET", f"{_METRICS_PATH}/2"),
+            ("GET", f"{_METRICS_PATH}/5"),
         ]
-        assert "saved metric 2" in caplog.text
+        assert "saved metric 5" in caplog.text
 
     def test_unexpected_read_failure_raises_the_original_403(
         self, temp_dir: Path, caplog: pytest.LogCaptureFixture
@@ -1869,6 +1999,8 @@ class TestEditRefusals:
         assert exc_info.value.message == "Permission denied"
         assert exc_info.value.status_code == 403
         assert exc_info.value.__cause__ is None
+        errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(errors) == 1
         assert "boom" in caplog.text
 
     # ---- behaviors ----------------------------------------------------------

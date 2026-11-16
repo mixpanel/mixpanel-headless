@@ -1401,11 +1401,11 @@ class MixpanelAPIClient:
 
         A URL that :func:`_wants_query_origin` accepts gets the canonical
         ``query_origin`` parameter, which replaces any caller value. That
-        covers the Query and Engage bases of the client, and Query API paths
-        on hosts outside every base of the client. Each other URL (App API,
-        export, and other paths) goes out with the given params only. The
-        method works on a copy of ``params``, so it never changes the dict
-        that it receives.
+        covers a URL under the Query or Engage base of the client, and a URL
+        under no base of the client whose path is a Query API path. Each
+        other URL (under the App API or export base, or with another path)
+        goes out with the given params only. The method works on a copy of
+        ``params``, so it never changes the dict that it receives.
 
         Args:
             method: HTTP method (GET, POST, etc.).
@@ -1625,10 +1625,10 @@ class MixpanelAPIClient:
         adds no ``project_id`` and no ``workspace_id``; put them in ``url``
         or ``params`` yourself.
 
-        The method adds one parameter of its own, the ``query_origin``
-        telemetry parameter, and only to Query API traffic. The rule goes by
-        the base URLs of your region, or of ``MP_API_BASE_URL`` when it is
-        set:
+        The method adds one parameter of its own to some URLs: the
+        ``query_origin`` telemetry parameter of the Query API. The rule goes
+        by the base URLs of the client: those of your region, or those that
+        ``MP_API_BASE_URL`` and ``MP_APP_BASE_URL`` set.
 
         - A URL under the Query or Engage base gets ``query_origin``.
         - A URL under the App API base (``/api/app/...``) or the export base
@@ -1636,9 +1636,10 @@ class MixpanelAPIClient:
           refuse an unknown query parameter. With ``MP_API_BASE_URL`` the
           export base is ``{base}/api/2.0``, so every ``{base}/api/2.0/...``
           path counts as export.
-        - A URL under none of these bases (for example a host of another
-          region) gets ``query_origin`` when its path starts with
-          ``/api/query`` or the older ``/api/2.0``.
+        - A URL under none of these bases gets ``query_origin`` when its
+          path starts with ``/api/query`` or the older ``/api/2.0``. Examples
+          are ``https://mixpanel.com/api/2.0/segmentation`` and each host of
+          another region.
 
         A list value in ``params`` goes out as a repeated key
         (``{"id[]": ["1", "2"]}`` sends ``id[]=1&id[]=2``). Your ``params``
@@ -1956,7 +1957,7 @@ class MixpanelAPIClient:
                 constructor ``timeout``.
             max_retries: Most retries after a 429 for this request. Replaces
                 the constructor ``max_retries``. ``0`` sends one request and
-                never waits.
+                never waits; a value below 0 counts as 0.
             _raw: If True, return the full response dict without unwrapping
                 the ``results`` field. Useful for endpoints that include
                 pagination metadata alongside results.
@@ -2018,7 +2019,7 @@ class MixpanelAPIClient:
             form_body if form_body is not None else json_body
         )
         request_timeout = timeout if timeout is not None else self._default_timeout(url)
-        retries = self._max_retries if max_retries is None else max_retries
+        retries = self._max_retries if max_retries is None else max(0, max_retries)
 
         for attempt in range(retries + 1):
             try:
@@ -9407,7 +9408,8 @@ class MixpanelAPIClient:
         Args:
             metric_id: The saved metric id.
             timeout: Read timeout in seconds for this request; ``None`` keeps
-                the App API default.
+                the client's timeout (the constructor ``timeout``, or else
+                the App API default).
             max_retries: Most retries after a 429 for this request; ``None``
                 keeps the client's count.
 
@@ -9620,7 +9622,8 @@ class MixpanelAPIClient:
         Args:
             behavior_id: The saved behavior id.
             timeout: Read timeout in seconds for this request; ``None`` keeps
-                the App API default.
+                the client's timeout (the constructor ``timeout``, or else
+                the App API default).
             max_retries: Most retries after a 429 for this request; ``None``
                 keeps the client's count.
 

@@ -61,8 +61,11 @@ def _show_recorded_warnings(recorded: list[warnings.WarningMessage]) -> None:
     """
     for warning in recorded:
         if issubclass(warning.category, UserWarning):
+            # The text can hold property names. Print them as they are: no
+            # Rich markup ("[x]") and no emoji codes (":email:").
             err_console.print(
-                f"[yellow]Warning:[/yellow] {rich_escape(str(warning.message))}"
+                f"[yellow]Warning:[/yellow] {rich_escape(str(warning.message))}",
+                emoji=False,
             )
         else:
             warnings.showwarning(

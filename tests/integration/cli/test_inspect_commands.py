@@ -151,7 +151,7 @@ class TestInspectProperties:
         assert result.exit_code == 0, result.output
         assert "Warning" not in result.stderr
 
-    @pytest.mark.parametrize("fmt", ["json", "plain", "table"])
+    @pytest.mark.parametrize("fmt", ["json", "jsonl", "table", "csv", "plain"])
     def test_each_user_warning_is_one_warning_line(
         self, cli_runner: CliRunner, mock_workspace: MagicMock, fmt: str
     ) -> None:
@@ -268,14 +268,57 @@ class TestInspectProperties:
         assert result.exit_code == 0, result.output
         assert "Warning: left out: meta[email], [/x]" in " ".join(result.stderr.split())
 
+    def test_emoji_code_in_a_warning_prints_as_text(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """A property name with a ``:word:`` part prints as it is.
+
+        Rich replaces an emoji code such as ``:email:`` with a glyph. The
+        warning is the only place that names the left-out properties, so
+        the name must not change.
+        """
+
+        def properties(event: str) -> list[str]:
+            """Warn about names that hold emoji codes.
+
+            Args:
+                event: The event name.
+
+            Returns:
+                The property names.
+            """
+            warnings.warn(
+                "left out: contact:email:primary, account:id:hash",
+                UserWarning,
+                stacklevel=1,
+            )
+            return ["plan"]
+
+        mock_workspace.properties.side_effect = properties
+
+        with patch(
+            "mixpanel_headless.cli.commands.inspect.get_workspace",
+            return_value=mock_workspace,
+        ):
+            result = cli_runner.invoke(
+                app, ["inspect", "properties", "--event", "Purchase"]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Warning: left out: contact:email:primary, account:id:hash" in " ".join(
+            result.stderr.split()
+        )
+
     def test_warning_of_another_category_is_passed_on(
         self, cli_runner: CliRunner, mock_workspace: MagicMock
     ) -> None:
         """A warning that is not a ``UserWarning`` leaves the command's capture.
 
         The command records warnings to print the left-out names. It must
-        not swallow the other categories: it hands each one back to Python,
-        which prints it on stderr as for every other command.
+        not swallow the other categories: it hands each one back to Python's
+        own display. Here a recorder around the command takes that display,
+        so the warning arrives in the recorder and not as a ``Warning:``
+        line.
         """
 
         def properties(event: str) -> list[str]:

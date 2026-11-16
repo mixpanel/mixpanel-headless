@@ -2023,9 +2023,9 @@ class TestPublicRequest:
     ) -> None:
         """With MP_APP_BASE_URL set, a URL under that base gets no query_origin.
 
-        The App API base wins as the longest prefix, also when it sits under
-        a path that looks like a Query API path. The live Query host of the
-        region keeps its tag.
+        A match with the App API base decides before the path rule, also
+        when that base sits under a path that looks like a Query API path.
+        The live Query host of the region keeps its tag.
 
         Args:
             test_credentials: US service-account session.

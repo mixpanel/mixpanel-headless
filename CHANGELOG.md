@@ -98,21 +98,26 @@ may include API changes.
   for editing, and project owners can edit it. For a behavior, the server
   gives the same answer when the account lacks the `write_behaviors`
   permission, and no read can tell the two causes apart, so the error names
-  both. The client reads each refused entity once to get its name and
-  creator, with one attempt and a 10-second timeout per read. A bulk update
-  of more than 10 metrics gets a message that lists the ids only. The error
+  both. To get the names and creators, the client reads each target of the
+  update once, with one attempt per read and 10 seconds for all the reads
+  together. The error of a bulk update names the refused metrics. It also
+  names each metric that was not found (the server refuses a deleted metric
+  too) and each metric that the client could not read. A bulk update of
+  more than 10 metrics gets a message that lists the ids only. The error
   stays a `QueryError` with status 403.
 - The CLI hint for a 403 error no longer says "Check service account
   permissions." Users of OAuth accounts saw it too, and they have no
   service account to check. The hint now fits every account type.
-- `ws.api.request()` adds the `query_origin` parameter to Query API traffic
-  only: a URL under the Query or Engage base of your region, and a URL on
-  another host whose path starts with `/api/query` or the older `/api/2.0`.
-  App API endpoints such as `/me` refused it with "Additional properties are
-  not allowed ('query_origin' was unexpected)". A URL under your App API or
-  export base now gets exactly the parameters that you pass, and `request()`
-  no longer changes the `params` dict that you give it. With
-  `MP_API_BASE_URL`, every `{base}/api/2.0/...` path counts as export.
+- `ws.api.request()` no longer adds the `query_origin` parameter to every
+  URL. App API endpoints such as `/me` refused it with "Additional properties
+  are not allowed ('query_origin' was unexpected)". It now adds the parameter
+  to a URL under the Query or Engage base of your region, and to a URL under
+  none of your bases whose path starts with `/api/query` or the older
+  `/api/2.0` (for example `https://mixpanel.com/api/2.0/segmentation`, or a
+  host of another region). A URL under your App API or export base gets
+  exactly the parameters that you pass. With `MP_API_BASE_URL`, every
+  `{base}/api/2.0/...` path counts as export. `request()` also no longer
+  changes the `params` dict that you give it.
 - `MixpanelAPIClient.list_property_definitions(include_custom=False)` leaves
   custom properties out. The server reads `includeCustom` as a raw string,
   so the `includeCustom=false` that the client sent turned them on.

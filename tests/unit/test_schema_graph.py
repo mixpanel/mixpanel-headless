@@ -377,7 +377,7 @@ class TestApiClientBulkLexicon:
 
         Unlike the other toggles, the server parses this one as a boolean,
         so the literal ``false`` turns it off. Leaving it out would give the
-        server's default, which depends on the workspace.
+        server's own default.
         """
         seen: dict[str, Any] = {}
 

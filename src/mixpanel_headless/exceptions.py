@@ -778,18 +778,17 @@ class RateLimitError(APIError):
 class EventNotFoundError(MixpanelHeadlessError):
     """The server rejected an event name.
 
-    Raised when the server answers a request for an event with a 400.
-    Includes suggestions for similar event names based on case-insensitive
-    and substring matching to help users correct typos or case mismatches.
+    Raised by ``Workspace.properties()`` when the server answers the
+    property request with a 400. The error lists similar event names, from
+    a case-insensitive match and a substring match.
 
-    An event that the project does not track is not rejected:
-    ``Workspace.properties()`` returns an empty list for it and does not
-    raise this error.
+    A name that the project does not track, for example a typo, is not
+    rejected: the call returns an empty list and does not raise this error.
 
     Example:
         ```python
         try:
-            properties = discovery.list_properties("sign up")
+            properties = ws.properties(event_name)
         except EventNotFoundError as e:
             print(f"The server rejected event '{e.event_name}'.")
             if e.similar_events:

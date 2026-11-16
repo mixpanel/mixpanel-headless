@@ -169,8 +169,9 @@ def paginate_all(
             request_params.update(params)
         if next_cursor is not None:
             request_params["cursor"] = next_cursor
-        # No query_origin: it goes to Query API requests only, and an App API
-        # endpoint can refuse a parameter that its request schema does not name.
+        # Only page_size, the caller's params, and the cursor go out. An App
+        # API endpoint can refuse a parameter that its request schema does not
+        # name, so this request carries no query_origin.
 
         # Make the raw request to get full response with pagination
         url = client._build_url("app", path)

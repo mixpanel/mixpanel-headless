@@ -185,6 +185,18 @@ class TestAppRequestMaxRetries:
         assert len(captured) == 1
         assert recorded_sleeps == []
 
+    def test_negative_count_still_sends_one_request(
+        self, oauth_credentials: Session, recorded_sleeps: list[float]
+    ) -> None:
+        """A count below 0 counts as 0: one request, and the real 429 comes back."""
+        captured: list[httpx.Request] = []
+        client = create_mock_client(oauth_credentials, _rate_limited(captured))
+        with client, pytest.raises(RateLimitError) as exc_info:
+            client.app_request("GET", "/projects/12345/metrics/1", max_retries=-1)
+        assert len(captured) == 1
+        assert exc_info.value.response_body == {"error": "rate limit"}
+        assert recorded_sleeps == []
+
     def test_per_call_count_wins(
         self, oauth_credentials: Session, recorded_sleeps: list[float]
     ) -> None:

@@ -521,11 +521,11 @@ def _flow_mode_from_params(params: dict[str, Any]) -> str:
 # without names, so the error never waits for many reads.
 _EDIT_REFUSAL_READ_LIMIT = 10
 
-# Read timeout, in seconds, of each of those reads. The reads only add names
-# to an error that the server already gave, so each one gets one attempt
-# (no retry after a 429) and this short timeout in place of the App API
-# default.
-_EDIT_REFUSAL_READ_TIMEOUT_S = 10.0
+# Time budget, in seconds, for all of those reads together. The reads only
+# add names to an error that the server already gave. So each read gets one
+# attempt (no retry after a 429) and, as its timeout, the time that is left
+# of this budget. The reads stop when the budget is used up.
+_EDIT_REFUSAL_READ_BUDGET_S = 10.0
 
 
 def _is_blank_refusal(exc: QueryError) -> bool:
@@ -533,15 +533,16 @@ def _is_blank_refusal(exc: QueryError) -> bool:
 
     The server answers a refused edit of a saved metric or behavior with a
     403 whose JSON body is ``{"error": "", "status": "error"}``. Only that
-    shape counts: the ``error`` key holds a blank string, and no ``message``
-    text comes with it. A 403 of another shape, for example ``{}`` or the
-    body of a gateway, has a cause that the client does not know.
+    shape counts: ``error`` holds a blank string, ``status`` is ``"error"``
+    or absent, and no other key holds a value. A 403 of another shape, for
+    example ``{}`` or the body of a gateway, has a cause that the client
+    does not know.
 
     Args:
         exc: The error that an update raised.
 
     Returns:
-        ``True`` for a 403 whose ``error`` is a blank string.
+        ``True`` for a 403 of the recorded shape.
 
     Example:
         ```python
@@ -560,27 +561,49 @@ def _is_blank_refusal(exc: QueryError) -> bool:
     if exc.status_code != 403 or not isinstance(body, dict):
         return False
     error = body.get("error")
-    message = body.get("message")
-    has_message = isinstance(message, str) and bool(message.strip())
-    return isinstance(error, str) and not error.strip() and not has_message
+    if not isinstance(error, str) or error.strip():
+        return False
+    if body.get("status", "error") != "error":
+        return False
+    return not any(
+        value for key, value in body.items() if key not in ("error", "status")
+    )
 
 
-def _is_unreadable_target(exc: MixpanelHeadlessError) -> bool:
-    """Return whether a failed read concerns only the one target that it read.
+def _unreadable_status(exc: MixpanelHeadlessError) -> int | None:
+    """Return the status of a failed read that concerns only its one target.
 
-    After a refused edit, the client reads each target to name it. A 403 or
-    a 404 on such a read means that this account cannot read that target, or
-    that the target does not exist. The next target can still be readable.
-    Each other error (a rate limit, a server error, a timeout) would
-    probably repeat on the next read.
+    After a refused edit, the client reads each target to name it. A 403 on
+    such a read means that this account cannot read that target, and a 404
+    means that the target does not exist or is deleted. The next target can
+    still be readable. Each other error (a rate limit, a server error, a
+    timeout) would probably repeat on the next read.
 
     Args:
         exc: The error that the read of one target raised.
 
     Returns:
-        ``True`` for a ``QueryError`` with status 403 or 404.
+        ``403`` or ``404`` for a ``QueryError`` with that status, and
+        ``None`` for each other error.
     """
-    return isinstance(exc, QueryError) and exc.status_code in (403, 404)
+    if isinstance(exc, QueryError) and exc.status_code in (403, 404):
+        return exc.status_code
+    return None
+
+
+def _name_targets(noun: str, ids: Sequence[object]) -> str:
+    """Name one or several entities by id, with the noun in the right number.
+
+    Args:
+        noun: The entity noun in the singular, for example ``"saved metric"``.
+        ids: The ids to name; at least one.
+
+    Returns:
+        The noun and the ids, for example ``"saved metric 2"`` or
+        ``"saved metrics 2, 3"``.
+    """
+    joined = ", ".join(str(i) for i in ids)
+    return f"{noun} {joined}" if len(ids) == 1 else f"{noun}s {joined}"
 
 
 def _describe_saved_entity(row: dict[str, Any]) -> str:
@@ -9476,11 +9499,13 @@ class Workspace:
             AuthenticationError: Invalid credentials (401).
             QueryError: The read of an entry's metric failed (404), the
                 caller cannot edit one of the metrics (403), or a new name
-                is taken (409). After that 403 nothing was changed. The
-                method then reads the metrics one by one, to name each
+                is taken (409). That 403 means that nothing was changed.
+                The method then reads the metrics one by one, to name each
                 refused metric and its creator. It reads them only for a
-                batch of 10 metrics or fewer, with one attempt per read. A
-                larger batch gets a message that lists the ids only.
+                batch of 10 metrics or fewer, with one attempt per read and
+                10 seconds for all the reads. The message also names each
+                metric that was not found or that the method could not read.
+                A larger batch gets a message that lists the ids only.
             RateLimitError: Rate limit exceeded after retries (429).
             ServerError: Server-side errors (5xx).
 
@@ -9737,15 +9762,19 @@ class Workspace:
 
         For a metric, the blank 403 has one cause: the account did not create
         the metric, the metric is not shared with the account for editing,
-        and the account is not a project owner. For a behavior it has a
-        second cause: the account lacks the ``write_behaviors`` permission.
-        The server sets ``can_update_basic`` to false for both causes, so no
-        read can separate them, and the message names both.
+        and the account is not a project owner (and has no custom role with
+        the same right). For a behavior it has a second cause: the account
+        lacks the ``write_behaviors`` permission. The server sets
+        ``can_update_basic`` to false for both causes, so no read can
+        separate them, and the message names both.
 
         To name each refused entity and its creator, the method reads the
-        targets one by one (see :meth:`_read_edit_targets`). A batch that is
-        too large to read, and a target whose read fails, give the
-        explanation without names.
+        targets one by one (see :meth:`_read_edit_targets`). The message of
+        a bulk update names the refused metrics that the reads found. It
+        also names each target that was not found (the bulk route refuses a
+        deleted metric too) and each target that the client could not read,
+        so that it never reads as the full list of the refused metrics when
+        it is not.
 
         Args:
             entity: ``"metric"`` or ``"behavior"``.
@@ -9755,57 +9784,76 @@ class Workspace:
         Returns:
             A ``QueryError`` (403) with the explanation and the response and
             request context of ``exc``. ``None`` when ``exc`` is not the
-            blank 403, or when the reads fail with an error that is not a
-            library error; the caller then raises ``exc`` as it is.
+            blank 403, or when the reads raise an error that
+            :meth:`_read_edit_targets` does not handle; the caller then
+            raises ``exc`` as it is.
         """
         if not _is_blank_refusal(exc):
             return None
         noun = f"saved {entity}"
         ids = list(dict.fromkeys(target_ids))
         try:
-            rows = self._read_edit_targets(entity, ids)
+            rows, not_found = self._read_edit_targets(entity, ids)
         except Exception:  # the reads must never replace the server's 403
-            logger.warning(
-                "Could not read %ss %s to explain the refused edit",
-                noun,
-                ids,
-                exc_info=True,
+            logger.exception(
+                "Could not read %s to explain the refused edit",
+                _name_targets(noun, ids),
             )
             return None
-        refused = [row for row in rows if row.get("can_update_basic") is False]
-        if len(ids) == 1:
-            target = _describe_saved_entity(rows[0]) if rows else str(ids[0])
-            subject = f"This account cannot edit {noun} {target}."
+        refused = [row for row in rows.values() if row.get("can_update_basic") is False]
+        unread = [i for i in ids if i not in rows and i not in not_found]
+        several = len(ids) > 1
+        parts: list[str] = []
+        if not several:
+            row = rows.get(ids[0])
+            target = _describe_saved_entity(row) if row is not None else str(ids[0])
+            parts.append(f"This account cannot edit {noun} {target}.")
+        elif len(refused) == 1:
+            target = _describe_saved_entity(refused[0])
+            parts.append(f"This account cannot edit {noun} {target}.")
         elif refused:
             listed = ", ".join(_describe_saved_entity(row) for row in refused)
-            subject = f"This account cannot edit {noun}s {listed}."
+            parts.append(f"This account cannot edit {noun}s {listed}.")
         else:
             listed = ", ".join(str(i) for i in ids)
-            subject = (
+            parts.append(
                 f"This account cannot edit one or more of these {noun}s: {listed}."
+            )
+        if several and not_found:
+            was, it = ("was", "it") if len(not_found) == 1 else ("were", "they")
+            gone = _name_targets(noun, not_found).capitalize()
+            parts.append(f"{gone} {was} not found; {it} may be deleted.")
+        if several and unread and len(unread) < len(ids):
+            it = "it" if len(unread) == 1 else "them"
+            parts.append(
+                f"The client could not read {_name_targets(noun, unread)} to "
+                f"check {it}."
             )
         rule = (
             f"Only the creator of a {noun}, the users and teams that it is "
             f"shared with for editing, and project owners can edit it."
         )
-        share = f"{rule} Ask the creator to share it with edit access."
+        if not several or len(refused) == 1:
+            ask = "Ask the creator to share it with edit access."
+        else:
+            ask = f"Ask the creator of each {noun} to share it with edit access."
         if entity == "behavior":
-            reason = (
-                "The server gives one answer for two causes. Either the "
-                "account lacks the write_behaviors permission in this project, "
-                f"or the {noun} is not shared with the account for editing. "
-                f"{rule} A project admin can grant the permission, and the "
-                f"creator can share the {noun} with edit access."
-            )
-        elif len(ids) > 1 and not refused:
-            reason = (
-                f"{share} The can_update_basic flag in list_metrics() (CLI: "
-                "mp metrics list) shows which ones."
+            parts.append(
+                "The server gives one answer for two causes. First cause: the "
+                "account lacks the write_behaviors permission in this project. "
+                f"A project admin can grant it. Second cause: the {noun} is "
+                f"not shared with the account for editing. {rule} {ask}"
             )
         else:
-            reason = share
+            parts.append(f"{rule} {ask}")
+            if several and (unread or not (refused or not_found)):
+                parts.append(
+                    "The can_update_basic flag in list_metrics() (CLI: mp "
+                    f"metrics list) shows which {noun}s this account can edit."
+                )
+        parts.append("Nothing was changed.")
         return QueryError(
-            f"{subject} {reason} Nothing was changed.",
+            " ".join(parts),
             status_code=exc.status_code,
             response_body=exc.response_body,
             request_method=exc.request_method,
@@ -9816,51 +9864,72 @@ class Workspace:
 
     def _read_edit_targets(
         self, entity: Literal["metric", "behavior"], ids: list[int]
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[dict[int, dict[str, Any]], list[int]]:
         """Read the rows of an update's targets one by one, to explain a refusal.
 
         The reads are best effort: they only add names to an error that the
         server already gave. So each read gets one attempt (no retry after a
-        429) and a short timeout (``_EDIT_REFUSAL_READ_TIMEOUT_S``), and more
-        than ``_EDIT_REFUSAL_READ_LIMIT`` targets are not read at all. The
-        method reads the targets one by one and not from the full list,
-        because that list can take more than 30 seconds on a large project.
+        429), all the reads together get ``_EDIT_REFUSAL_READ_BUDGET_S``
+        seconds, and more than ``_EDIT_REFUSAL_READ_LIMIT`` targets are not
+        read at all. The method reads the targets one by one and not from
+        the full list, because that list can take more than 30 seconds on a
+        large project.
 
         A read that the server refuses (403), or that finds nothing (404),
-        skips that target only. Each other library error (for example a rate
-        limit, a server error, or a timeout) stops the reads, because the
-        next read would probably fail in the same way. The method logs that
-        error.
+        concerns that target only, and the reads continue. Each other
+        library error (for example a rate limit, a server error, or a
+        timeout) stops the reads, because the next read would probably fail
+        in the same way. The method logs that error.
 
         Args:
             entity: ``"metric"`` or ``"behavior"``.
             ids: The distinct target ids.
 
         Returns:
-            The rows that the reads found, in the order of ``ids``.
+            ``(rows, not_found)``. ``rows`` holds the row of each target
+            that a read found, keyed by the target id, in the order of
+            ``ids``. ``not_found`` holds the ids that a read answered with a
+            404. A target in neither was not read.
+
+        Raises:
+            Exception: Any error of a read that is not a
+                ``MixpanelHeadlessError``. The method does not handle it;
+                :meth:`_explain_edit_refusal` does.
         """
+        rows: dict[int, dict[str, Any]] = {}
+        not_found: list[int] = []
         if len(ids) > _EDIT_REFUSAL_READ_LIMIT:
-            return []
+            return rows, not_found
         client = self._require_api_client()
         read = client.get_metric if entity == "metric" else client.get_behavior
-        rows: list[dict[str, Any]] = []
+        deadline = time.monotonic() + _EDIT_REFUSAL_READ_BUDGET_S
         for entity_id in ids:
-            try:
-                row = read(
-                    entity_id, timeout=_EDIT_REFUSAL_READ_TIMEOUT_S, max_retries=0
-                )
-            except MixpanelHeadlessError as read_exc:
-                if _is_unreadable_target(read_exc):
-                    continue
+            time_left = deadline - time.monotonic()
+            if time_left <= 0:
                 logger.warning(
-                    "Could not read saved %s %s to explain the refused edit: %s",
-                    entity,
-                    entity_id,
-                    read_exc,
+                    "Stopped the reads that explain the refused edit: the "
+                    "time budget of %.0f s is used up",
+                    _EDIT_REFUSAL_READ_BUDGET_S,
                 )
                 break
-            rows.append(row)
-        return rows
+            try:
+                rows[entity_id] = read(entity_id, timeout=time_left, max_retries=0)
+            except MixpanelHeadlessError as read_exc:
+                status = _unreadable_status(read_exc)
+                if status is None:
+                    logger.warning(
+                        "Could not read saved %s %s to explain the refused edit: %s",
+                        entity,
+                        entity_id,
+                        read_exc,
+                    )
+                    break
+                logger.debug(
+                    "The read of saved %s %s answered %s", entity, entity_id, status
+                )
+                if status == 404:
+                    not_found.append(entity_id)
+        return rows, not_found
 
     def list_behaviors(
         self,
