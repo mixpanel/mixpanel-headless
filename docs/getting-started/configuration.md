@@ -97,7 +97,7 @@ Details:
 
 - **Read per request, not at import.** `Workspace.use(account=...)` swaps, long-lived processes, and test monkeypatching all see the current value.
 - **The `mp` CLI and the Python library share the client**, so the CLI needs no extra flag.
-- **Route-aware behaviour is preserved.** The App-vs-Query read-timeout choice and the pinned `workspace_id` injection key off the API family, not the hostname, so they behave identically under the override.
+- **Route-aware behaviour is preserved.** The App-vs-Query read-timeout choice and the pinned `workspace_id` injection key off the API family, not the hostname, so they behave identically under the override. The `query_origin` telemetry parameter of `api.request()` keys off the family too. Under the override, every `{base}/api/2.0/...` URL is in the export family and gets no `query_origin`.
 - **`MP_REGION` is still required** and still meaningful for everything that is not a URL (account records, `/me` domain cross-checks, report-link hostnames). Report links (`create_report_link` / `saved_report_link`) keep producing real `*.mixpanel.com` URLs.
 - **`mp login` region probe.** Probing `us → eu → in` against one host is pointless, so under the override the probe runs once against the base and labels the account with `MP_REGION` (when it is `us`/`eu`/`in`) or `us`.
 - **Plain `http://` bases are accepted** with no extra flag. They are intended for local or headless deployments only — never send real credentials over cleartext to a remote host.

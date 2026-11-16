@@ -17,6 +17,9 @@ may include API changes.
 - Plugin: a repository guard checks that every minimum-version phrase in
   the shipped plugin text ("0.4.0 or later", "older than 0.4.0", a `>=`
   pin) names the version that setup installs.
+- `MixpanelAPIClient.app_request()` accepts `max_retries`, the most retries
+  after a 429 for that one request. `MixpanelAPIClient.get_metric()` and
+  `get_behavior()` accept `timeout` and `max_retries` and pass them on.
 
 ### Changed
 
@@ -92,19 +95,24 @@ may include API changes.
   server answers 403 with no message, and the client showed only
   "Permission denied". The error now names the entity and its creator, and
   it says that only the creator, the users and teams that it is shared with
-  for editing, and project owners can edit it. When a behavior is editable
-  but the account lacks the `write_behaviors` permission, the error says
-  so. When the client cannot tell these two causes apart, the error names
-  both. The error stays a `QueryError` with status 403.
+  for editing, and project owners can edit it. For a behavior, the server
+  gives the same answer when the account lacks the `write_behaviors`
+  permission, and no read can tell the two causes apart, so the error names
+  both. The client reads each refused entity once to get its name and
+  creator, with one attempt and a 10-second timeout per read. A bulk update
+  of more than 10 metrics gets a message that lists the ids only. The error
+  stays a `QueryError` with status 403.
 - The CLI hint for a 403 error no longer says "Check service account
   permissions." Users of OAuth accounts saw it too, and they have no
   service account to check. The hint now fits every account type.
-- `ws.api.request()` adds the `query_origin` parameter to Query API URLs
-  only (`/api/query/...` and the older `/api/2.0/...` paths). App API
-  endpoints such as `/me` refused it with "Additional properties are not
-  allowed ('query_origin' was unexpected)". App API, export, and other URLs
-  now get exactly the parameters that you pass, and `request()` no longer
-  changes the `params` dict that you give it.
+- `ws.api.request()` adds the `query_origin` parameter to Query API traffic
+  only: a URL under the Query or Engage base of your region, and a URL on
+  another host whose path starts with `/api/query` or the older `/api/2.0`.
+  App API endpoints such as `/me` refused it with "Additional properties are
+  not allowed ('query_origin' was unexpected)". A URL under your App API or
+  export base now gets exactly the parameters that you pass, and `request()`
+  no longer changes the `params` dict that you give it. With
+  `MP_API_BASE_URL`, every `{base}/api/2.0/...` path counts as export.
 - `MixpanelAPIClient.list_property_definitions(include_custom=False)` leaves
   custom properties out. The server reads `includeCustom` as a raw string,
   so the `includeCustom=false` that the client sent turned them on.

@@ -4,8 +4,8 @@
 Tests for:
 - ``list_metrics`` / ``get_metric`` / ``delete_metrics``
 - ``list_behaviors`` / ``get_behavior`` / ``delete_behaviors``
-- The per-call ``timeout`` of ``app_request`` and the long read timeout of
-  the two unpaginated list calls
+- The per-call ``timeout`` and ``max_retries`` of ``app_request``, and the
+  long read timeout of the two unpaginated list calls
 
 Verifies paths (project-scoped even with a pinned workspace), verbs, bulk
 DELETE bodies, the unwrap of the id-keyed ``results`` map, and error mapping.
@@ -14,6 +14,7 @@ DELETE bodies, the unwrap of the id-keyed ``results`` map, and error mapping.
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -28,6 +29,7 @@ from mixpanel_headless._internal.auth.session import Session
 from mixpanel_headless.exceptions import (
     MixpanelHeadlessError,
     QueryError,
+    RateLimitError,
     ServerError,
 )
 from tests.conftest import make_session
@@ -127,6 +129,87 @@ class TestAppRequestTimeout:
                 timeout=9.0,
             )
         assert captured[0].extensions["timeout"]["read"] == 9.0
+
+
+# =============================================================================
+# app_request per-call retry limit
+# =============================================================================
+
+
+@pytest.fixture
+def recorded_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Record every ``time.sleep`` call of the client, and do not wait.
+
+    Args:
+        monkeypatch: pytest monkeypatch fixture (restores ``time.sleep``).
+
+    Returns:
+        A list that holds the seconds of each ``time.sleep`` call, in order.
+    """
+    calls: list[float] = []
+    monkeypatch.setattr(time, "sleep", calls.append)
+    return calls
+
+
+def _rate_limited(
+    captured: list[httpx.Request],
+) -> Callable[[httpx.Request], httpx.Response]:
+    """Build a handler that records each request and answers with a 429.
+
+    Args:
+        captured: List the handler appends each request to.
+
+    Returns:
+        A MockTransport handler.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Record the request and answer that the rate limit is reached."""
+        captured.append(request)
+        return httpx.Response(429, json={"error": "rate limit"})
+
+    return handler
+
+
+class TestAppRequestMaxRetries:
+    """``app_request(max_retries=...)`` replaces the constructor's retry count."""
+
+    def test_zero_retries_raises_on_the_first_429(
+        self, oauth_credentials: Session, recorded_sleeps: list[float]
+    ) -> None:
+        """``max_retries=0`` sends one request and never sleeps."""
+        captured: list[httpx.Request] = []
+        client = create_mock_client(oauth_credentials, _rate_limited(captured))
+        with client, pytest.raises(RateLimitError):
+            client.app_request("GET", "/projects/12345/metrics/1", max_retries=0)
+        assert len(captured) == 1
+        assert recorded_sleeps == []
+
+    def test_per_call_count_wins(
+        self, oauth_credentials: Session, recorded_sleeps: list[float]
+    ) -> None:
+        """A per-call count overrides the constructor ``max_retries``."""
+        captured: list[httpx.Request] = []
+        client = create_mock_client(
+            oauth_credentials, _rate_limited(captured), max_retries=5
+        )
+        with client, pytest.raises(RateLimitError):
+            client.app_request("GET", "/projects/12345/metrics/1", max_retries=1)
+        assert len(captured) == 2
+        assert len(recorded_sleeps) == 1
+
+    def test_default_when_absent(
+        self, oauth_credentials: Session, recorded_sleeps: list[float]
+    ) -> None:
+        """Without a per-call count the constructor ``max_retries`` applies."""
+        captured: list[httpx.Request] = []
+        client = create_mock_client(
+            oauth_credentials, _rate_limited(captured), max_retries=2
+        )
+        with client, pytest.raises(RateLimitError):
+            client.app_request("GET", "/projects/12345/metrics/1")
+        assert len(captured) == 3
+        assert len(recorded_sleeps) == 2
 
 
 # =============================================================================
@@ -331,6 +414,18 @@ class TestGetMetric:
         with client, pytest.raises(MixpanelHeadlessError, match="get_metric"):
             client.get_metric(1)
 
+    def test_timeout_and_retry_limit_reach_the_request(
+        self, oauth_credentials: Session, recorded_sleeps: list[float]
+    ) -> None:
+        """``timeout`` and ``max_retries`` apply to the read of the metric."""
+        captured: list[httpx.Request] = []
+        client = create_mock_client(oauth_credentials, _rate_limited(captured))
+        with client, pytest.raises(RateLimitError):
+            client.get_metric(104700, timeout=4.0, max_retries=0)
+        assert len(captured) == 1
+        assert captured[0].extensions["timeout"]["read"] == 4.0
+        assert recorded_sleeps == []
+
 
 class TestDeleteMetrics:
     """Tests for delete_metrics() API client method."""
@@ -449,6 +544,18 @@ class TestGetBehavior:
         )
         with client, pytest.raises(MixpanelHeadlessError, match="get_behavior"):
             client.get_behavior(1)
+
+    def test_timeout_and_retry_limit_reach_the_request(
+        self, oauth_credentials: Session, recorded_sleeps: list[float]
+    ) -> None:
+        """``timeout`` and ``max_retries`` apply to the read of the behavior."""
+        captured: list[httpx.Request] = []
+        client = create_mock_client(oauth_credentials, _rate_limited(captured))
+        with client, pytest.raises(RateLimitError):
+            client.get_behavior(3001, timeout=4.0, max_retries=0)
+        assert len(captured) == 1
+        assert captured[0].extensions["timeout"]["read"] == 4.0
+        assert recorded_sleeps == []
 
 
 class TestDeleteBehaviors:

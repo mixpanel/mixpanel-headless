@@ -370,6 +370,38 @@ class TestApiClientBulkLexicon:
         assert "includeCustom" not in seen["params"]
         assert seen["params"]["includeZeroCounts"] == "true"
 
+    def test_list_property_definitions_include_zero_counts_false_is_sent(
+        self,
+    ) -> None:
+        """include_zero_counts=False goes out as ``includeZeroCounts=false``.
+
+        Unlike the other toggles, the server parses this one as a boolean,
+        so the literal ``false`` turns it off. Leaving it out would give the
+        server's default, which depends on the workspace.
+        """
+        seen: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the params and answer with an empty list."""
+            seen["params"] = dict(request.url.params)
+            return httpx.Response(200, json=[])
+
+        _client(handler).list_property_definitions(include_zero_counts=False)
+        assert seen["params"]["includeZeroCounts"] == "false"
+
+    def test_list_property_definitions_normalizes_resource_type(self) -> None:
+        """The bulk call sends the capitalized ``resourceType`` for any spelling."""
+        seen: dict[str, Any] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the params and answer with an empty list."""
+            seen["params"] = dict(request.url.params)
+            return httpx.Response(200, json=[])
+
+        _client(handler).list_property_definitions(resource_type="user")
+        assert seen["params"]["resourceType"] == "User"
+        assert "resource_type" not in seen["params"]
+
     def test_get_property_definitions_normalizes_resource_type(self) -> None:
         """get_* sends the singular name filter and the normalized resourceType."""
         seen: dict[str, Any] = {}

@@ -21,6 +21,7 @@ import pytest
 
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.session import Session
+from mixpanel_headless.exceptions import MixpanelHeadlessError
 from tests.conftest import make_session
 
 # =============================================================================
@@ -1065,6 +1066,111 @@ class TestIdFilterBatches:
             client.list_bookmarks_v2(ids=[7, 5, 7, 5])
 
         assert captured == [["7", "5"]]
+
+    @pytest.mark.parametrize(
+        ("count", "sizes"),
+        [
+            (99, [99]),
+            (100, [100]),
+            (101, [100, 1]),
+            (200, [100, 100]),
+            (201, [100, 100, 1]),
+        ],
+    )
+    def test_batch_boundaries(
+        self, oauth_credentials: Session, count: int, sizes: list[int]
+    ) -> None:
+        """A batch holds at most 100 IDs, and no request goes out without IDs.
+
+        A full last batch must not cause one more request. Such a request
+        would carry no ``id[]``, and the server would answer it with every
+        row of the project.
+
+        Args:
+            oauth_credentials: OAuth session for the App API.
+            count: How many distinct IDs the call filters by.
+            sizes: The expected number of IDs in each request.
+        """
+        captured: list[list[str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer each batch with one row per requested ID."""
+            ids = request.url.params.get_list("id[]")
+            captured.append(ids)
+            rows = [{"id": int(i)} for i in ids]
+            return httpx.Response(200, json={"status": "ok", "results": rows})
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client:
+            rows = client.list_dashboards(ids=list(range(1, count + 1)))
+
+        assert [len(batch) for batch in captured] == sizes
+        assert [row["id"] for row in rows] == list(range(1, count + 1))
+
+    @pytest.mark.parametrize("ids", [None, []], ids=["none", "empty"])
+    def test_no_ids_send_one_unfiltered_request(
+        self, oauth_credentials: Session, ids: list[int] | None
+    ) -> None:
+        """``None`` and an empty list both mean no ID filter: one plain request.
+
+        Args:
+            oauth_credentials: OAuth session for the App API.
+            ids: The ``ids`` argument.
+        """
+        captured: list[list[tuple[str, str]]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the query params in order."""
+            captured.append(request.url.params.multi_items())
+            return httpx.Response(200, json={"status": "ok", "results": []})
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client:
+            client.list_bookmarks_v2(ids=ids)
+
+        assert captured == [[("v", "2")]]
+
+    def test_bookmarks_v2_envelope_joins_across_batches(
+        self, oauth_credentials: Session
+    ) -> None:
+        """The nested ``results`` envelope of bookmarks unwraps in every batch."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer each batch with its rows inside a second ``results`` key."""
+            rows = [{"id": int(i)} for i in request.url.params.get_list("id[]")]
+            return httpx.Response(
+                200, json={"status": "ok", "results": {"results": rows}}
+            )
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client:
+            rows = client.list_bookmarks_v2(ids=list(range(1, 151)))
+
+        assert [row["id"] for row in rows] == list(range(1, 151))
+
+    @pytest.mark.parametrize(
+        "method", ["list_bookmarks_v2", "list_dashboards", "list_cohorts_app"]
+    )
+    def test_unexpected_shape_in_a_batch_raises(
+        self, oauth_credentials: Session, method: str
+    ) -> None:
+        """An answer that is not a list of rows raises, and returns no rows.
+
+        Args:
+            oauth_credentials: OAuth session for the App API.
+            method: The client list method.
+        """
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer with a string where the rows belong."""
+            return httpx.Response(200, json={"status": "ok", "results": "nope"})
+
+        client = create_mock_client(oauth_credentials, handler)
+        with (
+            client,
+            pytest.raises(MixpanelHeadlessError, match=f"response from {method}"),
+        ):
+            getattr(client, method)(ids=[1])
 
 
 class TestCohortCRUD:

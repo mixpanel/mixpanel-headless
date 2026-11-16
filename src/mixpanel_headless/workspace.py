@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, NoReturn
 if TYPE_CHECKING:
     from mixpanel_headless._internal.me import MeService
 
-from mixpanel_headless._internal.api_client import MixpanelAPIClient, _error_message
+from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.account import Account as _AccountUnion
 from mixpanel_headless._internal.auth.resolver import (
     env_workspace_id as _env_workspace_id,
@@ -520,6 +520,67 @@ def _flow_mode_from_params(params: dict[str, Any]) -> str:
 # refused entities and their creators. A larger batch gets the explanation
 # without names, so the error never waits for many reads.
 _EDIT_REFUSAL_READ_LIMIT = 10
+
+# Read timeout, in seconds, of each of those reads. The reads only add names
+# to an error that the server already gave, so each one gets one attempt
+# (no retry after a 429) and this short timeout in place of the App API
+# default.
+_EDIT_REFUSAL_READ_TIMEOUT_S = 10.0
+
+
+def _is_blank_refusal(exc: QueryError) -> bool:
+    """Return whether an error is the server's blank 403.
+
+    The server answers a refused edit of a saved metric or behavior with a
+    403 whose JSON body is ``{"error": "", "status": "error"}``. Only that
+    shape counts: the ``error`` key holds a blank string, and no ``message``
+    text comes with it. A 403 of another shape, for example ``{}`` or the
+    body of a gateway, has a cause that the client does not know.
+
+    Args:
+        exc: The error that an update raised.
+
+    Returns:
+        ``True`` for a 403 whose ``error`` is a blank string.
+
+    Example:
+        ```python
+        blank = QueryError("Permission denied", status_code=403,
+                           response_body={"error": "", "status": "error"})
+        _is_blank_refusal(blank)
+        # True
+        plan = QueryError("Cannot save metric with your current plan",
+                          status_code=403,
+                          response_body={"error": "Cannot save metric ..."})
+        _is_blank_refusal(plan)
+        # False
+        ```
+    """
+    body = exc.response_body
+    if exc.status_code != 403 or not isinstance(body, dict):
+        return False
+    error = body.get("error")
+    message = body.get("message")
+    has_message = isinstance(message, str) and bool(message.strip())
+    return isinstance(error, str) and not error.strip() and not has_message
+
+
+def _is_unreadable_target(exc: MixpanelHeadlessError) -> bool:
+    """Return whether a failed read concerns only the one target that it read.
+
+    After a refused edit, the client reads each target to name it. A 403 or
+    a 404 on such a read means that this account cannot read that target, or
+    that the target does not exist. The next target can still be readable.
+    Each other error (a rate limit, a server error, a timeout) would
+    probably repeat on the next read.
+
+    Args:
+        exc: The error that the read of one target raised.
+
+    Returns:
+        ``True`` for a ``QueryError`` with status 403 or 404.
+    """
+    return isinstance(exc, QueryError) and exc.status_code in (403, 404)
 
 
 def _describe_saved_entity(row: dict[str, Any]) -> str:
@@ -9330,8 +9391,9 @@ class Workspace:
             QueryError: The metric does not exist or is deleted (404), the
                 caller cannot edit it or the pricing-plan gate blocks the write
                 (403), or the new name is taken (409). When the caller cannot
-                edit it, the method reads the metric after the 403, and the
-                message names the metric, its creator, and who can edit it.
+                edit it, the method reads the metric once after the 403. The
+                message names the metric and, when that read succeeds, its
+                creator, and it says who can edit the metric.
             RateLimitError: Rate limit exceeded after retries (429).
             ServerError: Server-side errors (5xx).
 
@@ -9414,11 +9476,11 @@ class Workspace:
             AuthenticationError: Invalid credentials (401).
             QueryError: The read of an entry's metric failed (404), the
                 caller cannot edit one of the metrics (403), or a new name
-                is taken (409). After that 403 the method reads the metrics
-                one by one, to name each refused metric and its creator. It
-                reads them only for a batch of 10 metrics or fewer. A larger
-                batch gets a message that lists the ids only. Nothing was
-                changed.
+                is taken (409). After that 403 nothing was changed. The
+                method then reads the metrics one by one, to name each
+                refused metric and its creator. It reads them only for a
+                batch of 10 metrics or fewer, with one attempt per read. A
+                larger batch gets a message that lists the ids only.
             RateLimitError: Rate limit exceeded after retries (429).
             ServerError: Server-side errors (5xx).
 
@@ -9668,20 +9730,22 @@ class Workspace:
         """Explain the server's blank 403 on a saved metric or behavior update.
 
         The server refuses an edit of a saved metric or behavior with a 403
-        whose JSON ``error`` is blank when the account did not create it, it
-        is not shared with the account for editing, and the account is not a
-        project owner. The routes check every target before they write, so
-        nothing was changed. A 403 with its own text (for example the
-        pricing-plan gate), or with no JSON body, stays as it is.
+        whose JSON ``error`` is a blank string (see :func:`_is_blank_refusal`).
+        The routes check every target before they write, so nothing was
+        changed. A 403 with its own text (for example the pricing-plan gate),
+        a 403 of another shape, and every other error stay as they are.
+
+        For a metric, the blank 403 has one cause: the account did not create
+        the metric, the metric is not shared with the account for editing,
+        and the account is not a project owner. For a behavior it has a
+        second cause: the account lacks the ``write_behaviors`` permission.
+        The server sets ``can_update_basic`` to false for both causes, so no
+        read can separate them, and the message names both.
 
         To name each refused entity and its creator, the method reads the
-        targets one by one. It reads them only for a batch of
-        ``_EDIT_REFUSAL_READ_LIMIT`` targets or fewer. A larger batch, and a
-        failed read, give the explanation without names. On the behaviors
-        routes a missing ``write_behaviors`` permission gives the same blank
-        403: a read that shows the behavior editable (``can_update_basic``
-        true) names that permission, and a read that cannot tell names both
-        causes.
+        targets one by one (see :meth:`_read_edit_targets`). A batch that is
+        too large to read, and a target whose read fails, give the
+        explanation without names.
 
         Args:
             entity: ``"metric"`` or ``"behavior"``.
@@ -9690,19 +9754,24 @@ class Workspace:
 
         Returns:
             A ``QueryError`` (403) with the explanation and the response and
-            request context of ``exc``, or ``None`` when ``exc`` is not a
-            blank 403.
+            request context of ``exc``. ``None`` when ``exc`` is not the
+            blank 403, or when the reads fail with an error that is not a
+            library error; the caller then raises ``exc`` as it is.
         """
-        body = exc.response_body
-        if (
-            exc.status_code != 403
-            or not isinstance(body, dict)
-            or _error_message(body, "")
-        ):
+        if not _is_blank_refusal(exc):
             return None
         noun = f"saved {entity}"
         ids = list(dict.fromkeys(target_ids))
-        rows = self._read_edit_targets(entity, ids)
+        try:
+            rows = self._read_edit_targets(entity, ids)
+        except Exception:  # the reads must never replace the server's 403
+            logger.warning(
+                "Could not read %ss %s to explain the refused edit",
+                noun,
+                ids,
+                exc_info=True,
+            )
+            return None
         refused = [row for row in rows if row.get("can_update_basic") is False]
         if len(ids) == 1:
             target = _describe_saved_entity(rows[0]) if rows else str(ids[0])
@@ -9712,30 +9781,29 @@ class Workspace:
             subject = f"This account cannot edit {noun}s {listed}."
         else:
             listed = ", ".join(str(i) for i in ids)
-            subject = f"This account cannot edit one or more of {noun}s {listed}."
+            subject = (
+                f"This account cannot edit one or more of these {noun}s: {listed}."
+            )
         rule = (
             f"Only the creator of a {noun}, the users and teams that it is "
             f"shared with for editing, and project owners can edit it."
         )
-        if entity == "behavior" and not refused:
-            editable = bool(rows) and all(
-                row.get("can_update_basic") is True for row in rows
-            )
+        share = f"{rule} Ask the creator to share it with edit access."
+        if entity == "behavior":
             reason = (
-                "It lacks the write_behaviors permission in this project; a "
-                "project admin can grant it."
-                if editable
-                else "Either it lacks the write_behaviors permission in this "
-                f"project, or the {noun} is not shared with it for editing. "
-                f"{rule}"
+                "The server gives one answer for two causes. Either the "
+                "account lacks the write_behaviors permission in this project, "
+                f"or the {noun} is not shared with the account for editing. "
+                f"{rule} A project admin can grant the permission, and the "
+                f"creator can share the {noun} with edit access."
+            )
+        elif len(ids) > 1 and not refused:
+            reason = (
+                f"{share} The can_update_basic flag in list_metrics() (CLI: "
+                "mp metrics list) shows which ones."
             )
         else:
-            reason = f"{rule} Ask the creator to share it with edit access."
-            if len(ids) > 1 and not refused:
-                reason += (
-                    " The can_update_basic flag in list_metrics() (CLI: mp "
-                    "metrics list) shows which ones."
-                )
+            reason = share
         return QueryError(
             f"{subject} {reason} Nothing was changed.",
             status_code=exc.status_code,
@@ -9751,11 +9819,18 @@ class Workspace:
     ) -> list[dict[str, Any]]:
         """Read the rows of an update's targets one by one, to explain a refusal.
 
-        The read is best effort: it only adds names to an error that is
-        raised anyway. A target whose read fails is skipped. More than
-        ``_EDIT_REFUSAL_READ_LIMIT`` targets are not read at all, because the
-        error should not wait for many reads (the full metric list can take
-        minutes on a large project).
+        The reads are best effort: they only add names to an error that the
+        server already gave. So each read gets one attempt (no retry after a
+        429) and a short timeout (``_EDIT_REFUSAL_READ_TIMEOUT_S``), and more
+        than ``_EDIT_REFUSAL_READ_LIMIT`` targets are not read at all. The
+        method reads the targets one by one and not from the full list,
+        because that list can take more than 30 seconds on a large project.
+
+        A read that the server refuses (403), or that finds nothing (404),
+        skips that target only. Each other library error (for example a rate
+        limit, a server error, or a timeout) stops the reads, because the
+        next read would probably fail in the same way. The method logs that
+        error.
 
         Args:
             entity: ``"metric"`` or ``"behavior"``.
@@ -9771,9 +9846,20 @@ class Workspace:
         rows: list[dict[str, Any]] = []
         for entity_id in ids:
             try:
-                rows.append(read(entity_id))
-            except MixpanelHeadlessError:
-                continue
+                row = read(
+                    entity_id, timeout=_EDIT_REFUSAL_READ_TIMEOUT_S, max_retries=0
+                )
+            except MixpanelHeadlessError as read_exc:
+                if _is_unreadable_target(read_exc):
+                    continue
+                logger.warning(
+                    "Could not read saved %s %s to explain the refused edit: %s",
+                    entity,
+                    entity_id,
+                    read_exc,
+                )
+                break
+            rows.append(row)
         return rows
 
     def list_behaviors(
@@ -9967,9 +10053,10 @@ class Workspace:
             AuthenticationError: Invalid credentials (401).
             QueryError: The caller cannot edit the behavior or lacks the
                 ``write_behaviors`` permission (403), or the new name is taken
-                (409). After that 403 the method reads the behavior, and the
-                message says which of the two causes applies, or names both
-                when the read cannot tell.
+                (409). The server gives the same blank 403 for both causes
+                of the refusal, and no read can separate them. After that
+                403 the method reads the behavior once, to name it and its
+                creator, and the message names both causes.
             RateLimitError: Rate limit exceeded after retries (429).
             ServerError: Server-side errors (5xx), including the read of an
                 unknown behavior id.

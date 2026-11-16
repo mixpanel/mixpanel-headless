@@ -550,7 +550,8 @@ class DiscoveryService:
             try:
                 types = self._api_client.get_event_property_types(event)
             except QueryError as e:
-                # If event not found (400 error), provide helpful suggestions
+                # A 400 means that the server rejected the event name:
+                # suggest similar names.
                 if e.status_code == 400:
                     available_events = self.list_events()
                     similar = self._find_similar_events(event, available_events)

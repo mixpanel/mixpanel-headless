@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
+import warnings
 from unittest.mock import MagicMock, patch
 
 import httpx
+import pytest
 from typer.testing import CliRunner
 
 from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless.cli.main import app
+from mixpanel_headless.exceptions import QueryError
 from mixpanel_headless.types import (
     FunnelInfo,
     LexiconDefinition,
@@ -126,10 +129,221 @@ class TestInspectProperties:
 
         assert result.exit_code == 0, result.output
         assert json.loads(result.stdout) == ["amount", "plan"]
-        assert "Warning:" in result.stderr
-        assert "1 property of event 'Purchase' is classified" in result.stderr
-        assert "email" in result.stderr
-        assert "UserWarning" not in result.stderr
+        stderr = " ".join(result.stderr.split())
+        assert "Warning: 1 property of event 'Purchase' is classified" in stderr
+        assert "left out: email." in stderr
+        assert "UserWarning" not in stderr
+
+    def test_no_warning_prints_no_warning_line(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """A call that warns about nothing prints no ``Warning:`` line."""
+        mock_workspace.properties.return_value = ["plan"]
+
+        with patch(
+            "mixpanel_headless.cli.commands.inspect.get_workspace",
+            return_value=mock_workspace,
+        ):
+            result = cli_runner.invoke(
+                app, ["inspect", "properties", "--event", "Purchase"]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Warning" not in result.stderr
+
+    @pytest.mark.parametrize("fmt", ["json", "plain", "table"])
+    def test_each_user_warning_is_one_warning_line(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock, fmt: str
+    ) -> None:
+        """Every ``UserWarning`` of the call prints, in every output format.
+
+        Args:
+            cli_runner: CLI runner fixture.
+            mock_workspace: Mock workspace fixture.
+            fmt: The ``--format`` value.
+        """
+
+        class _SubWarning(UserWarning):
+            """A subclass, to show that the category check accepts subclasses."""
+
+        def properties(event: str) -> list[str]:
+            """Warn twice, then return one property.
+
+            Args:
+                event: The event name.
+
+            Returns:
+                The property names.
+            """
+            warnings.warn("first notice", UserWarning, stacklevel=1)
+            warnings.warn("second notice", _SubWarning, stacklevel=1)
+            return ["plan"]
+
+        mock_workspace.properties.side_effect = properties
+
+        with patch(
+            "mixpanel_headless.cli.commands.inspect.get_workspace",
+            return_value=mock_workspace,
+        ):
+            result = cli_runner.invoke(
+                app, ["inspect", "properties", "--event", "Purchase", "--format", fmt]
+            )
+
+        assert result.exit_code == 0, result.output
+        stderr = " ".join(result.stderr.split())
+        assert "Warning: first notice" in stderr
+        assert "Warning: second notice" in stderr
+        assert "plan" in result.stdout
+        assert "notice" not in result.stdout
+
+    def test_warning_line_prints_under_an_ignore_filter(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """The left-out names print even when a filter ignores warnings.
+
+        The warning is the only signal for the properties that the command
+        leaves out, so the command shows it under every warning filter.
+        """
+
+        def properties(event: str) -> list[str]:
+            """Warn once, then return one property.
+
+            Args:
+                event: The event name.
+
+            Returns:
+                The property names.
+            """
+            warnings.warn("left out: email", UserWarning, stacklevel=1)
+            return ["plan"]
+
+        mock_workspace.properties.side_effect = properties
+
+        with (
+            warnings.catch_warnings(),
+            patch(
+                "mixpanel_headless.cli.commands.inspect.get_workspace",
+                return_value=mock_workspace,
+            ),
+        ):
+            warnings.simplefilter("ignore")
+            result = cli_runner.invoke(
+                app, ["inspect", "properties", "--event", "Purchase"]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Warning: left out: email" in " ".join(result.stderr.split())
+
+    def test_rich_markup_in_a_warning_prints_as_text(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """A property name with square brackets prints as it is.
+
+        Without the escape, Rich reads ``[email]`` as a style tag and drops
+        it, and ``[/x]`` stops the command with a markup error.
+        """
+
+        def properties(event: str) -> list[str]:
+            """Warn about names that look like Rich markup.
+
+            Args:
+                event: The event name.
+
+            Returns:
+                The property names.
+            """
+            warnings.warn("left out: meta[email], [/x]", UserWarning, stacklevel=1)
+            return ["plan"]
+
+        mock_workspace.properties.side_effect = properties
+
+        with patch(
+            "mixpanel_headless.cli.commands.inspect.get_workspace",
+            return_value=mock_workspace,
+        ):
+            result = cli_runner.invoke(
+                app, ["inspect", "properties", "--event", "Purchase"]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "Warning: left out: meta[email], [/x]" in " ".join(result.stderr.split())
+
+    def test_warning_of_another_category_is_passed_on(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """A warning that is not a ``UserWarning`` leaves the command's capture.
+
+        The command records warnings to print the left-out names. It must
+        not swallow the other categories: it hands each one back to Python,
+        which prints it on stderr as for every other command.
+        """
+
+        def properties(event: str) -> list[str]:
+            """Raise one warning of each kind, then return one property.
+
+            Args:
+                event: The event name.
+
+            Returns:
+                The property names.
+            """
+            warnings.warn("old option", FutureWarning, stacklevel=1)
+            warnings.warn("left out: email", UserWarning, stacklevel=1)
+            return ["plan"]
+
+        mock_workspace.properties.side_effect = properties
+
+        with (
+            warnings.catch_warnings(record=True) as passed_on,
+            patch(
+                "mixpanel_headless.cli.commands.inspect.get_workspace",
+                return_value=mock_workspace,
+            ),
+        ):
+            warnings.simplefilter("always")
+            result = cli_runner.invoke(
+                app, ["inspect", "properties", "--event", "Purchase"]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert [(w.category, str(w.message)) for w in passed_on] == [
+            (FutureWarning, "old option")
+        ]
+        stderr = " ".join(result.stderr.split())
+        assert "Warning: left out: email" in stderr
+        assert "old option" not in stderr
+
+    def test_warnings_print_when_the_call_fails(
+        self, cli_runner: CliRunner, mock_workspace: MagicMock
+    ) -> None:
+        """A failed call still shows the warnings that came before the error."""
+
+        def properties(event: str) -> list[str]:
+            """Warn, then fail.
+
+            Args:
+                event: The event name.
+
+            Raises:
+                QueryError: Always.
+            """
+            warnings.warn("left out: email", UserWarning, stacklevel=1)
+            raise QueryError("Bad event selector", status_code=400)
+
+        mock_workspace.properties.side_effect = properties
+
+        with patch(
+            "mixpanel_headless.cli.commands.inspect.get_workspace",
+            return_value=mock_workspace,
+        ):
+            result = cli_runner.invoke(
+                app, ["inspect", "properties", "--event", "Purchase"]
+            )
+
+        assert result.exit_code != 0
+        stderr = " ".join(result.stderr.split())
+        assert "Warning: left out: email" in stderr
+        assert "Bad event selector" in stderr
 
 
 class TestInspectValues:

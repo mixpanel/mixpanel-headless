@@ -1399,11 +1399,13 @@ class MixpanelAPIClient:
         request(). Handles rate limiting with exponential backoff and error
         response parsing.
 
-        A Query API URL gets the canonical ``query_origin`` parameter,
-        which replaces any caller value (see :func:`_wants_query_origin`).
-        App API and export URLs, and other paths, go out with the given
-        params only. The method works on a copy of ``params``, so the
-        caller's dict is never changed.
+        A URL that :func:`_wants_query_origin` accepts gets the canonical
+        ``query_origin`` parameter, which replaces any caller value. That
+        covers the Query and Engage bases of the client, and Query API paths
+        on hosts outside every base of the client. Each other URL (App API,
+        export, and other paths) goes out with the given params only. The
+        method works on a copy of ``params``, so it never changes the dict
+        that it receives.
 
         Args:
             method: HTTP method (GET, POST, etc.).
@@ -1623,13 +1625,24 @@ class MixpanelAPIClient:
         adds no ``project_id`` and no ``workspace_id``; put them in ``url``
         or ``params`` yourself.
 
-        A Query API URL (an ``/api/query/...`` or older ``/api/2.0/...``
-        path, other than the export host of your region) gets the
-        ``query_origin`` telemetry parameter. App API URLs (``/api/app/...``), export URLs,
-        and other paths get exactly the params you pass, because some App
-        API endpoints refuse an unknown query parameter. A list value in
-        ``params`` goes out as a repeated key (``{"id[]": ["1", "2"]}``
-        sends ``id[]=1&id[]=2``). Your ``params`` dict is not changed.
+        The method adds one parameter of its own, the ``query_origin``
+        telemetry parameter, and only to Query API traffic. The rule goes by
+        the base URLs of your region, or of ``MP_API_BASE_URL`` when it is
+        set:
+
+        - A URL under the Query or Engage base gets ``query_origin``.
+        - A URL under the App API base (``/api/app/...``) or the export base
+          gets exactly the params you pass, because some App API endpoints
+          refuse an unknown query parameter. With ``MP_API_BASE_URL`` the
+          export base is ``{base}/api/2.0``, so every ``{base}/api/2.0/...``
+          path counts as export.
+        - A URL under none of these bases (for example a host of another
+          region) gets ``query_origin`` when its path starts with
+          ``/api/query`` or the older ``/api/2.0``.
+
+        A list value in ``params`` goes out as a repeated key
+        (``{"id[]": ["1", "2"]}`` sends ``id[]=1&id[]=2``). Your ``params``
+        dict is not changed.
 
         Args:
             method: HTTP method (GET, POST, PUT, DELETE, etc.).
@@ -1917,6 +1930,7 @@ class MixpanelAPIClient:
         json_body: dict[str, Any] | None = None,
         form_body: dict[str, str] | None = None,
         timeout: float | None = None,
+        max_retries: int | None = None,
         _raw: bool = False,
     ) -> Any:
         """Make an authenticated request to the Mixpanel App API.
@@ -1940,6 +1954,9 @@ class MixpanelAPIClient:
             timeout: Read timeout in seconds for this request. Replaces the
                 route-aware default (see ``_default_timeout``) and the
                 constructor ``timeout``.
+            max_retries: Most retries after a 429 for this request. Replaces
+                the constructor ``max_retries``. ``0`` sends one request and
+                never waits.
             _raw: If True, return the full response dict without unwrapping
                 the ``results`` field. Useful for endpoints that include
                 pagination metadata alongside results.
@@ -2001,8 +2018,9 @@ class MixpanelAPIClient:
             form_body if form_body is not None else json_body
         )
         request_timeout = timeout if timeout is not None else self._default_timeout(url)
+        retries = self._max_retries if max_retries is None else max_retries
 
-        for attempt in range(self._max_retries + 1):
+        for attempt in range(retries + 1):
             try:
                 if form_body is not None:
                     response = client.request(
@@ -2029,7 +2047,7 @@ class MixpanelAPIClient:
 
                 # Handle 429 rate limiting with retry
                 if response.status_code == 429:
-                    if attempt >= self._max_retries:
+                    if attempt >= retries:
                         retry_after = self._parse_retry_after(response)
                         response_body: str | dict[str, Any] | None = None
                         try:
@@ -2055,7 +2073,7 @@ class MixpanelAPIClient:
                         "Rate limited, retrying in %.1f seconds (attempt %d/%d)",
                         wait_time,
                         attempt + 1,
-                        self._max_retries,
+                        retries,
                     )
                     time.sleep(wait_time)
                     continue
@@ -5264,7 +5282,7 @@ class MixpanelAPIClient:
             ```python
             with MixpanelAPIClient(credentials) as client:
                 bookmarks = client.list_bookmarks_v2(bookmark_type="funnels")
-                picked = client.list_bookmarks_v2(ids=[28584863, 28584870])
+                picked = client.list_bookmarks_v2(ids=[4101, 4102])
             ```
         """
         path = self.maybe_scoped_path("bookmarks")
@@ -7895,9 +7913,11 @@ class MixpanelAPIClient:
         a capitalized value (``"Event"`` / ``"User"``); a lowercase value is
         rejected and the snake_case ``resource_type`` param is silently ignored
         (both verified live), so caller-supplied spellings are normalized via
-        :func:`_canonical_resource_type`. The server reads ``includeEvents``
-        and ``includeCustom`` as raw strings, so any value, even ``"false"``,
-        turns them on; each toggle goes out only when it is true.
+        :func:`_canonical_resource_type`. The server reads ``includeEvents``,
+        ``includeDensity``, and ``includeCustom`` as raw strings, so any
+        value, even ``"false"``, turns them on; each of these three goes out
+        only when it is true. The server parses ``includeZeroCounts`` as a
+        boolean, so that one always goes out, as ``"true"`` or ``"false"``.
 
         Args:
             resource_type: Property family — ``"Event"`` or ``"User"``.
@@ -9373,13 +9393,23 @@ class MixpanelAPIClient:
         result = self.app_request("GET", path, timeout=self._long_list_timeout())
         return _id_map_rows(result, "list_metrics")
 
-    def get_metric(self, metric_id: int) -> dict[str, Any]:
+    def get_metric(
+        self,
+        metric_id: int,
+        *,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> dict[str, Any]:
         """Get one active saved metric by id.
 
         Calls ``GET /api/app/projects/{pid}/metrics/{metric_id}``.
 
         Args:
             metric_id: The saved metric id.
+            timeout: Read timeout in seconds for this request; ``None`` keeps
+                the App API default.
+            max_retries: Most retries after a 429 for this request; ``None``
+                keeps the client's count.
 
         Returns:
             The saved metric dict (the single value of the id-keyed map).
@@ -9400,7 +9430,8 @@ class MixpanelAPIClient:
             ```
         """
         path = f"/projects/{self._session.project.id}/metrics/{metric_id}"
-        return _single_row(self.app_request("GET", path), "get_metric")
+        result = self.app_request("GET", path, timeout=timeout, max_retries=max_retries)
+        return _single_row(result, "get_metric")
 
     def delete_metrics(self, metric_ids: list[int]) -> None:
         """Soft-delete saved metrics through the bulk route.
@@ -9573,7 +9604,13 @@ class MixpanelAPIClient:
         result = self.app_request("GET", path, timeout=self._long_list_timeout())
         return _id_map_rows(result, "list_behaviors")
 
-    def get_behavior(self, behavior_id: int) -> dict[str, Any]:
+    def get_behavior(
+        self,
+        behavior_id: int,
+        *,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> dict[str, Any]:
         """Get one active saved behavior by id.
 
         Calls ``GET /api/app/projects/{pid}/behaviors/{behavior_id}``. The
@@ -9582,6 +9619,10 @@ class MixpanelAPIClient:
 
         Args:
             behavior_id: The saved behavior id.
+            timeout: Read timeout in seconds for this request; ``None`` keeps
+                the App API default.
+            max_retries: Most retries after a 429 for this request; ``None``
+                keeps the client's count.
 
         Returns:
             The saved behavior dict (the single value of the id-keyed map).
@@ -9602,7 +9643,8 @@ class MixpanelAPIClient:
             ```
         """
         path = f"/projects/{self._session.project.id}/behaviors/{behavior_id}"
-        return _single_row(self.app_request("GET", path), "get_behavior")
+        result = self.app_request("GET", path, timeout=timeout, max_retries=max_retries)
+        return _single_row(result, "get_behavior")
 
     def delete_behaviors(self, behavior_ids: list[int]) -> None:
         """Soft-delete saved behaviors through the bulk route.

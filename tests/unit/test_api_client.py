@@ -1803,6 +1803,9 @@ class TestPublicRequest:
             "https://mixpanel.com/api/2.0/segmentation",
             "https://eu.mixpanel.com/api/query/segmentation",
             "https://example.com/api/query/segmentation",
+            "https://example.com/api/query",
+            "https://example.com/api/2.0",
+            "https://data-eu.mixpanel.com/api/2.0/export",
         ],
     )
     def test_request_adds_query_origin_to_query_api_urls(
@@ -1812,9 +1815,11 @@ class TestPublicRequest:
 
         That covers the query and engage bases of the client's region, the
         older ``/api/2.0`` paths on the main host, and a Query API path on
-        another host. Locks the literal value so a future typo or accidental
-        deletion of the telemetry tag is caught at PR time rather than
-        silently corrupting Mixpanel-internal analytics dashboards.
+        another host (the bare prefix too). A URL under no base of the
+        client goes by its path only, so the export host of another region
+        also gets the tag. Locks the literal value so a future typo or
+        accidental deletion of the telemetry tag is caught at PR time rather
+        than silently corrupting Mixpanel-internal analytics dashboards.
 
         Args:
             test_credentials: US service-account session.
@@ -1840,6 +1845,9 @@ class TestPublicRequest:
             "https://eu.mixpanel.com/api/app/me",
             "https://data.mixpanel.com/api/2.0/export",
             "https://example.com/v1/data",
+            "https://example.com/api/querystuff",
+            "https://example.com/api/2.0x/export",
+            "https://eu.mixpanel.com/api/querystuff",
         ],
     )
     def test_request_sends_no_query_origin_outside_the_query_api(
@@ -1850,7 +1858,9 @@ class TestPublicRequest:
         App API endpoints such as ``/me`` refuse unknown query parameters
         ("Additional properties are not allowed ('query_origin' was
         unexpected)"), so the escape hatch must not add one, also on the App
-        API host of another region.
+        API host of another region. On a host outside the client's bases, a
+        path counts as a Query API path only at a segment boundary:
+        ``/api/querystuff`` is not under ``/api/query``.
 
         Args:
             test_credentials: US service-account session.
@@ -1986,26 +1996,95 @@ class TestPublicRequest:
             client.request("GET", "http://127.0.0.1:8080/api/query/segmentation")
             client.request("GET", "http://127.0.0.1:8080/api/app/me")
             client.request("GET", "http://127.0.0.1:8080/api/2.0/export")
+            client.request("GET", "http://127.0.0.1:8080/api/2.0/segmentation")
 
         assert seen["/api/query/segmentation"]["query_origin"] == "mixpanel-headless"
         assert "query_origin" not in seen["/api/app/me"]
         assert "query_origin" not in seen["/api/2.0/export"]
+        assert "query_origin" not in seen["/api/2.0/segmentation"]
 
-    def test_internal_app_api_call_sends_no_query_origin(
-        self, test_credentials: Session
+    @pytest.mark.parametrize(
+        ("app_base", "url"),
+        [
+            ("https://app-proxy.example", "https://app-proxy.example/api/app/me"),
+            (
+                "https://proxy.example/api/query",
+                "https://proxy.example/api/query/api/app/me",
+            ),
+        ],
+        ids=["own-host", "under-a-query-path"],
+    )
+    def test_request_leaves_an_app_base_url_override_alone(
+        self,
+        test_credentials: Session,
+        monkeypatch: pytest.MonkeyPatch,
+        app_base: str,
+        url: str,
     ) -> None:
-        """An internal call to an App API URL (Lexicon schemas) has no query_origin."""
-        captured_params: dict[str, str] = {}
+        """With MP_APP_BASE_URL set, a URL under that base gets no query_origin.
+
+        The App API base wins as the longest prefix, also when it sits under
+        a path that looks like a Query API path. The live Query host of the
+        region keeps its tag.
+
+        Args:
+            test_credentials: US service-account session.
+            monkeypatch: Sets the override for this test only.
+            app_base: The ``MP_APP_BASE_URL`` value.
+            url: An App API URL under that base.
+        """
+        monkeypatch.setenv("MP_APP_BASE_URL", app_base)
+        seen: dict[str, dict[str, str]] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Capture the query params."""
-            captured_params.update(dict(request.url.params))
-            return httpx.Response(200, json={"results": []})
+            """Record the query params per URL."""
+            seen[str(request.url.copy_with(query=None))] = dict(request.url.params)
+            return httpx.Response(200, json={})
 
         with create_mock_client(test_credentials, handler) as client:
-            client.get_schemas()
+            client.request("GET", url)
+            client.request("GET", "https://mixpanel.com/api/query/segmentation")
 
-        assert "query_origin" not in captured_params
+        assert "query_origin" not in seen[url]
+        assert (
+            seen["https://mixpanel.com/api/query/segmentation"]["query_origin"]
+            == "mixpanel-headless"
+        )
+
+    @pytest.mark.parametrize(
+        ("method", "args"),
+        [
+            ("get_schemas", ()),
+            ("get_schema", ("event", "Purchase")),
+            ("list_bookmarks", ()),
+        ],
+    )
+    def test_internal_app_api_call_sends_no_query_origin(
+        self, test_credentials: Session, method: str, args: tuple[str, ...]
+    ) -> None:
+        """Each internal call that reaches an App API URL has no query_origin.
+
+        Three client methods send an App API URL through the Query API
+        request path: the two Lexicon schema reads and the bookmarks list.
+
+        Args:
+            test_credentials: US service-account session.
+            method: The client method to call.
+            args: Its positional arguments.
+        """
+        captured: list[httpx.URL] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the request URL."""
+            captured.append(request.url)
+            return httpx.Response(200, json={"results": {}})
+
+        with create_mock_client(test_credentials, handler) as client:
+            getattr(client, method)(*args)
+
+        assert len(captured) == 1
+        assert captured[0].path.startswith("/api/app/")
+        assert "query_origin" not in captured[0].params
 
     def test_internal_query_api_call_keeps_query_origin(
         self, test_credentials: Session
@@ -4784,8 +4863,18 @@ class TestSplitEventProperties:
             ({"phone": {"sensitive": True}}, ([], ["phone"])),
             # An entry without a count, or not an object, stays queryable.
             ({"b": {"type": "string"}, "a": 3}, (["a", "b"], [])),
+            # sensitive false with a zero count is dropped, not classified.
+            ({"x": {"count": 0, "sensitive": False}}, ([], [])),
         ],
-        ids=["empty", "mixed", "zero-count", "sensitive-with-count", "no-count", "odd"],
+        ids=[
+            "empty",
+            "mixed",
+            "zero-count",
+            "sensitive-with-count",
+            "no-count",
+            "odd",
+            "not-sensitive-zero-count",
+        ],
     )
     def test_split(
         self,

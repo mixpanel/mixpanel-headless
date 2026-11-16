@@ -228,12 +228,12 @@ class TestWorkspaceDashboardCRUD:
         assert dashboards == []
 
     def test_list_dashboards_with_ids_filter(self, temp_dir: Path) -> None:
-        """list_dashboards(ids=[1, 2]) passes filter to API."""
-        captured_url: list[str] = []
+        """list_dashboards(ids=[1, 2]) sends one ``id[]`` per ID and no other filter."""
+        captured: list[list[tuple[str, str]]] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Capture URL and return dashboard list."""
-            captured_url.append(str(request.url))
+            """Capture the query params and return dashboard list."""
+            captured.append(request.url.params.multi_items())
             return httpx.Response(
                 200,
                 json={
@@ -250,6 +250,7 @@ class TestWorkspaceDashboardCRUD:
 
         assert len(dashboards) == 2
         assert isinstance(dashboards[0], Dashboard)
+        assert captured == [[("id[]", "1"), ("id[]", "2")]]
 
     def test_create_dashboard(self, temp_dir: Path) -> None:
         """create_dashboard() returns the created Dashboard."""
@@ -588,6 +589,27 @@ class TestWorkspaceBookmarkCRUD:
 
         assert len(bookmarks) == 1
         assert bookmarks[0].bookmark_type == "funnels"
+
+    def test_list_bookmarks_v2_with_ids_filter(self, temp_dir: Path) -> None:
+        """list_bookmarks_v2(ids=[7, 5]) sends one ``id[]`` per ID, in order."""
+        captured: list[list[tuple[str, str]]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the query params and return bookmark list."""
+            captured.append(request.url.params.multi_items())
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "results": [_bookmark_json(7, "Funnel", "funnels")],
+                },
+            )
+
+        ws = _make_workspace(temp_dir, handler)
+        bookmarks = ws.list_bookmarks_v2(ids=[7, 5])
+
+        assert [bookmark.id for bookmark in bookmarks] == [7]
+        assert captured == [[("v", "2"), ("id[]", "7"), ("id[]", "5")]]
 
     def test_list_bookmarks_v2_preserves_order(self, temp_dir: Path) -> None:
         """list_bookmarks_v2() preserves the API response order."""
@@ -1375,6 +1397,27 @@ class TestWorkspaceCohortCRUD:
         cohorts = ws.list_cohorts_full(data_group_id="abc")
 
         assert len(cohorts) == 1
+
+    def test_list_cohorts_full_with_ids_filter(self, temp_dir: Path) -> None:
+        """list_cohorts_full(ids=[7, 5]) sends one ``id[]`` per ID, in order."""
+        captured: list[list[tuple[str, str]]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the query params and return cohort list."""
+            captured.append(request.url.params.multi_items())
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "results": [_cohort_json(7, "Picked")],
+                },
+            )
+
+        ws = _make_workspace(temp_dir, handler)
+        cohorts = ws.list_cohorts_full(ids=[7, 5])
+
+        assert [cohort.id for cohort in cohorts] == [7]
+        assert captured == [[("id[]", "7"), ("id[]", "5")]]
 
     def test_list_cohorts_full_preserves_order(self, temp_dir: Path) -> None:
         """list_cohorts_full() preserves API response order."""

@@ -555,7 +555,13 @@ client.request(
 
 Authentication is handled automatically — the client adds the proper `Authorization` header to all requests.
 
-The client adds no other parameters, with one exception: a Query API URL (an `/api/query/...` or older `/api/2.0/...` path, other than your region's export host) also gets the `query_origin` telemetry parameter. App API URLs (`/api/app/...`) get exactly the parameters you pass, because some App API endpoints refuse an unknown parameter. A list value goes out as a repeated key: `params={"id[]": ["1", "2"]}` sends `id[]=1&id[]=2`. The client does not change the dict that you pass.
+The client adds no query parameters of its own, with one exception: Query API traffic also gets the `query_origin` telemetry parameter. The rule goes by the base URLs of your region, or of `MP_API_BASE_URL` when it is set:
+
+- A URL under the Query or Engage base gets `query_origin`.
+- A URL under the App API base (`/api/app/...`) or the export base gets exactly the parameters you pass, because some App API endpoints refuse an unknown parameter. With `MP_API_BASE_URL`, the export base is `{base}/api/2.0`, so every `{base}/api/2.0/...` path counts as export.
+- A URL under none of these bases (for example a host of another region) gets `query_origin` when its path starts with `/api/query` or the older `/api/2.0`.
+
+A list value goes out as a repeated key: `params={"id[]": ["1", "2"]}` sends `id[]=1&id[]=2`. The client does not change the dict that you pass.
 
 The client also exposes `project_id` and `region` properties, which are useful when constructing URLs for APIs that require these values in the path.
 

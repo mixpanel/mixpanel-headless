@@ -476,9 +476,10 @@ class TestHandleErrors:
             permission_denied()
 
         captured = capsys.readouterr()
-        # Should show the permission hint
-        assert "permission" in captured.err.lower()
-        assert "403" in captured.err or "Forbidden" in captured.err
+        # Should show the hint itself, not only the echoed "Permission denied"
+        stderr = " ".join(captured.err.split())
+        assert "Hint: The server refused this request" in stderr
+        assert "403" in stderr or "Forbidden" in stderr
 
     def test_403_hint_does_not_assume_a_service_account(
         self, capsys: pytest.CaptureFixture[str]

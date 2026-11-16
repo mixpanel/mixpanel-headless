@@ -17,12 +17,14 @@ from __future__ import annotations
 import base64
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta
+from unittest.mock import patch
 
 import httpx
 from httpx._types import SyncByteStream
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
+from mixpanel_headless._internal import api_client as api_client_module
 from mixpanel_headless._internal.api_client import (
     _ID_FILTER_BATCH_SIZE,
     ENDPOINTS,
@@ -781,6 +783,34 @@ class TestIdFilterParamsProperties:
             assert 1 <= len(batch["id[]"]) <= _ID_FILTER_BATCH_SIZE
             assert {k: v for k, v in batch.items() if k != "id[]"} == base
         assert len(batches) == -(-len(expected) // _ID_FILTER_BATCH_SIZE)
+
+    @given(
+        ids=st.lists(st.integers(min_value=1, max_value=60), max_size=40),
+        size=st.integers(min_value=1, max_value=7),
+    )
+    def test_batches_split_at_the_batch_size(self, ids: list[int], size: int) -> None:
+        """With a small batch size, the IDs split into full batches plus a rest.
+
+        The property above seldom draws more IDs than one real batch holds.
+        This one sets a small batch size, so most examples need several
+        batches, and each boundary is tested.
+
+        Args:
+            ids: IDs to filter by, with repeats.
+            size: The batch size for this example.
+        """
+        with patch.object(api_client_module, "_ID_FILTER_BATCH_SIZE", size):
+            batches = _id_filter_params(ids, {"v": "2"})
+
+        expected = [str(i) for i in dict.fromkeys(ids)]
+        if not expected:
+            assert batches == [{"v": "2"}]
+            return
+        chunks = [batch["id[]"] for batch in batches]
+        assert [i for chunk in chunks for i in chunk] == expected
+        assert all(len(chunk) == size for chunk in chunks[:-1])
+        assert 1 <= len(chunks[-1]) <= size
+        assert all(batch["v"] == "2" for batch in batches)
 
 
 # =============================================================================
