@@ -1985,7 +1985,11 @@ class TestEditRefusals:
     def test_unexpected_read_failure_raises_the_original_403(
         self, temp_dir: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """An error outside the library classes never replaces the server's 403."""
+        """An error outside the library classes never replaces the server's 403.
+
+        The 403 goes out as it is, with the read error chained to it, so
+        the traceback shows both.
+        """
         server = _Server({("PATCH", f"{_METRICS_PATH}/1"): _blank_403()})
         ws = _make_workspace(temp_dir, server)
         with (
@@ -1996,9 +2000,14 @@ class TestEditRefusals:
             pytest.raises(QueryError) as exc_info,
         ):
             ws.update_metric(1, UpdateMetricParams(name="X"))
-        assert exc_info.value.message == "Permission denied"
-        assert exc_info.value.status_code == 403
-        assert exc_info.value.__cause__ is None
+        err = exc_info.value
+        assert err.message == "Permission denied"
+        assert err.status_code == 403
+        read_error = err.__cause__
+        assert isinstance(read_error, RuntimeError)
+        assert str(read_error) == "boom"
+        assert err.__context__ is read_error
+        assert read_error.__context__ is None  # no cycle back to the 403
         errors = [r for r in caplog.records if r.levelno == logging.ERROR]
         assert len(errors) == 1
         assert "boom" in caplog.text

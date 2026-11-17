@@ -9784,9 +9784,13 @@ class Workspace:
         Returns:
             A ``QueryError`` (403) with the explanation and the response and
             request context of ``exc``. ``None`` when ``exc`` is not the
-            blank 403, or when the reads raise an error that
-            :meth:`_read_edit_targets` does not handle; the caller then
-            raises ``exc`` as it is.
+            blank 403; the caller then raises ``exc`` as it is.
+
+        Raises:
+            QueryError: ``exc`` itself, chained from the read error, when the
+                reads raise an error that :meth:`_read_edit_targets` does not
+                handle. The explanation is then left out, and the server's
+                403 is not replaced.
         """
         if not _is_blank_refusal(exc):
             return None
@@ -9794,12 +9798,14 @@ class Workspace:
         ids = list(dict.fromkeys(target_ids))
         try:
             rows, not_found = self._read_edit_targets(entity, ids)
-        except Exception:  # the reads must never replace the server's 403
+        except Exception as read_error:  # noqa: BLE001 — a failed read must not replace the 403
             logger.exception(
                 "Could not read %s to explain the refused edit",
                 _name_targets(noun, ids),
             )
-            return None
+            # The 403 goes out as it is, with the read error chained to it,
+            # so the caller loses neither of the two.
+            raise exc from read_error
         refused = [row for row in rows.values() if row.get("can_update_basic") is False]
         unread = [i for i in ids if i not in rows and i not in not_found]
         several = len(ids) > 1
