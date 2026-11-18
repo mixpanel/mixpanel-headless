@@ -1812,10 +1812,16 @@ class TestEditRefusals:
 
     # ---- the reads after the 403 -------------------------------------------
 
-    def test_read_gets_the_time_budget_as_its_timeout(
+    def test_read_gets_half_of_the_time_budget_for_each_phase(
         self, temp_dir: Path, clock: list[float]
     ) -> None:
-        """The first read has the whole 10 s budget; the update keeps its own timeout."""
+        """Each phase of the first read gets half of the 10 s budget.
+
+        ``httpx`` applies a timeout to each phase of a request (the
+        connection, then the wait for the answer), not to the request as a
+        whole. Half for each phase keeps a normal read inside the budget.
+        The update keeps its own timeout.
+        """
         server = _Server(
             {
                 ("PATCH", f"{_METRICS_PATH}/7"): _blank_403(),
@@ -1828,7 +1834,9 @@ class TestEditRefusals:
         with pytest.raises(QueryError):
             ws.update_metric(7, UpdateMetricParams(name="X"))
         patch_request, get_request = server.requests
-        assert get_request.extensions["timeout"]["read"] == 10.0
+        read_timeout = get_request.extensions["timeout"]
+        assert read_timeout["connect"] == 5.0
+        assert read_timeout["read"] == 5.0
         assert patch_request.extensions["timeout"]["read"] == DEFAULT_APP_TIMEOUT_S
 
     def test_reads_share_one_time_budget(
@@ -1839,9 +1847,9 @@ class TestEditRefusals:
     ) -> None:
         """All the reads together get 10 s: each read gets the time that is left.
 
-        Each read below takes 6 s on the test clock. The second read gets a
-        4 s timeout, and the third read does not start. The message names
-        the target that the client did not read.
+        Each read below takes 6 s on the test clock. So 4 s are left for the
+        second read (2 s for each phase), and the third read does not start.
+        The message names the target that the client did not read.
         """
         server = _Server(
             {
@@ -1880,7 +1888,8 @@ class TestEditRefusals:
             f"{_METRICS_PATH}/1",
             f"{_METRICS_PATH}/2",
         ]
-        assert [r.extensions["timeout"]["read"] for r in reads] == [10.0, 4.0]
+        assert [r.extensions["timeout"]["read"] for r in reads] == [5.0, 2.0]
+        assert [r.extensions["timeout"]["connect"] for r in reads] == [5.0, 2.0]
         assert exc_info.value.message == (
             f"This account cannot edit saved metric {_THEIRS_2}. The client "
             f"could not read saved metric 3 to check it. {_METRIC_RULE} "

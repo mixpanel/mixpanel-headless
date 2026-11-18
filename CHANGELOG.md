@@ -112,12 +112,12 @@ may include API changes.
   gives the same answer when the account lacks the `write_behaviors`
   permission, and no read can tell the two causes apart, so the error names
   both. To get the names and creators, the client reads each target of the
-  update once, with one attempt per read and 10 seconds for all the reads
-  together. The error of a bulk update names the refused metrics. It also
-  names each metric that was not found (the server refuses a deleted metric
-  too) and each metric that the client could not read. A bulk update of
-  more than 10 metrics gets a message that lists the ids only. The error
-  stays a `QueryError` with status 403.
+  update once, with one attempt per read and a time budget of about 10
+  seconds for all the reads together. The error of a bulk update names the
+  refused metrics. It also names each metric that was not found (the server
+  refuses a deleted metric too) and each metric that the client could not
+  read. A bulk update of more than 10 metrics gets a message that lists the
+  ids only. The error stays a `QueryError` with status 403.
 - The CLI hint for a 403 error no longer says "Check service account
   permissions." Users of OAuth accounts saw it too, and they have no
   service account to check. The hint now fits every account type.

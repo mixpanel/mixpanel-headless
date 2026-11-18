@@ -523,8 +523,12 @@ _EDIT_REFUSAL_READ_LIMIT = 10
 
 # Time budget, in seconds, for all of those reads together. The reads only
 # add names to an error that the server already gave. So each read gets one
-# attempt (no retry after a 429) and, as its timeout, the time that is left
-# of this budget. The reads stop when the budget is used up.
+# attempt (no retry after a 429), and no read starts after the budget is used
+# up. httpx applies a timeout to each phase of a request (the connection,
+# then the wait for the answer), not to the request as a whole. So each phase
+# gets half of the time that is left, which keeps a normal read inside the
+# budget. The budget is a target, not a hard stop: a read in progress is not
+# cut off, and an answer that arrives in many slow parts can take longer.
 _EDIT_REFUSAL_READ_BUDGET_S = 10.0
 
 
@@ -9505,9 +9509,10 @@ class Workspace:
                 The method then reads the metrics one by one, to name each
                 refused metric and its creator. It reads them only for a
                 batch of 10 metrics or fewer, with one attempt per read and
-                10 seconds for all the reads. The message also names each
-                metric that was not found or that the method could not read.
-                A larger batch gets a message that lists the ids only.
+                a time budget of about 10 seconds for all the reads. The
+                message also names each metric that was not found or that
+                the method could not read. A larger batch gets a message
+                that lists the ids only.
             RateLimitError: Rate limit exceeded after retries (429).
             ServerError: Server-side errors (5xx).
 
@@ -9877,11 +9882,14 @@ class Workspace:
 
         The reads are best effort: they only add names to an error that the
         server already gave. So each read gets one attempt (no retry after a
-        429), all the reads together get ``_EDIT_REFUSAL_READ_BUDGET_S``
-        seconds, and more than ``_EDIT_REFUSAL_READ_LIMIT`` targets are not
-        read at all. The method reads the targets one by one and not from
-        the full list, because that list can take more than 30 seconds on a
-        large project.
+        429), the reads share a time budget of
+        ``_EDIT_REFUSAL_READ_BUDGET_S`` seconds, and more than
+        ``_EDIT_REFUSAL_READ_LIMIT`` targets are not read at all. The budget
+        is a target: no read starts after it is used up, and each phase of a
+        read (the connection, then the wait for the answer) gets half of the
+        time that is left as its timeout. A read in progress is not cut off.
+        The method reads the targets one by one and not from the full list,
+        because that list can take more than 30 seconds on a large project.
 
         A read that the server refuses (403), or that finds nothing (404),
         concerns that target only, and the reads continue. Each other
@@ -9921,7 +9929,9 @@ class Workspace:
                 )
                 break
             try:
-                rows[entity_id] = read(entity_id, timeout=time_left, max_retries=0)
+                # Half of the time that is left for each phase of the request:
+                # see _EDIT_REFUSAL_READ_BUDGET_S.
+                rows[entity_id] = read(entity_id, timeout=time_left / 2, max_retries=0)
             except MixpanelHeadlessError as read_exc:
                 status = _unreadable_status(read_exc)
                 if status is None:
