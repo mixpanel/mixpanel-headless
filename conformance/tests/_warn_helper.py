@@ -1,11 +1,14 @@
-"""A warning helper in its own file, for the ``skip_file_prefixes`` test.
+"""Warning helpers in their own file, for the ``skip_file_prefixes`` tests.
 
 The provenance shim in ``conformance/record/plugin.py`` must leave a
 ``skip_file_prefixes`` call alone. Proving that needs a helper whose file
 differs from the test's, because the prefix names the frames to pass over
-by file. The prefix here is this file, not its directory: the test file
-sits in the same directory, and a directory prefix would skip the test's
-own frame too. Underscore-prefixed so pytest does not collect it.
+by file. The matching case here names this file, not its directory: the
+test file sits in the same directory, and a directory prefix would skip
+the test's own frame. Underscore-prefixed so pytest does not collect it.
+
+The keyword travels in a mapping because mypy targets Python 3.10, where
+``warnings.warn`` does not take it.
 """
 
 from __future__ import annotations
@@ -16,21 +19,26 @@ from typing import Any
 _THIS_FILE = __file__
 
 
-def warn_through_two_package_frames() -> None:
-    """Warn from a second frame in this file, skipping both.
+def warn_with_matching_prefix() -> None:
+    """Warn from a second frame here, with a prefix that skips this file."""
+    _warn_here((_THIS_FILE,))
 
-    ``stacklevel=2`` alone would blame this function, which is still this
-    file. The prefix carries the search past every frame here, so the
-    warning blames the caller in another file.
+
+def warn_with_empty_prefixes() -> None:
+    """Warn from a second frame here, with no prefixes at all."""
+    _warn_here(())
+
+
+def warn_with_nonmatching_prefix() -> None:
+    """Warn from a second frame here, with a prefix that matches nothing."""
+    _warn_here(("/no/such/path",))
+
+
+def _warn_here(prefixes: tuple[str, ...]) -> None:
+    """Raise the warning at stacklevel 2 with the given prefixes.
+
+    Args:
+        prefixes: The value for ``skip_file_prefixes``.
     """
-    _warn_here()
-
-
-def _warn_here() -> None:
-    """Raise the warning, skipping every frame of this file.
-
-    The keyword travels in a mapping because mypy targets Python 3.10,
-    where ``warnings.warn`` does not take ``skip_file_prefixes``.
-    """
-    options: dict[str, Any] = {"skip_file_prefixes": (_THIS_FILE,)}
+    options: dict[str, Any] = {"skip_file_prefixes": prefixes}
     warnings.warn("probe", UserWarning, stacklevel=2, **options)

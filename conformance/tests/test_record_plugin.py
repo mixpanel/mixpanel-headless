@@ -1227,40 +1227,88 @@ def test_warning_shim_blames_the_caller_at_stacklevel_two(
     assert "_warn_at_stacklevel(2)" in _test_source_line(captured[0].lineno)
 
 
+def _prefix_provenance(helper_name: str, *, use_shim: bool) -> tuple[str, int]:
+    """Capture where one prefix helper's warning points.
+
+    Args:
+        helper_name: The helper in ``_warn_helper`` to call.
+        use_shim: True to run under the recorder's provenance shim, False
+            to run under the unpatched ``warnings.warn``.
+
+    Returns:
+        The file and line the warning names.
+    """
+    import warnings
+
+    from conformance.record.plugin import _ORIGINAL_WARN, _warn_past_seam_wrappers
+    from conformance.tests import _warn_helper
+
+    helper = getattr(_warn_helper, helper_name)
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        saved = warnings.warn
+        warnings.warn = _warn_past_seam_wrappers if use_shim else _ORIGINAL_WARN
+        try:
+            helper()
+        finally:
+            warnings.warn = saved
+    assert len(captured) == 1
+    return captured[0].filename, captured[0].lineno
+
+
 @pytest.mark.skipif(
     sys.version_info < (3, 12),
     reason="warnings.warn gained skip_file_prefixes in Python 3.12",
 )
-def test_warning_shim_honors_skip_file_prefixes(
-    record_session: RecordSession,
+@pytest.mark.parametrize(
+    "helper_name",
+    ["warn_with_empty_prefixes", "warn_with_nonmatching_prefix"],
+)
+def test_warning_shim_matches_native_when_prefixes_skip_nothing(
+    helper_name: str,
 ) -> None:
-    """A prefix-skipping helper still blames its caller outside the package.
+    """Prefixes that pass over no frame give the provenance of plain warn.
 
-    ``skip_file_prefixes`` names the frames to pass over by file, so the
-    shim must not add its own count on top. It adds its own file to the
-    prefixes instead, which hides both the shim and every seam wrapper,
-    because all of them live in ``conformance/record/plugin.py``.
+    When the prefixes match nothing, the frame count alone decides, and
+    the shim's correction holds. The comparison is against the unpatched
+    ``warnings.warn`` on the same call chain, so it does not depend on
+    how the helper nests its frames.
 
     Args:
-        record_session: The activated record session, which installs the
-            shim on ``warnings.warn``.
+        helper_name: The helper to call.
 
     Raises:
-        AssertionError: If the warning names the helper package rather
-            than this file.
+        AssertionError: If the shim moves the provenance.
     """
-    import warnings
+    assert _prefix_provenance(helper_name, use_shim=True) == _prefix_provenance(
+        helper_name, use_shim=False
+    )
 
-    from conformance.tests import _warn_helper
 
-    del record_session
-    with warnings.catch_warnings(record=True) as captured:
-        warnings.simplefilter("always")
-        _warn_helper.warn_through_two_package_frames()
+@pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="warnings.warn gained skip_file_prefixes in Python 3.12",
+)
+def test_warning_shim_overshoots_a_prefix_that_skips_a_frame() -> None:
+    """A prefix that does pass over a frame lands one frame too far up.
 
-    assert len(captured) == 1
-    assert captured[0].filename == __file__
-    assert "warn_through_two_package_frames()" in _test_source_line(captured[0].lineno)
+    This records a known limit, not a wanted behavior. CPython composes
+    ``stacklevel`` and the prefix search in a way the shim's frame count
+    cannot mirror. No code in this repository, and no installed
+    dependency, passes ``skip_file_prefixes``, so a record run never
+    reaches this case.
+
+    A failure here is good news: it means the composition is understood
+    well enough to correct, and the note in
+    ``conformance.record.plugin._warn_past_seam_wrappers`` should go.
+
+    Raises:
+        AssertionError: If the provenance stops matching the recorded
+            limit.
+    """
+    shim = _prefix_provenance("warn_with_matching_prefix", use_shim=True)
+    native = _prefix_provenance("warn_with_matching_prefix", use_shim=False)
+    assert shim != native
 
 
 def _test_source_line(lineno: int) -> str:

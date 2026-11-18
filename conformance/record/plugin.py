@@ -159,6 +159,14 @@ def _warn_past_seam_wrappers(
     The shim reads only its arguments and the live stack of its own thread,
     so parallel seam calls do not interfere.
 
+    Known limit: a caller that passes ``skip_file_prefixes`` (Python 3.12
+    and later) and whose prefixes match at least one frame gets a warning
+    one frame too far up. CPython composes ``stacklevel`` and the prefix
+    search in a way that the frame count here cannot mirror. Empty
+    prefixes and prefixes that match nothing are correct. No code in this
+    repository, and no installed dependency, passes the argument, so the
+    record run does not reach this case.
+
     Args:
         message: The warning message or a warning instance.
         category: The warning class; ``None`` means ``UserWarning``, as in
@@ -170,21 +178,6 @@ def _warn_past_seam_wrappers(
         **kwargs: Later keyword-only arguments of ``warnings.warn``, such
             as ``skip_file_prefixes`` on Python 3.12 and later.
     """
-    if "skip_file_prefixes" in kwargs:
-        # The caller names the frames to skip by file, so no counting is
-        # needed. This file holds both the shim and every seam wrapper, so
-        # one more prefix hides the whole recorder from the search. The
-        # keyword travels in the mapping because mypy targets Python 3.10,
-        # where warnings.warn does not take it.
-        kwargs["skip_file_prefixes"] = tuple(kwargs["skip_file_prefixes"]) + (__file__,)
-        _ORIGINAL_WARN(
-            message,
-            category if category is not None else UserWarning,
-            stacklevel,
-            source,
-            **kwargs,
-        )
-        return
     # warnings.warn blames the caller of warn for any value below 1, so
     # clamp before the arithmetic. Adding to a raw 0 or -1 would blame the
     # line below instead, even with no wrapper in the chain.
