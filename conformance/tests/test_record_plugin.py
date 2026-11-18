@@ -1104,3 +1104,112 @@ def test_rebuilt_alike_sequences() -> None:
     assert _rebuilt_alike(
         Formula("A / B", metrics=operands), Formula("A / B", metrics=tuple(operands))
     )
+
+
+def _classified_property_handler(request: httpx.Request) -> httpx.Response:
+    """Serve one classified property so the discovery call warns.
+
+    Args:
+        request: The incoming request (ignored).
+
+    Returns:
+        A 200 JSON response holding one property marked sensitive.
+    """
+    del request
+    return httpx.Response(
+        200,
+        json={"email": {"count": 0, "type": "string", "sensitive": True}},
+    )
+
+
+def test_seam_wrapper_keeps_warning_provenance(
+    record_session: RecordSession,
+) -> None:
+    """A warning from a wrapped seam still names the caller, not the plugin.
+
+    ``DiscoveryService.list_properties`` warns with a fixed ``stacklevel``
+    counted for the chain ``caller -> Workspace.properties ->
+    list_properties``. The record plugin wraps ``Workspace.properties``, so
+    an unadjusted wrapper adds a frame and the warning names
+    ``conformance/record/plugin.py``. The recorder must not change what the
+    library reports.
+
+    Args:
+        record_session: The activated record session.
+
+    Raises:
+        AssertionError: If the warning does not name this test file.
+    """
+    import warnings
+
+    from mixpanel_headless._internal.api_client import MixpanelAPIClient
+    from mixpanel_headless.workspace import Workspace
+
+    nodeid = "tests/unit/test_fake.py::test_warning_provenance"
+    record_session.begin_test(nodeid, None)
+    client = MixpanelAPIClient(
+        session=_make_session(),
+        _transport=httpx.MockTransport(_classified_property_handler),
+    )
+    workspace = Workspace(session=_make_session(), _api_client=client)
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        workspace.properties("Purchase")  # the caller's line
+    record_session.finish_test(nodeid)
+
+    assert [w.filename for w in captured] == [__file__]
+
+
+def _warn_at_stacklevel(stacklevel: int) -> None:
+    """Raise one warning from this helper at the given stacklevel.
+
+    Args:
+        stacklevel: Frames to count, as ``warnings.warn`` means them.
+    """
+    import warnings
+
+    warnings.warn("probe", UserWarning, stacklevel=stacklevel)
+
+
+def test_warning_shim_leaves_an_unwrapped_chain_alone(
+    record_session: RecordSession,
+) -> None:
+    """With no seam wrapper in the chain, the shim changes no provenance.
+
+    This pins the frame arithmetic: the shim adds one frame of its own, so
+    a chain it must not correct has to come out exactly as it would
+    without the shim. ``stacklevel=1`` blames the helper, and
+    ``stacklevel=2`` blames this test.
+
+    Args:
+        record_session: The activated record session, which installs the
+            shim on ``warnings.warn``.
+
+    Raises:
+        AssertionError: If either warning names the wrong file or line.
+    """
+    import warnings
+
+    del record_session
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        _warn_at_stacklevel(1)
+        _warn_at_stacklevel(2)
+
+    assert len(captured) == 2
+    assert captured[0].filename == __file__
+    assert captured[0].lineno == _warn_at_stacklevel.__code__.co_firstlineno + 8
+    assert captured[1].filename == __file__
+    assert "_warn_at_stacklevel(2)" in _test_source_line(captured[1].lineno)
+
+
+def _test_source_line(lineno: int) -> str:
+    """Read one line of this test file.
+
+    Args:
+        lineno: The 1-based line number to read.
+
+    Returns:
+        The text of that line.
+    """
+    return Path(__file__).read_text(encoding="utf-8").splitlines()[lineno - 1]
