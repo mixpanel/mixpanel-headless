@@ -39,7 +39,8 @@ jobs:
           path: site/
 
   deploy:
-    if: github.event_name != 'pull_request'
+    # Forks build the docs but don't deploy: only the upstream repo has Pages enabled.
+    if: github.event_name != 'pull_request' && github.repository == 'mixpanel/mixpanel-headless'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
