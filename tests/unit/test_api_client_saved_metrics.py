@@ -153,20 +153,23 @@ def recorded_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
 
 def _rate_limited(
     captured: list[httpx.Request],
+    retry_after: str | None = None,
 ) -> Callable[[httpx.Request], httpx.Response]:
     """Build a handler that records each request and answers with a 429.
 
     Args:
         captured: List the handler appends each request to.
+        retry_after: The ``Retry-After`` header value; ``None`` sends none.
 
     Returns:
         A MockTransport handler.
     """
+    headers = {} if retry_after is None else {"Retry-After": retry_after}
 
     def handler(request: httpx.Request) -> httpx.Response:
         """Record the request and answer that the rate limit is reached."""
         captured.append(request)
-        return httpx.Response(429, json={"error": "rate limit"})
+        return httpx.Response(429, headers=headers, json={"error": "rate limit"})
 
     return handler
 
@@ -209,6 +212,37 @@ class TestAppRequestMaxRetries:
             client.app_request("GET", "/projects/12345/metrics/1", max_retries=1)
         assert len(captured) == 2
         assert len(recorded_sleeps) == 1
+
+    def test_long_retry_after_stops_before_the_per_call_count(
+        self, oauth_credentials: Session, recorded_sleeps: list[float]
+    ) -> None:
+        """A ``Retry-After`` over 60 seconds ends the loop at once, whatever the count."""
+        captured: list[httpx.Request] = []
+        client = create_mock_client(
+            oauth_credentials, _rate_limited(captured, retry_after="3600")
+        )
+        with client, pytest.raises(RateLimitError) as exc_info:
+            client.app_request("GET", "/projects/12345/metrics/1", max_retries=5)
+        assert len(captured) == 1
+        assert recorded_sleeps == []
+        assert exc_info.value.retry_after == 3600
+        assert "longer than the 60-second retry ceiling" in str(exc_info.value)
+
+    def test_per_call_count_ends_a_short_retry_after(
+        self, oauth_credentials: Session, recorded_sleeps: list[float]
+    ) -> None:
+        """With a short ``Retry-After``, the per-call count decides when to stop."""
+        captured: list[httpx.Request] = []
+        client = create_mock_client(
+            oauth_credentials,
+            _rate_limited(captured, retry_after="10"),
+            max_retries=5,
+        )
+        with client, pytest.raises(RateLimitError) as exc_info:
+            client.app_request("GET", "/projects/12345/metrics/1", max_retries=1)
+        assert len(captured) == 2
+        assert recorded_sleeps == [10.0]
+        assert "after max retries" in str(exc_info.value)
 
     def test_default_when_absent(
         self, oauth_credentials: Session, recorded_sleeps: list[float]

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Prepares an Amp orb for mixpanel_headless development.
+# Mirrors CI (.github/workflows/ci.yml): uv sync --all-extras, plus `just`.
+# The pre-commit hook is not installed: orbs set a global core.hooksPath that
+# Amp uses, so `pre-commit install` refuses; `just check` covers the same gates.
+# Idempotent.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+step() {
+  local name="$1"
+  shift
+  local start=$SECONDS
+  echo "==> $name"
+  "$@"
+  echo "    done in $((SECONDS - start))s"
+}
+
+export PATH="$HOME/.local/bin:$PATH"
+
+# `just` is not packaged for Debian 12; install the PyPI build via uv.
+if ! command -v just >/dev/null 2>&1; then
+  step "Install just" uv tool install rust-just
+fi
+
+step "Sync dependencies" uv sync --all-extras
+step "Verify mp CLI" uv run mp --version

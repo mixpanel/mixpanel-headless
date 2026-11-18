@@ -1645,7 +1645,8 @@ class Workspace:
         Raises:
             ConfigError: If API credentials are not available.
             AuthenticationError: If credentials are invalid.
-            RateLimitError: If rate limit exceeded after max retries.
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             QueryError: If filter expression is invalid.
             ValueError: If limit is outside valid range (1-100000).
 
@@ -1733,7 +1734,8 @@ class Workspace:
         Raises:
             ConfigError: If API credentials are not available.
             AuthenticationError: If credentials are invalid.
-            RateLimitError: If rate limit exceeded after max retries.
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
             ValueError: If mutually exclusive parameters are provided.
 
         Example:
