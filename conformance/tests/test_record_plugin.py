@@ -9,6 +9,7 @@ frozen monotonic clock.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -1171,36 +1172,95 @@ def _warn_at_stacklevel(stacklevel: int) -> None:
     warnings.warn("probe", UserWarning, stacklevel=stacklevel)
 
 
-def test_warning_shim_leaves_an_unwrapped_chain_alone(
-    record_session: RecordSession,
+@pytest.mark.parametrize("stacklevel", [-1, 0, 1])
+def test_warning_shim_blames_the_warn_line_for_a_low_stacklevel(
+    record_session: RecordSession, stacklevel: int
 ) -> None:
-    """With no seam wrapper in the chain, the shim changes no provenance.
+    """Every level below 2 blames the line that called ``warnings.warn``.
 
-    This pins the frame arithmetic: the shim adds one frame of its own, so
-    a chain it must not correct has to come out exactly as it would
-    without the shim. ``stacklevel=1`` blames the helper, and
-    ``stacklevel=2`` blames this test.
+    This pins the frame arithmetic for the case the shim must not touch:
+    the shim adds one frame of its own, so an uncorrected chain has to
+    come out exactly as it would without the shim. ``warnings.warn``
+    treats 0 and any negative value as 1, so all three blame the helper.
 
     Args:
         record_session: The activated record session, which installs the
             shim on ``warnings.warn``.
+        stacklevel: The level the helper passes.
 
     Raises:
-        AssertionError: If either warning names the wrong file or line.
+        AssertionError: If the warning names the wrong file or line.
     """
     import warnings
 
     del record_session
     with warnings.catch_warnings(record=True) as captured:
         warnings.simplefilter("always")
-        _warn_at_stacklevel(1)
+        _warn_at_stacklevel(stacklevel)
+
+    assert len(captured) == 1
+    assert captured[0].filename == __file__
+    assert "warnings.warn(" in _test_source_line(captured[0].lineno)
+
+
+def test_warning_shim_blames_the_caller_at_stacklevel_two(
+    record_session: RecordSession,
+) -> None:
+    """``stacklevel=2`` still blames this test, not the helper.
+
+    Args:
+        record_session: The activated record session, which installs the
+            shim on ``warnings.warn``.
+
+    Raises:
+        AssertionError: If the warning names the wrong file or line.
+    """
+    import warnings
+
+    del record_session
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
         _warn_at_stacklevel(2)
 
-    assert len(captured) == 2
+    assert len(captured) == 1
     assert captured[0].filename == __file__
-    assert captured[0].lineno == _warn_at_stacklevel.__code__.co_firstlineno + 8
-    assert captured[1].filename == __file__
-    assert "_warn_at_stacklevel(2)" in _test_source_line(captured[1].lineno)
+    assert "_warn_at_stacklevel(2)" in _test_source_line(captured[0].lineno)
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="warnings.warn gained skip_file_prefixes in Python 3.12",
+)
+def test_warning_shim_honors_skip_file_prefixes(
+    record_session: RecordSession,
+) -> None:
+    """A prefix-skipping helper still blames its caller outside the package.
+
+    ``skip_file_prefixes`` names the frames to pass over by file, so the
+    shim must not add its own count on top. It adds its own file to the
+    prefixes instead, which hides both the shim and every seam wrapper,
+    because all of them live in ``conformance/record/plugin.py``.
+
+    Args:
+        record_session: The activated record session, which installs the
+            shim on ``warnings.warn``.
+
+    Raises:
+        AssertionError: If the warning names the helper package rather
+            than this file.
+    """
+    import warnings
+
+    from conformance.tests import _warn_helper
+
+    del record_session
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        _warn_helper.warn_through_two_package_frames()
+
+    assert len(captured) == 1
+    assert captured[0].filename == __file__
+    assert "warn_through_two_package_frames()" in _test_source_line(captured[0].lineno)
 
 
 def _test_source_line(lineno: int) -> str:

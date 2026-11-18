@@ -164,14 +164,34 @@ def _warn_past_seam_wrappers(
         category: The warning class; ``None`` means ``UserWarning``, as in
             ``warnings.warn``. Ignored when ``message`` is an instance.
         stacklevel: Frames to count, as the caller means them without any
-            wrapper in the chain.
+            wrapper in the chain. Zero and negative values count as 1,
+            which is what ``warnings.warn`` does with them.
         source: The destroyed object, for ``ResourceWarning``.
         **kwargs: Later keyword-only arguments of ``warnings.warn``, such
             as ``skip_file_prefixes`` on Python 3.12 and later.
     """
+    if "skip_file_prefixes" in kwargs:
+        # The caller names the frames to skip by file, so no counting is
+        # needed. This file holds both the shim and every seam wrapper, so
+        # one more prefix hides the whole recorder from the search. The
+        # keyword travels in the mapping because mypy targets Python 3.10,
+        # where warnings.warn does not take it.
+        kwargs["skip_file_prefixes"] = tuple(kwargs["skip_file_prefixes"]) + (__file__,)
+        _ORIGINAL_WARN(
+            message,
+            category if category is not None else UserWarning,
+            stacklevel,
+            source,
+            **kwargs,
+        )
+        return
+    # warnings.warn blames the caller of warn for any value below 1, so
+    # clamp before the arithmetic. Adding to a raw 0 or -1 would blame the
+    # line below instead, even with no wrapper in the chain.
+    level = max(stacklevel, 1)
     extra = 0
     frame: FrameType | None = sys._getframe(1)
-    steps = stacklevel - 1
+    steps = level - 1
     while steps > 0 and frame is not None:
         frame = frame.f_back
         while frame is not None and frame.f_code in _SEAM_WRAPPER_CODE:
@@ -182,7 +202,7 @@ def _warn_past_seam_wrappers(
     _ORIGINAL_WARN(
         message,
         category if category is not None else UserWarning,
-        stacklevel + extra + 1,
+        level + extra + 1,
         source,
         **kwargs,
     )
