@@ -252,12 +252,11 @@ class TestPaginateAll:
 
         assert captured_params[0]["include_archived"] == "true"
 
-    def test_injects_query_origin_telemetry(self, oauth_credentials: Session) -> None:
-        """paginate_all() should auto-inject the query_origin telemetry param.
+    def test_sends_no_query_origin(self, oauth_credentials: Session) -> None:
+        """paginate_all() sends the pagination params only, and no telemetry tag.
 
-        Locks the literal value so a future typo or accidental rename of the
-        telemetry tag is caught at PR time rather than silently corrupting
-        Mixpanel-internal analytics dashboards.
+        ``query_origin`` goes to Query API requests only. An App API endpoint
+        can refuse a parameter that its request schema does not name.
         """
         captured_params: list[dict[str, str]] = []
 
@@ -276,41 +275,7 @@ class TestPaginateAll:
         with client:
             list(paginate_all(client, "/projects/12345/dashboards"))
 
-        assert captured_params[0]["query_origin"] == "mixpanel-headless"
-
-    def test_canonical_query_origin_wins_over_caller(
-        self, oauth_credentials: Session
-    ) -> None:
-        """Caller-supplied ``query_origin`` cannot override the canonical value.
-
-        The telemetry tag is non-negotiable: even if a caller passes a spoofed
-        ``query_origin`` in ``params``, the canonical ``mixpanel-headless``
-        value must win.
-        """
-        captured_params: list[dict[str, str]] = []
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            captured_params.append(dict(request.url.params))
-            return httpx.Response(
-                200,
-                json={
-                    "status": "ok",
-                    "results": [{"id": 1}],
-                    "pagination": {"page_size": 100, "next_cursor": None},
-                },
-            )
-
-        client = create_mock_client(oauth_credentials, handler)
-        with client:
-            list(
-                paginate_all(
-                    client,
-                    "/projects/12345/dashboards",
-                    params={"query_origin": "spoofed-by-caller"},
-                )
-            )
-
-        assert captured_params[0]["query_origin"] == "mixpanel-headless"
+        assert captured_params == [{"page_size": "100"}]
 
     def test_default_timeout_outlasts_app_deadline(
         self, oauth_credentials: Session

@@ -8,6 +8,8 @@ Properties tested:
 - Backoff bounds: Exponential backoff stays within documented limits
 - URL path normalization: Leading slash handling is consistent
 - JSONL chunk invariance: Line parsing is independent of chunk boundaries
+- ID filter batches: every distinct ID goes out once, in order, in bounded batches
+- query_origin: only Query API URLs get the telemetry parameter
 """
 
 from __future__ import annotations
@@ -15,16 +17,20 @@ from __future__ import annotations
 import base64
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta
+from unittest.mock import patch
 
 import httpx
 from httpx._types import SyncByteStream
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
+from mixpanel_headless._internal import api_client as api_client_module
 from mixpanel_headless._internal.api_client import (
+    _ID_FILTER_BATCH_SIZE,
     ENDPOINTS,
     MixpanelAPIClient,
     _build_activity_feed_date_range,
+    _id_filter_params,
     _iter_jsonl_lines,
 )
 from tests.conftest import make_session
@@ -734,3 +740,116 @@ class TestActivityFeedDateRange:
                 "type": "relative_after",
                 "window": {"unit": "day", "value": 30},
             }
+
+
+# =============================================================================
+# ID Filter Batch Property Tests
+# =============================================================================
+
+
+class TestIdFilterParamsProperties:
+    """Property-based tests for _id_filter_params()."""
+
+    @given(
+        ids=st.lists(st.integers(min_value=1, max_value=10**9), max_size=450),
+        base=st.dictionaries(
+            st.sampled_from(["v", "type", "data_group_id"]),
+            st.text(alphabet="abc123", min_size=1, max_size=5),
+            max_size=3,
+        ),
+    )
+    def test_batches_hold_each_distinct_id_once_in_order(
+        self, ids: list[int], base: dict[str, str]
+    ) -> None:
+        """The batches hold every distinct ID once, in first-seen order.
+
+        Every batch repeats the base params and carries 1 to
+        ``_ID_FILTER_BATCH_SIZE`` IDs. No IDs means one request with the
+        base params only.
+
+        Args:
+            ids: IDs to filter by, with repeats.
+            base: The other query params.
+        """
+        batches = _id_filter_params(ids, base)
+
+        expected = [str(i) for i in dict.fromkeys(ids)]
+        if not expected:
+            assert batches == [base]
+            return
+        flat = [i for batch in batches for i in batch["id[]"]]
+        assert flat == expected
+        for batch in batches:
+            assert 1 <= len(batch["id[]"]) <= _ID_FILTER_BATCH_SIZE
+            assert {k: v for k, v in batch.items() if k != "id[]"} == base
+        assert len(batches) == -(-len(expected) // _ID_FILTER_BATCH_SIZE)
+
+    @given(
+        ids=st.lists(st.integers(min_value=1, max_value=60), max_size=40),
+        size=st.integers(min_value=1, max_value=7),
+    )
+    def test_batches_split_at_the_batch_size(self, ids: list[int], size: int) -> None:
+        """With a small batch size, the IDs split into full batches plus a rest.
+
+        The property above seldom draws more IDs than one real batch holds.
+        This one sets a small batch size, so most examples need several
+        batches, and each boundary is tested.
+
+        Args:
+            ids: IDs to filter by, with repeats.
+            size: The batch size for this example.
+        """
+        with patch.object(api_client_module, "_ID_FILTER_BATCH_SIZE", size):
+            batches = _id_filter_params(ids, {"v": "2"})
+
+        expected = [str(i) for i in dict.fromkeys(ids)]
+        if not expected:
+            assert batches == [{"v": "2"}]
+            return
+        chunks = [batch["id[]"] for batch in batches]
+        assert [i for chunk in chunks for i in chunk] == expected
+        assert all(len(chunk) == size for chunk in chunks[:-1])
+        assert 1 <= len(chunks[-1]) <= size
+        assert all(batch["v"] == "2" for batch in batches)
+
+
+# =============================================================================
+# query_origin Property Tests
+# =============================================================================
+
+
+class TestQueryOriginProperties:
+    """Property-based tests for the query_origin rule of request()."""
+
+    @given(family=api_types, path=url_paths, region=regions)
+    def test_query_origin_only_under_the_query_api(
+        self, family: str, path: str, region: str
+    ) -> None:
+        """request() adds query_origin only under the query and engage bases.
+
+        App API endpoints can refuse an unknown query parameter, and the
+        raw export path never sends the tag.
+
+        Args:
+            family: API family whose base starts the URL.
+            path: Path below the base.
+            region: Data residency region.
+        """
+        seen: list[dict[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture the query params of the request."""
+            seen.append(dict(request.url.params))
+            return httpx.Response(200, json={})
+
+        session = make_session(username="u", secret="s", project_id="1", region=region)
+        client = MixpanelAPIClient(
+            session=session, _transport=httpx.MockTransport(handler)
+        )
+        url = f"{ENDPOINTS[region][family]}/{path.lstrip('/')}"
+        try:
+            client.request("GET", url)
+        finally:
+            client.close()
+
+        assert ("query_origin" in seen[0]) == (family in {"query", "engage"})

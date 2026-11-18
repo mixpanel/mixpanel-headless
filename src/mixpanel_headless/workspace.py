@@ -516,6 +516,123 @@ def _flow_mode_from_params(params: dict[str, Any]) -> str:
     return "sankey"
 
 
+# Most targets that an explained edit refusal reads one by one to name the
+# refused entities and their creators. A larger batch gets the explanation
+# without names, so the error never waits for many reads.
+_EDIT_REFUSAL_READ_LIMIT = 10
+
+# Time budget, in seconds, for all of those reads together. The reads only
+# add names to an error that the server already gave. So each read gets one
+# attempt (no retry after a 429), and no read starts after the budget is used
+# up. httpx applies a timeout to each phase of a request (the connection,
+# then the wait for the answer), not to the request as a whole. So each phase
+# gets half of the time that is left, which keeps a normal read inside the
+# budget. The budget is a target, not a hard stop: a read in progress is not
+# cut off, and an answer that arrives in many slow parts can take longer.
+_EDIT_REFUSAL_READ_BUDGET_S = 10.0
+
+
+def _is_blank_refusal(exc: QueryError) -> bool:
+    """Return whether an error is the server's blank 403.
+
+    The server answers a refused edit of a saved metric or behavior with a
+    403 whose JSON body is ``{"error": "", "status": "error"}``. Only that
+    shape counts: ``error`` holds a blank string, ``status`` is ``"error"``
+    or absent, and no other key holds a value. A 403 of another shape, for
+    example ``{}`` or the body of a gateway, has a cause that the client
+    does not know.
+
+    Args:
+        exc: The error that an update raised.
+
+    Returns:
+        ``True`` for a 403 of the recorded shape.
+
+    Example:
+        ```python
+        blank = QueryError("Permission denied", status_code=403,
+                           response_body={"error": "", "status": "error"})
+        _is_blank_refusal(blank)
+        # True
+        plan = QueryError("Cannot save metric with your current plan",
+                          status_code=403,
+                          response_body={"error": "Cannot save metric ..."})
+        _is_blank_refusal(plan)
+        # False
+        ```
+    """
+    body = exc.response_body
+    if exc.status_code != 403 or not isinstance(body, dict):
+        return False
+    error = body.get("error")
+    if not isinstance(error, str) or error.strip():
+        return False
+    if body.get("status", "error") != "error":
+        return False
+    return not any(
+        value for key, value in body.items() if key not in ("error", "status")
+    )
+
+
+def _unreadable_status(exc: MixpanelHeadlessError) -> int | None:
+    """Return the status of a failed read that concerns only its one target.
+
+    After a refused edit, the client reads each target to name it. A 403 on
+    such a read means that this account cannot read that target, and a 404
+    means that the target does not exist or is deleted. The next target can
+    still be readable. Each other error (a rate limit, a server error, a
+    timeout) would probably repeat on the next read.
+
+    Args:
+        exc: The error that the read of one target raised.
+
+    Returns:
+        ``403`` or ``404`` for a ``QueryError`` with that status, and
+        ``None`` for each other error.
+    """
+    if isinstance(exc, QueryError) and exc.status_code in (403, 404):
+        return exc.status_code
+    return None
+
+
+def _name_targets(noun: str, ids: Sequence[object]) -> str:
+    """Name one or several entities by id, with the noun in the right number.
+
+    Args:
+        noun: The entity noun in the singular, for example ``"saved metric"``.
+        ids: The ids to name; at least one.
+
+    Returns:
+        The noun and the ids, for example ``"saved metric 2"`` or
+        ``"saved metrics 2, 3"``.
+    """
+    joined = ", ".join(str(i) for i in ids)
+    return f"{noun} {joined}" if len(ids) == 1 else f"{noun}s {joined}"
+
+
+def _describe_saved_entity(row: dict[str, Any]) -> str:
+    """Name a saved metric or behavior row for an error message.
+
+    Args:
+        row: The entity row as the App API returns it.
+
+    Returns:
+        The id, the quoted name, and the creator's email when the row has it.
+
+    Example:
+        ```python
+        _describe_saved_entity(
+            {"id": 7, "name": "Signups", "created_by": {"email": "a@b.co"}}
+        )
+        # "7 ('Signups', created by a@b.co)"
+        ```
+    """
+    creator = row.get("created_by")
+    email = creator.get("email") if isinstance(creator, dict) else None
+    by = f", created by {email}" if email else ""
+    return f"{row.get('id')} ({row.get('name')!r}{by})"
+
+
 class Workspace:
     """Unified entry point for Mixpanel data operations.
 
@@ -1174,9 +1291,14 @@ class Workspace:
         )
 
     def properties(self, event: str) -> list[str]:
-        """List all property names for an event.
+        """List the property names of an event that this account can query.
 
         Results are cached per event for the lifetime of the Workspace.
+
+        When the account cannot read classified data, the classified
+        properties are left out, because a query on one of them fails. A
+        ``UserWarning`` then names the left-out properties (also on a cached
+        call). An account with access to classified data gets every property.
 
         Args:
             event: Event name to get properties for.
@@ -1186,6 +1308,17 @@ class Workspace:
 
         Raises:
             ConfigError: If API credentials not available.
+            EventNotFoundError: The server rejected the event name (400).
+                The error lists similar names. An event that the project
+                does not track is not rejected. The call returns an empty
+                list for it.
+
+        Example:
+            ```python
+            ws = Workspace()
+            names = ws.properties("Purchase")
+            # ["amount", "plan"]; a UserWarning names any classified ones
+            ```
         """
         return self._discovery_service.list_properties(event)
 
@@ -7778,15 +7911,20 @@ class Workspace:
         """Get property definitions from Lexicon by name.
 
         Retrieves metadata (description, tags, visibility, etc.) for the
-        specified properties from the Mixpanel Lexicon.
+        specified properties from the Mixpanel Lexicon. The Lexicon API
+        looks up one name per request, so this method sends one request per
+        distinct name. The match is exact. A name that the project neither
+        tracks nor defines in Lexicon is left out of the result.
 
         Args:
             names: List of property names to look up.
             resource_type: Optional resource type filter (e.g. ``"event"``,
-                ``"user"``, ``"groupprofile"``).
+                ``"user"``, ``"groupprofile"``). Without it, the event
+                property of each name is looked up.
 
         Returns:
-            List of ``PropertyDefinition`` objects for the requested properties.
+            List of ``PropertyDefinition`` objects for the requested properties
+            that exist, in the order of ``names``.
 
         Raises:
             ResponseValidationError: Malformed API response payload
@@ -9281,7 +9419,10 @@ class Workspace:
             AuthenticationError: Invalid credentials (401).
             QueryError: The metric does not exist or is deleted (404), the
                 caller cannot edit it or the pricing-plan gate blocks the write
-                (403), or the new name is taken (409).
+                (403), or the new name is taken (409). When the caller cannot
+                edit it, the method reads the metric once after the 403. The
+                message names the metric and, when that read succeeds, its
+                creator, and it says who can edit the metric.
             RateLimitError: Rate limit exceeded after retries (429).
             ServerError: Server-side errors (5xx).
 
@@ -9317,7 +9458,13 @@ class Workspace:
             body["owned_by"] = {"id": params.owned_by}
         if params.verified is not None:
             body["verified"] = params.verified
-        row = client.update_metric(metric_id, body)
+        try:
+            row = client.update_metric(metric_id, body)
+        except QueryError as exc:
+            refusal = self._explain_edit_refusal("metric", [metric_id], exc)
+            if refusal is None:
+                raise
+            raise refusal from exc
         return validate_response_model(SavedMetric, row, endpoint="update_metric")
 
     def bulk_update_metrics(
@@ -9358,7 +9505,14 @@ class Workspace:
             AuthenticationError: Invalid credentials (401).
             QueryError: The read of an entry's metric failed (404), the
                 caller cannot edit one of the metrics (403), or a new name
-                is taken (409).
+                is taken (409). That 403 means that nothing was changed.
+                The method then reads the metrics one by one, to name each
+                refused metric and its creator. It reads them only for a
+                batch of 10 metrics or fewer, with one attempt per read and
+                a time budget of about 10 seconds for all the reads. The
+                message also names each metric that was not found or that
+                the method could not read. A larger batch gets a message
+                that lists the ids only.
             RateLimitError: Rate limit exceeded after retries (429).
             ServerError: Server-side errors (5xx).
 
@@ -9401,7 +9555,14 @@ class Workspace:
             if entry.verified is not None:
                 item["verified"] = entry.verified
             wire_entries.append(item)
-        rows = client.bulk_update_metrics(wire_entries)
+        try:
+            rows = client.bulk_update_metrics(wire_entries)
+        except QueryError as exc:
+            target_ids = [entry.id for entry, _ in prepared]
+            refusal = self._explain_edit_refusal("metric", target_ids, exc)
+            if refusal is None:
+                raise
+            raise refusal from exc
         return validate_response_models(
             SavedMetric, rows, endpoint="bulk_update_metrics"
         )
@@ -9592,6 +9753,202 @@ class Workspace:
             details={f"{entity}_ids": ids},
         )
 
+    def _explain_edit_refusal(
+        self,
+        entity: Literal["metric", "behavior"],
+        target_ids: Sequence[int],
+        exc: QueryError,
+    ) -> QueryError | None:
+        """Explain the server's blank 403 on a saved metric or behavior update.
+
+        The server refuses an edit of a saved metric or behavior with a 403
+        whose JSON ``error`` is a blank string (see :func:`_is_blank_refusal`).
+        The routes check every target before they write, so nothing was
+        changed. A 403 with its own text (for example the pricing-plan gate),
+        a 403 of another shape, and every other error stay as they are.
+
+        For a metric, the blank 403 has one cause: the account did not create
+        the metric, the metric is not shared with the account for editing,
+        and the account is not a project owner (and has no custom role with
+        the same right). For a behavior it has a second cause: the account
+        lacks the ``write_behaviors`` permission. The server sets
+        ``can_update_basic`` to false for both causes, so no read can
+        separate them, and the message names both.
+
+        To name each refused entity and its creator, the method reads the
+        targets one by one (see :meth:`_read_edit_targets`). The message of
+        a bulk update names the refused metrics that the reads found. It
+        also names each target that was not found (the bulk route refuses a
+        deleted metric too) and each target that the client could not read,
+        so that it never reads as the full list of the refused metrics when
+        it is not.
+
+        Args:
+            entity: ``"metric"`` or ``"behavior"``.
+            target_ids: The ids that the update sent.
+            exc: The error that the update raised.
+
+        Returns:
+            A ``QueryError`` (403) with the explanation and the response and
+            request context of ``exc``. ``None`` when ``exc`` is not the
+            blank 403; the caller then raises ``exc`` as it is.
+
+        Raises:
+            QueryError: ``exc`` itself, chained from the read error, when the
+                reads raise an error that :meth:`_read_edit_targets` does not
+                handle. The explanation is then left out, and the server's
+                403 is not replaced.
+        """
+        if not _is_blank_refusal(exc):
+            return None
+        noun = f"saved {entity}"
+        ids = list(dict.fromkeys(target_ids))
+        try:
+            rows, not_found = self._read_edit_targets(entity, ids)
+        except Exception as read_error:  # noqa: BLE001 — a failed read must not replace the 403
+            logger.exception(
+                "Could not read %s to explain the refused edit",
+                _name_targets(noun, ids),
+            )
+            # The 403 goes out as it is, with the read error chained to it,
+            # so the caller loses neither of the two.
+            raise exc from read_error
+        refused = [row for row in rows.values() if row.get("can_update_basic") is False]
+        unread = [i for i in ids if i not in rows and i not in not_found]
+        several = len(ids) > 1
+        parts: list[str] = []
+        if not several:
+            row = rows.get(ids[0])
+            target = _describe_saved_entity(row) if row is not None else str(ids[0])
+            parts.append(f"This account cannot edit {noun} {target}.")
+        elif len(refused) == 1:
+            target = _describe_saved_entity(refused[0])
+            parts.append(f"This account cannot edit {noun} {target}.")
+        elif refused:
+            listed = ", ".join(_describe_saved_entity(row) for row in refused)
+            parts.append(f"This account cannot edit {noun}s {listed}.")
+        else:
+            listed = ", ".join(str(i) for i in ids)
+            parts.append(
+                f"This account cannot edit one or more of these {noun}s: {listed}."
+            )
+        if several and not_found:
+            was, it = ("was", "it") if len(not_found) == 1 else ("were", "they")
+            gone = _name_targets(noun, not_found).capitalize()
+            parts.append(f"{gone} {was} not found; {it} may be deleted.")
+        if several and unread and len(unread) < len(ids):
+            it = "it" if len(unread) == 1 else "them"
+            parts.append(
+                f"The client could not read {_name_targets(noun, unread)} to "
+                f"check {it}."
+            )
+        rule = (
+            f"Only the creator of a {noun}, the users and teams that it is "
+            f"shared with for editing, and project owners can edit it."
+        )
+        if not several or len(refused) == 1:
+            ask = "Ask the creator to share it with edit access."
+        else:
+            ask = f"Ask the creator of each {noun} to share it with edit access."
+        if entity == "behavior":
+            parts.append(
+                "The server gives one answer for two causes. First cause: the "
+                "account lacks the write_behaviors permission in this project. "
+                f"A project admin can grant it. Second cause: the {noun} is "
+                f"not shared with the account for editing. {rule} {ask}"
+            )
+        else:
+            parts.append(f"{rule} {ask}")
+            if several and (unread or not (refused or not_found)):
+                parts.append(
+                    "The can_update_basic flag in list_metrics() (CLI: mp "
+                    f"metrics list) shows which {noun}s this account can edit."
+                )
+        parts.append("Nothing was changed.")
+        return QueryError(
+            " ".join(parts),
+            status_code=exc.status_code,
+            response_body=exc.response_body,
+            request_method=exc.request_method,
+            request_url=exc.request_url,
+            request_params=exc.request_params,
+            request_body=exc.request_body,
+        )
+
+    def _read_edit_targets(
+        self, entity: Literal["metric", "behavior"], ids: list[int]
+    ) -> tuple[dict[int, dict[str, Any]], list[int]]:
+        """Read the rows of an update's targets one by one, to explain a refusal.
+
+        The reads are best effort: they only add names to an error that the
+        server already gave. So each read gets one attempt (no retry after a
+        429), the reads share a time budget of
+        ``_EDIT_REFUSAL_READ_BUDGET_S`` seconds, and more than
+        ``_EDIT_REFUSAL_READ_LIMIT`` targets are not read at all. The budget
+        is a target: no read starts after it is used up, and each phase of a
+        read (the connection, then the wait for the answer) gets half of the
+        time that is left as its timeout. A read in progress is not cut off.
+        The method reads the targets one by one and not from the full list,
+        because that list can take more than 30 seconds on a large project.
+
+        A read that the server refuses (403), or that finds nothing (404),
+        concerns that target only, and the reads continue. Each other
+        library error (for example a rate limit, a server error, or a
+        timeout) stops the reads, because the next read would probably fail
+        in the same way. The method logs that error.
+
+        Args:
+            entity: ``"metric"`` or ``"behavior"``.
+            ids: The distinct target ids.
+
+        Returns:
+            ``(rows, not_found)``. ``rows`` holds the row of each target
+            that a read found, keyed by the target id, in the order of
+            ``ids``. ``not_found`` holds the ids that a read answered with a
+            404. A target in neither was not read.
+
+        Raises:
+            Exception: Any error of a read that is not a
+                ``MixpanelHeadlessError``. The method does not handle it;
+                :meth:`_explain_edit_refusal` does.
+        """
+        rows: dict[int, dict[str, Any]] = {}
+        not_found: list[int] = []
+        if len(ids) > _EDIT_REFUSAL_READ_LIMIT:
+            return rows, not_found
+        client = self._require_api_client()
+        read = client.get_metric if entity == "metric" else client.get_behavior
+        deadline = time.monotonic() + _EDIT_REFUSAL_READ_BUDGET_S
+        for entity_id in ids:
+            time_left = deadline - time.monotonic()
+            if time_left <= 0:
+                logger.warning(
+                    "Stopped the reads that explain the refused edit: the "
+                    "time budget of %.0f s is used up",
+                    _EDIT_REFUSAL_READ_BUDGET_S,
+                )
+                break
+            try:
+                # Half of the time that is left for each phase of the request:
+                # see _EDIT_REFUSAL_READ_BUDGET_S.
+                rows[entity_id] = read(entity_id, timeout=time_left / 2, max_retries=0)
+            except MixpanelHeadlessError as read_exc:
+                status = _unreadable_status(read_exc)
+                if status is None:
+                    logger.warning(
+                        "Could not read saved %s %s to explain the refused edit: %s",
+                        entity,
+                        entity_id,
+                        read_exc,
+                    )
+                    break
+                logger.debug(
+                    "The read of saved %s %s answered %s", entity, entity_id, status
+                )
+                if status == 404:
+                    not_found.append(entity_id)
+        return rows, not_found
+
     def list_behaviors(
         self,
         *,
@@ -9781,8 +10138,12 @@ class Workspace:
                 (``RESPONSE_VALIDATION_ERROR``).
             ConfigError: If credentials are not available.
             AuthenticationError: Invalid credentials (401).
-            QueryError: The caller cannot edit the behavior (403), or the new
-                name is taken (409).
+            QueryError: The caller cannot edit the behavior or lacks the
+                ``write_behaviors`` permission (403), or the new name is taken
+                (409). The server gives the same blank 403 for both causes
+                of the refusal, and no read can separate them. After that
+                403 the method reads the behavior once, to name it and its
+                creator, and the message names both causes.
             RateLimitError: Rate limit exceeded after retries (429).
             ServerError: Server-side errors (5xx), including the read of an
                 unknown behavior id.
@@ -9823,7 +10184,13 @@ class Workspace:
             body["definition"] = definition
         if params.verified is not None:
             body["verified"] = params.verified
-        row = client.update_behavior(behavior_id, body)
+        try:
+            row = client.update_behavior(behavior_id, body)
+        except QueryError as exc:
+            refusal = self._explain_edit_refusal("behavior", [behavior_id], exc)
+            if refusal is None:
+                raise
+            raise refusal from exc
         return validate_response_model(SavedBehavior, row, endpoint="update_behavior")
 
     @staticmethod

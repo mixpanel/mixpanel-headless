@@ -17,12 +17,15 @@ Live (calls Mixpanel API):
 
 from __future__ import annotations
 
+import warnings
 from typing import Annotated
 
 import typer
+from rich.markup import escape as rich_escape
 
 from mixpanel_headless.cli.options import FormatOption, JqOption
 from mixpanel_headless.cli.utils import (
+    err_console,
     get_workspace,
     handle_errors,
     output_result,
@@ -43,6 +46,35 @@ inspect_app = typer.Typer(
     no_args_is_help=True,
     rich_markup_mode="markdown",
 )
+
+
+def _show_recorded_warnings(recorded: list[warnings.WarningMessage]) -> None:
+    """Show the warnings that a command recorded during its library call.
+
+    A ``UserWarning`` is a message from the library to the user, so it
+    prints as a ``Warning:`` line on stderr. A warning of another category
+    goes back to Python, which shows it as it does for every other command.
+    The command recorded it only as a side effect, and must not hide it.
+
+    Args:
+        recorded: The recorded warnings, in the order of their arrival.
+    """
+    for warning in recorded:
+        if issubclass(warning.category, UserWarning):
+            # The text can hold property names. Print them as they are: no
+            # Rich markup ("[x]") and no emoji codes (":email:").
+            err_console.print(
+                f"[yellow]Warning:[/yellow] {rich_escape(str(warning.message))}",
+                emoji=False,
+            )
+        else:
+            warnings.showwarning(
+                warning.message,
+                warning.category,
+                warning.filename,
+                warning.lineno,
+                line=warning.line,
+            )
 
 
 @inspect_app.command("events")
@@ -96,6 +128,9 @@ def inspect_properties(
     Calls the Mixpanel API to retrieve property names tracked with an event.
     Shows both custom event properties and default Mixpanel properties.
 
+    If your account cannot read classified data, the classified properties
+    are left out, and a warning on stderr names them.
+
     Output Structure (JSON):
 
         ["country", "browser", "device", "$city", "$region", "plan_type"]
@@ -113,8 +148,20 @@ def inspect_properties(
         --jq 'length'                                     # Count properties
     """
     workspace = get_workspace(ctx)
-    with status_spinner(ctx, "Fetching properties..."):
-        properties = workspace.properties(event)
+    recorded: list[warnings.WarningMessage] = []
+    try:
+        with (
+            status_spinner(ctx, "Fetching properties..."),
+            warnings.catch_warnings(record=True) as caught,
+        ):
+            recorded = caught
+            # The warning is the only signal for the left-out properties, so
+            # it must print under every warning filter.
+            warnings.simplefilter("always", UserWarning)
+            properties = workspace.properties(event)
+    finally:
+        # Also after a failed call, and only after the spinner is gone.
+        _show_recorded_warnings(recorded)
     output_result(ctx, properties, format=format, jq_filter=jq_filter)
 
 

@@ -245,9 +245,15 @@ class TestListProperties:
         """list_properties() should return properties sorted alphabetically."""
 
         def handler(_request: httpx.Request) -> httpx.Response:
-            # Return unsorted dict to verify sorting (API returns dict with counts)
+            # Return an unsorted map to verify sorting (the API maps each
+            # property name to its count and type)
             return httpx.Response(
-                200, json={"user_id": 100, "amount": 50, "currency": 75}
+                200,
+                json={
+                    "user_id": {"count": 100, "type": "string"},
+                    "amount": {"count": 50, "type": "number"},
+                    "currency": {"count": 75, "type": "string"},
+                },
             )
 
         discovery = discovery_factory(handler)
@@ -269,8 +275,20 @@ class TestListProperties:
             call_count += 1
             # Return different results based on the event parameter
             if "event=Purchase" in str(request.url):
-                return httpx.Response(200, json={"amount": 1, "currency": 1})
-            return httpx.Response(200, json={"user_id": 1, "email": 1})
+                return httpx.Response(
+                    200,
+                    json={
+                        "amount": {"count": 1, "type": "number"},
+                        "currency": {"count": 1, "type": "string"},
+                    },
+                )
+            return httpx.Response(
+                200,
+                json={
+                    "user_id": {"count": 1, "type": "string"},
+                    "email": {"count": 1, "type": "string"},
+                },
+            )
 
         discovery = discovery_factory(handler)
 
@@ -325,15 +343,28 @@ class TestListProperties:
             [Callable[[httpx.Request], httpx.Response]], DiscoveryService
         ],
     ) -> None:
-        """list_properties() should propagate QueryError for non-400 errors."""
+        """list_properties() should propagate QueryError for non-400 errors.
 
-        def handler(_request: httpx.Request) -> httpx.Response:
+        Only a 400 becomes an ``EventNotFoundError``. Each other error stays
+        as it is, and the service does not read the event names for it.
+        """
+        paths: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Refuse the properties read; the event names would be readable."""
+            paths.append(request.url.path)
+            if request.url.path.endswith("/events/names"):
+                return httpx.Response(200, json=["SomeEvent"])
             return httpx.Response(403, json={"error": "Permission denied"})
 
         discovery = discovery_factory(handler)
 
-        with pytest.raises(QueryError):
+        with pytest.raises(QueryError) as exc_info:
             discovery.list_properties("SomeEvent")
+
+        assert type(exc_info.value) is QueryError
+        assert exc_info.value.status_code == 403
+        assert paths == ["/api/query/events/properties/toptypes"]
 
     def test_list_properties_with_empty_result(
         self,
@@ -350,6 +381,205 @@ class TestListProperties:
         properties = discovery.list_properties("EmptyEvent")
 
         assert properties == []
+
+    def test_list_properties_leaves_out_classified_properties_with_a_warning(
+        self,
+        discovery_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], DiscoveryService
+        ],
+    ) -> None:
+        """A property marked sensitive is left out, and a warning names it.
+
+        For an account without classified-data access, ``toptypes`` marks
+        each classified property with ``"sensitive": true``; a query on such
+        a property fails, so the list keeps the readable properties only.
+        """
+        import warnings
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Answer with one readable and two classified properties."""
+            return httpx.Response(
+                200,
+                json={
+                    "plan": {"count": 50, "type": "string"},
+                    "email": {"count": 0, "type": "string", "sensitive": True},
+                    "$phone": {"count": 0, "type": "string", "sensitive": True},
+                    "amount": {"count": 9, "type": "number", "sensitive": False},
+                },
+            )
+
+        discovery = discovery_factory(handler)
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            properties = discovery.list_properties("Purchase")
+
+        assert properties == ["amount", "plan"]
+        messages = [str(w.message) for w in captured if w.category is UserWarning]
+        assert len(messages) == 1
+        assert "2 properties of event 'Purchase' are classified" in messages[0]
+        assert "$phone, email" in messages[0]
+
+    def test_list_properties_warns_again_from_the_cache(
+        self,
+        discovery_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], DiscoveryService
+        ],
+    ) -> None:
+        """A cached result sends no request but still names its classified property."""
+        import warnings
+
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Count the requests and answer with one classified property."""
+            calls.append(request.url.path)
+            return httpx.Response(
+                200,
+                json={
+                    "plan": {"count": 50, "type": "string"},
+                    "email": {"count": 0, "type": "string", "sensitive": True},
+                },
+            )
+
+        discovery = discovery_factory(handler)
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            first = discovery.list_properties("Purchase")
+            second = discovery.list_properties("Purchase")
+
+        assert first == second == ["plan"]
+        assert len(calls) == 1
+        messages = [str(w.message) for w in captured if w.category is UserWarning]
+        assert len(messages) == 2
+        assert "1 property of event 'Purchase' is classified" in messages[0]
+        assert "so it is left out: email." in messages[0]
+        assert messages[1] == messages[0]
+
+    def test_cached_warning_names_the_properties_of_its_own_event(
+        self,
+        discovery_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], DiscoveryService
+        ],
+    ) -> None:
+        """Each event keeps its own left-out names in the cache."""
+        import warnings
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Answer event A with a classified email, and other events with a phone."""
+            name = "email" if request.url.params["event"] == "A" else "phone"
+            return httpx.Response(
+                200,
+                json={
+                    "plan": {"count": 1, "type": "string"},
+                    name: {"count": 0, "type": "string", "sensitive": True},
+                },
+            )
+
+        discovery = discovery_factory(handler)
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            discovery.list_properties("A")
+            discovery.list_properties("B")
+            discovery.list_properties("A")  # from the cache
+
+        messages = [str(w.message) for w in captured if w.category is UserWarning]
+        assert len(messages) == 3
+        assert "event 'A'" in messages[2]
+        assert "left out: email." in messages[2]
+        assert "phone" not in messages[2]
+
+    def test_list_properties_returns_a_copy_of_the_cached_list(
+        self,
+        discovery_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], DiscoveryService
+        ],
+    ) -> None:
+        """A caller that changes the returned list does not change the cache."""
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Answer with one readable property."""
+            return httpx.Response(200, json={"plan": {"count": 1, "type": "string"}})
+
+        discovery = discovery_factory(handler)
+        discovery.list_properties("A").append("changed by the caller")
+
+        assert discovery.list_properties("A") == ["plan"]
+
+    def test_list_properties_of_an_event_with_no_data_is_empty(
+        self,
+        discovery_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], DiscoveryService
+        ],
+    ) -> None:
+        """An event with no data lists no properties and gives no warning.
+
+        ``toptypes`` answers such an event with a zero-count
+        ``$event_name``, which ``/events/properties/top`` dropped.
+        """
+        import warnings
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Answer as toptypes answers an event that has no data."""
+            return httpx.Response(
+                200, json={"$event_name": {"count": 0, "type": "string"}}
+            )
+
+        discovery = discovery_factory(handler)
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            properties = discovery.list_properties("NoSuchEvent")
+
+        assert properties == []
+        assert [w for w in captured if w.category is UserWarning] == []
+
+    def test_list_properties_sends_no_warning_without_classified_properties(
+        self,
+        discovery_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], DiscoveryService
+        ],
+    ) -> None:
+        """An event with no classified property gives no warning."""
+        import warnings
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Answer with readable properties only."""
+            return httpx.Response(200, json={"plan": {"count": 50, "type": "string"}})
+
+        discovery = discovery_factory(handler)
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            properties = discovery.list_properties("Purchase")
+
+        assert properties == ["plan"]
+        assert [w for w in captured if w.category is UserWarning] == []
+
+    def test_classified_warning_points_at_the_caller_of_workspace_properties(
+        self,
+        mock_client_factory: Callable[
+            [Callable[[httpx.Request], httpx.Response]], MixpanelAPIClient
+        ],
+    ) -> None:
+        """The warning names this test file, the line that called Workspace.properties."""
+        import warnings
+
+        from mixpanel_headless.workspace import Workspace
+        from tests.conftest import make_session
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            """Answer with one classified property."""
+            return httpx.Response(
+                200,
+                json={"email": {"count": 0, "type": "string", "sensitive": True}},
+            )
+
+        client = mock_client_factory(handler)
+        session = make_session(project_id="12345", region="us", oauth_token="t")
+        workspace = Workspace(session=session, _api_client=client)
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            workspace.properties("Purchase")  # the caller's line
+
+        assert [w.filename for w in captured] == [__file__]
 
 
 # =============================================================================

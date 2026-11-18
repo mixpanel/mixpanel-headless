@@ -781,18 +781,21 @@ class RateLimitError(APIError):
 
 
 class EventNotFoundError(MixpanelHeadlessError):
-    """Event name not found in Mixpanel project.
+    """The server rejected an event name.
 
-    Raised when an event name is not found. Includes suggestions for
-    similar event names based on case-insensitive and substring matching
-    to help users correct typos or case mismatches.
+    Raised by ``Workspace.properties()`` when the server answers the
+    property request with a 400. The error lists similar event names, from
+    a case-insensitive match and a substring match.
+
+    A name that the project does not track, for example a typo, is not
+    rejected: the call returns an empty list and does not raise this error.
 
     Example:
         ```python
         try:
-            properties = discovery.list_properties("sign up")
+            properties = ws.properties(event_name)
         except EventNotFoundError as e:
-            print(f"Event '{e.event_name}' not found.")
+            print(f"The server rejected event '{e.event_name}'.")
             if e.similar_events:
                 print(f"Did you mean: {', '.join(e.similar_events)}")
         ```
@@ -806,7 +809,7 @@ class EventNotFoundError(MixpanelHeadlessError):
         """Initialize EventNotFoundError.
 
         Args:
-            event_name: The event name that was not found.
+            event_name: The event name that the server rejected.
             similar_events: List of similar event names to suggest.
         """
         self._event_name = event_name
@@ -826,7 +829,7 @@ class EventNotFoundError(MixpanelHeadlessError):
 
     @property
     def event_name(self) -> str:
-        """The event name that was not found."""
+        """The event name that the server rejected."""
         return self._event_name
 
     @property

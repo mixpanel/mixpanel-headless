@@ -258,31 +258,70 @@ class TestBulkUpdateEventDefinitions:
         assert "/data-definitions/events/" in captured_urls[0]
 
 
+def _property_lookup_handler(
+    captured: list[httpx.QueryParams],
+    definitions: dict[str, dict[str, Any]],
+) -> Callable[[httpx.Request], httpx.Response]:
+    """Build a handler that answers a single-name lookup as the App API does.
+
+    The endpoint answers ``name=X`` with one definition object. A name that
+    it does not know comes back as a placeholder with ``id`` 0, no ``count``,
+    and type ``unknown``.
+
+    Args:
+        captured: Receives the query params of every request.
+        definitions: The definition object per known name.
+
+    Returns:
+        The mock transport handler.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Answer one name lookup.
+
+        Args:
+            request: The lookup request.
+
+        Returns:
+            The definition, or the placeholder for an unknown name.
+        """
+        captured.append(request.url.params)
+        name = request.url.params.get("name", "")
+        placeholder = {"id": 0, "name": name, "type": "unknown", "createdUTC": ""}
+        return httpx.Response(
+            200,
+            json={"status": "ok", "results": definitions.get(name, placeholder)},
+        )
+
+    return handler
+
+
 class TestGetPropertyDefinitions:
-    """Tests for get_property_definitions() API client method."""
+    """Tests for get_property_definitions() API client method.
 
-    def test_returns_list(self, oauth_credentials: Session) -> None:
-        """get_property_definitions() returns a list of property definition dicts."""
+    The properties endpoint reads only the singular ``name`` parameter, one
+    name per request, and answers with one definition object. It ignores
+    ``name[]`` and returns every property of the project.
+    """
 
-        def handler(request: httpx.Request) -> httpx.Response:
-            """Return sample property definitions."""
-            return httpx.Response(
-                200,
-                json={
-                    "status": "ok",
-                    "results": [
-                        {"name": "plan_type", "type": "string"},
-                        {"name": "age", "type": "number"},
-                    ],
-                },
-            )
-
-        client = create_mock_client(oauth_credentials, handler)
+    def test_one_request_per_name(self, oauth_credentials: Session) -> None:
+        """Each name goes out as its own singular name= lookup, in order."""
+        captured: list[httpx.QueryParams] = []
+        definitions = {
+            "plan_type": {"id": 11, "name": "plan_type", "type": "string", "count": 5},
+            "age": {"id": 12, "name": "age", "type": "number", "count": 3},
+        }
+        client = create_mock_client(
+            oauth_credentials, _property_lookup_handler(captured, definitions)
+        )
         with client:
             result = client.get_property_definitions(["plan_type", "age"])
 
-        assert len(result) == 2
-        assert result[0]["name"] == "plan_type"
+        assert result == [definitions["plan_type"], definitions["age"]]
+        assert [params.multi_items() for params in captured] == [
+            [("name", "plan_type")],
+            [("name", "age")],
+        ]
 
     def test_uses_maybe_scoped_path(self, oauth_credentials: Session) -> None:
         """get_property_definitions() uses maybe_scoped_path for URL building."""
@@ -291,7 +330,9 @@ class TestGetPropertyDefinitions:
         def handler(request: httpx.Request) -> httpx.Response:
             """Capture URL."""
             captured_urls.append(str(request.url))
-            return httpx.Response(200, json={"status": "ok", "results": []})
+            return httpx.Response(
+                200, json={"status": "ok", "results": {"id": 11, "name": "plan_type"}}
+            )
 
         client = create_mock_client(oauth_credentials, handler)
         with client:
@@ -303,22 +344,84 @@ class TestGetPropertyDefinitions:
         """get_property_definitions() normalizes resource_type to the camelCase param.
 
         The App API honors only ``resourceType`` with a capitalized value; the
-        lowercase ``"event"`` a caller passes is normalized to ``"Event"`` (the
-        legacy snake_case ``resource_type`` param was silently ignored server-side).
+        lowercase ``"user"`` a caller passes is normalized to ``"User"`` (the
+        legacy snake_case ``resource_type`` param was silently ignored
+        server-side). Every name lookup carries it.
         """
-        captured_urls: list[str] = []
+        captured: list[httpx.QueryParams] = []
+        definitions = {
+            "$city": {"id": 21, "name": "$city", "count": 9},
+            "plan": {"id": 22, "name": "plan", "count": 4},
+        }
+        client = create_mock_client(
+            oauth_credentials, _property_lookup_handler(captured, definitions)
+        )
+        with client:
+            client.get_property_definitions(["$city", "plan"], resource_type="user")
+
+        assert [params.get("resourceType") for params in captured] == ["User", "User"]
+        assert all("resource_type" not in params for params in captured)
+
+    def test_unknown_name_is_left_out(self, oauth_credentials: Session) -> None:
+        """A placeholder (id 0, no count) is dropped; real definitions stay.
+
+        A property that has tracked data but no Lexicon row also has id 0,
+        but it carries a ``count``, so it stays. A Lexicon row with no data
+        has a real id, so it stays too.
+        """
+        captured: list[httpx.QueryParams] = []
+        definitions = {
+            "tracked_only": {"id": 0, "name": "tracked_only", "count": 42},
+            "lexicon_only": {"id": 31, "name": "lexicon_only", "type": "string"},
+        }
+        client = create_mock_client(
+            oauth_credentials, _property_lookup_handler(captured, definitions)
+        )
+        with client:
+            result = client.get_property_definitions(
+                ["tracked_only", "no_such_property", "lexicon_only"]
+            )
+
+        assert [row["name"] for row in result] == ["tracked_only", "lexicon_only"]
+        assert len(captured) == 3
+
+    def test_duplicate_names_are_looked_up_once(
+        self, oauth_credentials: Session
+    ) -> None:
+        """A repeated name sends one lookup and returns one definition."""
+        captured: list[httpx.QueryParams] = []
+        definitions = {"plan": {"id": 22, "name": "plan", "count": 4}}
+        client = create_mock_client(
+            oauth_credentials, _property_lookup_handler(captured, definitions)
+        )
+        with client:
+            result = client.get_property_definitions(["plan", "plan"])
+
+        assert result == [definitions["plan"]]
+        assert len(captured) == 1
+
+    def test_no_names_sends_nothing(self, oauth_credentials: Session) -> None:
+        """An empty name list returns [] without a request (not every property)."""
+        captured: list[httpx.QueryParams] = []
+        client = create_mock_client(
+            oauth_credentials, _property_lookup_handler(captured, {})
+        )
+        with client:
+            result = client.get_property_definitions([])
+
+        assert result == []
+        assert captured == []
+
+    def test_non_object_response_raises(self, oauth_credentials: Session) -> None:
+        """A name lookup that does not answer with one object is an error."""
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Capture URL."""
-            captured_urls.append(str(request.url))
+            """Answer with a list instead of one definition object."""
             return httpx.Response(200, json={"status": "ok", "results": []})
 
         client = create_mock_client(oauth_credentials, handler)
-        with client:
-            client.get_property_definitions(["plan_type"], resource_type="event")
-
-        assert "resourceType=Event" in captured_urls[0]
-        assert "resource_type=event" not in captured_urls[0]
+        with client, pytest.raises(MixpanelHeadlessError, match="one definition"):
+            client.get_property_definitions(["plan"])
 
 
 class TestUpdatePropertyDefinition:
