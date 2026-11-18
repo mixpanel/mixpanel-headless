@@ -5,10 +5,29 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
-## Unreleased
+## 0.5.0 — 2026-11-18
+
+Minor release with one breaking removal: the credential bridge is gone.
+Credentials now come from environment variables and `~/.mp/config.toml`
+only. The release removes `mp.accounts.export_bridge()`,
+`mp.accounts.remove_bridge()`, `BridgeFile`, and `load_bridge`. It also
+removes the two `mp account` bridge commands, the `mp session --bridge`
+option, and support for `MP_AUTH_FILE`. Rate-limit handling changes as
+well: a 429 whose `Retry-After` is longer than 60 seconds raises
+`RateLimitError` at once, so the caller decides how long to wait.
+
+Fixes cover the ID filters of the report, dashboard, and cohort lists, and
+the name filter of the Lexicon properties call. More fixes cover property
+discovery on a project with classified data, the blank 403 of a metric or
+behavior edit, the scope of the `query_origin` parameter, and a response
+body that is not valid UTF-8. The plugin moves to version 0.5.0. It still
+needs the library 0.4.0 or later.
 
 ### Added
 
+- `MixpanelAPIClient.app_request()` accepts `max_retries`, the most retries
+  after a 429 for that one request. `MixpanelAPIClient.get_metric()` and
+  `get_behavior()` accept `timeout` and `max_retries` and pass them on.
 - Plugin: three offline evals check the new guidance: `saved-metric-first`
   (a business number "as the team defines it" uses a saved metric by
   reference), `custom-event-by-id` (a custom event runs by id, not by its
@@ -17,12 +36,21 @@ may include API changes.
 - Plugin: a repository guard checks that every minimum-version phrase in
   the shipped plugin text ("0.4.0 or later", "older than 0.4.0", a `>=`
   pin) names the version that setup installs.
-- `MixpanelAPIClient.app_request()` accepts `max_retries`, the most retries
-  after a 429 for that one request. `MixpanelAPIClient.get_metric()` and
-  `get_behavior()` accept `timeout` and `max_retries` and pass them on.
 
 ### Changed
 
+- **A 429 with a long `Retry-After` raises at once.** The client waits at
+  most 60 seconds between retries. Before this change, when the server asked
+  for a longer wait, the client still retried after 60 seconds, up to
+  `max_retries` times, and each early retry got another 429. When the Query
+  API sent `Retry-After: 3600` at the hourly limit, one call sent 4 requests
+  and took about 3 minutes before it raised `RateLimitError`. Now every retry
+  loop raises `RateLimitError` at the first 429 whose `Retry-After` is longer
+  than 60 seconds, with no sleep. The error carries `retry_after`, so the
+  caller decides how long to wait. A 429 whose `Retry-After` is 60 seconds or
+  less, or absent, still retries as before. At the hourly limit, the Query
+  API now sends the time until the next query slot frees (0 when one is
+  already free), so a short wait retries and a long one raises.
 - Plugin: the skills need `mixpanel_headless` 0.4.0 or later. Setup pins
   `mixpanel-headless>=0.4.0`, and its offline check now reads
   `mp help Workspace.list_metrics`, so a 0.3.x environment upgrades.
@@ -38,19 +66,6 @@ may include API changes.
   that the display name of a custom event returns zero rows with no error.
 - Plugin: the dashboard report pipeline builds a report for a number that
   the team defines from its saved metric, so the board follows later edits.
-
-- **A 429 with a long `Retry-After` raises at once.** The client waits at
-  most 60 seconds between retries. Before this change, when the server asked
-  for a longer wait, the client still retried after 60 seconds, up to
-  `max_retries` times, and each early retry got another 429. When the Query
-  API sent `Retry-After: 3600` at the hourly limit, one call sent 4 requests
-  and took about 3 minutes before it raised `RateLimitError`. Now every retry
-  loop raises `RateLimitError` at the first 429 whose `Retry-After` is longer
-  than 60 seconds, with no sleep. The error carries `retry_after`, so the
-  caller decides how long to wait. A 429 whose `Retry-After` is 60 seconds or
-  less, or absent, still retries as before. At the hourly limit, the Query
-  API now sends the time until the next query slot frees (0 when one is
-  already free), so a short wait retries and a long one raises.
 
 ### Removed
 
@@ -134,8 +149,6 @@ may include API changes.
 - `MixpanelAPIClient.list_property_definitions(include_custom=False)` leaves
   custom properties out. The server reads `includeCustom` as a raw string,
   so the `includeCustom=false` that the client sent turned them on.
-- Plugin: the insights reference no longer says that a formula needs two or
-  more events. `Formula(expression, metrics=[...])` holds its own operands.
 - **A response body that is not valid UTF-8 raises the library's own
   error.** Before this change, the client raised `UnicodeDecodeError` when it
   read such a body, in place of the documented error: `RateLimitError` for a
@@ -146,6 +159,8 @@ may include API changes.
   `export_events`, to the 403 handler of shortlink resolution, and to OAuth
   client registration, which now raises `OAuthError`. Error bodies are kept
   as text, with undecodable bytes replaced.
+- Plugin: the insights reference no longer says that a formula needs two or
+  more events. `Formula(expression, metrics=[...])` holds its own operands.
 
 ## 0.4.0 — 2026-10-05
 
