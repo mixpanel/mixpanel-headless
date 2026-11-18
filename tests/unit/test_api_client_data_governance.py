@@ -2373,3 +2373,17 @@ class TestRegisterLookupTableNonJsonResponse:
         client = create_mock_client(oauth_credentials, handler)
         with client, pytest.raises(MixpanelHeadlessError):
             client.register_lookup_table({"name": "Test Table"})
+
+    def test_register_lookup_table_undecodable_response(
+        self, oauth_credentials: Session
+    ) -> None:
+        """A 200 body that is not valid UTF-8 is an INVALID_RESPONSE, not a decode error."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a 200 whose body is not valid UTF-8."""
+            return httpx.Response(200, content=b"\xff")
+
+        client = create_mock_client(oauth_credentials, handler)
+        with client, pytest.raises(MixpanelHeadlessError) as exc_info:
+            client.register_lookup_table({"name": "Test Table"})
+        assert exc_info.value.code == "INVALID_RESPONSE"

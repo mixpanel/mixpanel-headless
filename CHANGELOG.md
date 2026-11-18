@@ -36,6 +36,19 @@ may include API changes.
 - Plugin: the dashboard report pipeline builds a report for a number that
   the team defines from its saved metric, so the board follows later edits.
 
+- **A 429 with a long `Retry-After` raises at once.** The client waits at
+  most 60 seconds between retries. Before this change, when the server asked
+  for a longer wait, the client still retried after 60 seconds, up to
+  `max_retries` times, and each early retry got another 429. When the Query
+  API sent `Retry-After: 3600` at the hourly limit, one call sent 4 requests
+  and took about 3 minutes before it raised `RateLimitError`. Now every retry
+  loop raises `RateLimitError` at the first 429 whose `Retry-After` is longer
+  than 60 seconds, with no sleep. The error carries `retry_after`, so the
+  caller decides how long to wait. A 429 whose `Retry-After` is 60 seconds or
+  less, or absent, still retries as before. At the hourly limit, the Query
+  API now sends the time until the next query slot frees (0 when one is
+  already free), so a short wait retries and a long one raises.
+
 ### Removed
 
 - The credential bridge is removed. The library no longer reads a bridge
@@ -57,6 +70,16 @@ may include API changes.
 
 - Plugin: the insights reference no longer says that a formula needs two or
   more events. `Formula(expression, metrics=[...])` holds its own operands.
+- **A response body that is not valid UTF-8 raises the library's own
+  error.** Before this change, the client raised `UnicodeDecodeError` when it
+  read such a body, in place of the documented error: `RateLimitError` for a
+  429 (so the caller did not get `retry_after`), `AuthenticationError`,
+  `QueryError`, or a server error for other error statuses, and
+  `MixpanelHeadlessError` with code `INVALID_RESPONSE` for a 200 (including
+  `register_lookup_table`). The same applied to the 400 handler of
+  `export_events`, to the 403 handler of shortlink resolution, and to OAuth
+  client registration, which now raises `OAuthError`. Error bodies are kept
+  as text, with undecodable bytes replaced.
 
 ## 0.4.0 — 2026-10-05
 

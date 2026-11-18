@@ -146,7 +146,7 @@ def ensure_client_registered(
     try:
         data = response.json()
         client_id = str(data["client_id"])
-    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError, KeyError, TypeError) as exc:
         raise OAuthError(
             f"Invalid registration response: {exc}",
             code="OAUTH_REGISTRATION_ERROR",
