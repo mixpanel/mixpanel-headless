@@ -4,6 +4,201 @@
 a prose snapshot of the committed extraction run.
 
 
+## 2026-11-18 re-pin: stamp `496fc50` → `3ac8544` (release 0.5.0: the credential bridge removed)
+
+The once-per-release re-pin for 0.5.0 (README, "When to re-pin"). The
+stamp is the release commit, `3ac854497758d84c76f0cc63e3735a0c177f2787`
+(PR #290). These PRs reached `main` after the `496fc50` re-pin (#274):
+
+- PR #275 `Plugin: saved metrics first, custom events, and the 0.4.0
+  floor` → `6625afa` (plugin text plus its tests)
+- PR #276 `chore(review): refresh Copilot config and share one review
+  brief` → `3334a06` (tooling only)
+- PR #277 `chore(review): one home for per-folder review notes, with a
+  sync test` → `c27d7d8` (reviewer config plus its test)
+- PR #278 `chore(review): add a code-review skill for Copilot code
+  review` → `fbed0c5` (reviewer config plus its test)
+- PR #284 `chore: remove spec kit and archive the design specs` →
+  `ed43a4ae` (comment removals in `src/`, no behavior change)
+- PR #285 `refactor(auth)!: remove the credential bridge` → `4a4df6b2`
+- PR #288 `Add Amp orb setup script` → `83a0cf82` (tooling only)
+- PR #286 `fix(api-client): raise at once on a 429 with a long
+  Retry-After` → `025fac49`
+- PR #289 `ci(docs): skip Pages deploy on forks` → `6fca9a46` (tooling
+  only)
+- PR #287 `fix: honor ID and name filters, explain permission errors,
+  scope query_origin` → `4709dd06`
+- PR #290 `Release 0.5.0` → `3ac85449`
+
+Two conformance PRs merged before this one, and both change
+`conformance/` only: PR #291 `fix(conformance): keep warning provenance
+under a wrapped seam` → `6ca99e45`, and PR #292 `fix(conformance):
+exclude two kinds of capture a replay cannot reproduce` → `97ccde71`.
+
+### Why `3ac8544` is the honest stamp
+
+`git diff --quiet 3ac8544 origin/main -- src tests pyproject.toml
+uv.lock` passes: after the release, only the two conformance PRs reached
+`main`. So `3ac8544` names the exact library code and locked
+dependencies that this corpus was recorded from. Interpreter and
+`tool_versions` are unchanged from the committed manifest.
+
+### Recorder fixes the extraction needed (PRs #291 and #292)
+
+The first extraction at `3ac8544` had three problems across two PRs.
+
+1. **Warning provenance (#291).** `Workspace.properties` warns about
+   classified properties with a fixed `stacklevel`, counted for the
+   unwrapped chain. The seam wrapper adds a frame, so the warning named
+   `conformance/record/plugin.py` and
+   `test_classified_warning_points_at_the_caller_of_workspace_properties`
+   failed, landing in `freeze_incompatible` — a bucket every earlier
+   extraction kept empty. The recorder now replaces `warnings.warn` for
+   the life of a session and skips seam-wrapper frames when counting.
+   One limit is recorded in the shim's docstring: a caller that passes
+   `skip_file_prefixes` and whose prefixes match a frame gets a warning
+   one frame too far up. No code here and no installed dependency passes
+   that argument.
+2. **A test-owned clock (#292).** `test_reads_share_one_time_budget` and
+   `test_read_gets_half_of_the_time_budget_for_each_phase` install their
+   own `time.monotonic` and move it from inside their transport handler.
+   At replay the handler never runs, the read budget never shrinks, and
+   the library sends one more request than was recorded. These captures
+   now join `test_local_clock`, which until now covered only a mocked
+   `date` attribute on a module, and only module-level builder entries.
+3. **A mock over a seam (#292).**
+   `test_unexpected_read_failure_raises_the_original_403` and
+   `test_non_library_error_in_follow_up_is_not_relabeled` stand a mock in
+   for a library method, which suppresses traffic the real method would
+   send. These captures join the new `patched_library_seam` bucket. The
+   session compares each of the 543 wrapped targets against the
+   replacement it installed; one sweep costs about 170 microseconds,
+   about two seconds over a full run.
+
+### Invocation
+
+```bash
+just conformance-record \
+  --mp-record-date=2026-11-18 \
+  --mp-record-commit=3ac854497758d84c76f0cc63e3735a0c177f2787
+uv run python -m conformance.contract.generate_contract \
+  --generated-from 3ac854497758d84c76f0cc63e3735a0c177f2787
+```
+
+All four authored generators (`gen_help_vectors`, `gen_b0_vectors`,
+`gen_replay_analyze_vectors`, `gen_replay_mobile_vectors`) produce the
+committed bundles byte for byte apart from the stamp, so every authored
+bundle keeps its stamp. This differs from the 0.4.0 re-pin, where the
+help bundle gained two domains.
+
+Record run: **11,725 passed, 1 skipped, 579 deselected, 0 failed**
+(11,581 → 11,725). The recorder wrote 3,848 vectors, and no stale bundle
+file was left behind.
+
+### Headline counts (manifest `counts`)
+
+| Field | `496fc50` | `3ac8544` | Δ |
+|---|---:|---:|---:|
+| `total` (extracted) | 3,709 | 3,848 | +139 |
+| `by_kind.builder` / `wire` / `validation-error` | 2,150 / 1,468 / 91 | 2,150 / 1,607 / 91 | 0 / +139 / 0 |
+| `with_setup` | 139 | 142 | +3 |
+| authored bundle files | 17 | 17 | 0 |
+| authored vectors | 417 | 417 | 0 |
+
+Every added vector is `wire`. That fits the release: 0.5.0 removes the
+credential bridge and fixes HTTP behavior, and adds no builder surface.
+
+By capability: `metrics` +45, `entities` +32, `discovery` +23,
+`bookmarks` +10, `streaming` +8, `behaviors` +6, `segmentation` +6,
+`auth` +3, `cohorts` +3, `data-governance` +1, `engage` +1,
+`pagination` +1. The other capabilities do not change.
+
+Exclusions: `cli` 713 → 721 (+8), `env_base_url_override` 31 → 34 (+3),
+`hypothesis` 644 → 647 (+3), `test_local_clock` 1 → 3 (+2),
+`patched_library_seam` 0 → 2 (new), `raw_transport_no_entrypoint`
+48 → 49 (+1), `wire_call_no_transport` 863 → 864 (+1), `no_seam_hit`
+4,998 → 4,984 (−14), `uncoded_raise` 51 → 50 (−1). The last one is a
+capture that the new detectors now take earlier. The other buckets do
+not change.
+
+### What changed
+
+- **One new extracted bundle.** `auth/test_api_client.jsonl` (3 vectors)
+  holds the `query_origin` scoping vectors of #287: `api_client.request`
+  calls to an App API path, which now get exactly the parameters the
+  caller passes.
+- **Existing bundles with new or changed vectors (27 in all):**
+  - `pagination/test_pagination.jsonl` +46 −45: the 429 handling of
+    #286. A long `Retry-After` now raises at once, so the recorded
+    interaction sequences are shorter.
+  - `metrics/test_workspace_saved_metric_writes.jsonl` +38 and
+    `metrics/test_api_client_saved_metrics.jsonl` +7: the edit-refusal
+    reads of #287, which read each target to name it and its creator.
+  - `entities/test_api_client.jsonl` +36 −18 and
+    `entities/test_api_client_crud.jsonl` +9 −1: the repeated `id[]`
+    filter of #287, which replaces the `ids=1,2` the server ignored.
+  - `entities/test_lexicon_schemas.jsonl` +12 −12: the singular `name`
+    filter of #287, one request per distinct name.
+  - `discovery/test_discovery.jsonl` +12 −5 and
+    `discovery/test_api_client.jsonl` +19 −3: the move from
+    `/events/properties/top` to `/events/properties/toptypes`, so a
+    project with classified properties no longer fails.
+  - `streaming/test_api_client.jsonl` +9 −1,
+    `bookmarks/test_api_client_bookmarks.jsonl` +9 −9,
+    `bookmarks/test_api_client_crud.jsonl` +8 −1, and 17 smaller
+    bundles: the rest of the 429 and filter work.
+- **`api-index.json`** moves by one line.
+- **Contract:** every file changes only its `generated_from` stamp. The
+  release adds no coded guard, model, tag, literal alias, or Workspace
+  domain, so `error-codes.json`, `model-coverage.json`,
+  `tag-universe.json`, `literal-aliases.json`, and `help-registry.json`
+  keep their contents.
+- **Smoke patch S12** moves to the new location of the 429 retry
+  boundary. #286 moved the `attempt >= self._max_retries` test out of the
+  retry loop and into `_rate_limit_stop_reason`, so `git apply` refused
+  the old patch. The sabotage is the same off-by-one, now on
+  `if attempt >= retries` in that helper.
+- **Every other extracted bundle** changes only its `source_commit` /
+  `extraction_date` stamp (172 bundle headers plus the manifest).
+
+### The frozen help fixtures still name the removed bridge API
+
+`conformance/record/help_entries.json` freezes real `describe()` and
+`search()` output so that an ordinary docstring edit does not churn the
+help bundle; only a renderer change does. It has not been refreshed
+since PR #249 created it, and the 0.4.0 re-pin did not refresh it
+either. It therefore still lists `mp.accounts.export_bridge`, which #285
+removed.
+
+This is deliberate and not drift. The help vectors assert that the
+renderer turns a given `HelpEntry` into given text, so the entry is test
+input, not a claim about the current API. The live-derived part of the
+corpus agrees with the shipped surface: no file under
+`conformance/contract/` names a bridge symbol. Refreshing the fixtures
+is its own deliberate act (`--refresh-entries`), and it would change
+what the TypeScript port must match.
+
+### Verification
+
+- `uv run pytest conformance/tests -o addopts="" -q` → 653 passed.
+- `uv run pytest conformance/runner -o addopts="" -q` → 4,265 passed
+  (3,848 extracted + 417 authored). Before the re-pin the same command
+  failed 105 vectors against 0.5.0 code.
+- `just conformance-stamps` → `stamp check: CLEAN (all stamps reachable
+  from main; stamp moved with content)`.
+- CI drift command (re-extract to `/tmp/re-extract` with the committed
+  stamps and `HYPOTHESIS_PROFILE=ci`, then `conformance.record.diff`) →
+  record run `11,725 passed, 1 skipped, 579 deselected`; `drift check:
+  CLEAN (byte-identical within D8 scope)`.
+- `uv run mypy conformance/`, `ruff check`, `ruff format --check`, and
+  `interrogate` pass.
+
+After this PR merges, the TypeScript port sets
+`conformance-runner/corpus.config.json` `sourceCommit` to
+`3ac854497758d84c76f0cc63e3735a0c177f2787` and runs `npm run
+sync:corpus`.
+
+
 ## 2026-10-05 re-pin: stamp `c7906bc` → `496fc50` (release 0.4.0: saved metrics and saved behaviors)
 
 The once-per-release re-pin for 0.4.0 (README, "When to re-pin"). The
