@@ -1139,6 +1139,7 @@ _DETAILED_EXCLUSIONS = frozenset(
         "uncoded_raise",
         "unserializable_input",
         "test_local_clock",
+        "patched_library_seam",
         "fs_dependent",
         "env_base_url_override",
         "layer3_deferred",

@@ -104,6 +104,13 @@ class RecordClock:
         self._factory: FrozenDateTimeFactory | None = None
         self._original_sleep: Callable[[float | SupportsIndex], None] | None = None
         self._original_uuid4: Callable[[], uuid.UUID] | None = None
+        self.frozen_monotonic: Callable[[], float] | None = None
+        """``time.monotonic`` as the freeze installed it.
+
+        The plugin compares the live ``time.monotonic`` against this to
+        spot a test that drives the clock itself, whose captures a replay
+        cannot reproduce.
+        """
 
     @property
     def active(self) -> bool:
@@ -138,6 +145,7 @@ class RecordClock:
         time.sleep = self._virtual_sleep
         self._original_uuid4 = uuid.uuid4
         uuid.uuid4 = self.uuid_stream.__call__
+        self.frozen_monotonic = time.monotonic
 
     def stop(self) -> None:
         """Restore ``time.sleep``, ``uuid.uuid4``, and the real clock.
@@ -156,6 +164,7 @@ class RecordClock:
             self._freezer.stop()  # type: ignore[attr-defined]
             self._freezer = None
         self._factory = None
+        self.frozen_monotonic = None
 
     def reset_test_state(self) -> None:
         """Reset per-test determinism state (design D1.4).

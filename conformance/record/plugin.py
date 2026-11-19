@@ -40,6 +40,7 @@ import inspect
 import os
 import sys
 import threading
+import time
 import unittest.mock as umock
 import warnings
 from collections.abc import Callable, Iterator, Mapping
@@ -701,6 +702,7 @@ class RecordSession:
         self._current: TestCapture | None = None
         self._thread_state = _ThreadState()
         self._patchers: list[Any] = []
+        self._seam_installs: list[tuple[Any, str, Any]] = []
         self._active = False
 
     # ------------------------------------------------------------------
@@ -734,7 +736,45 @@ class RecordSession:
                 patcher.stop()
         if self.clock.active:
             self.clock.stop()
+        self._seam_installs.clear()
         self._active = False
+
+    def _monotonic_shadowed(self) -> bool:
+        """Report whether a test replaced the frozen ``time.monotonic``.
+
+        The record clock freezes ``time.monotonic`` for the whole run. A
+        test that installs its own clock drives library timing that the
+        runner cannot reproduce, because the test usually moves that
+        clock from inside its own transport handler, and the handler does
+        not run at replay. The library then sends a different number of
+        requests, and the replay runs past the recorded sequence.
+
+        Returns:
+            True when the live ``time.monotonic`` is not the one the
+            freeze installed.
+        """
+        frozen = self.clock.frozen_monotonic
+        return frozen is not None and time.monotonic is not frozen
+
+    def _seam_replaced(self) -> bool:
+        """Report whether a test replaced a seam the recorder wrapped.
+
+        A mock standing in for a library method suppresses the traffic
+        the real method would send, so the recorded interactions are
+        short and a replay runs past the end of them. The sweep compares
+        every wrapped target against the replacement installed for it.
+
+        One sweep costs about 170 microseconds over the whole registry,
+        which is about two seconds across a full record run.
+
+        Returns:
+            True when any wrapped target no longer holds the recorder's
+            own replacement.
+        """
+        return any(
+            inspect.getattr_static(owner, attr, None) is not replacement
+            for owner, attr, replacement in self._seam_installs
+        )
 
     def _patch_warnings(self) -> None:
         """Install the warning-provenance shim for the session.
@@ -776,6 +816,8 @@ class RecordSession:
             patcher = umock.patch.object(owner, attr, replacement)
             patcher.start()
             self._patchers.append(patcher)
+            # _seam_replaced() compares the live attribute against this.
+            self._seam_installs.append((owner, attr, replacement))
 
     def _patch_transport(self) -> None:
         """Patch ``httpx.MockTransport`` handlers at the class level (D1.1)."""
@@ -1075,6 +1117,10 @@ class RecordSession:
             and _module_clock_mocked(func)
         ):
             excluded = "test_local_clock"
+        if excluded is None and self._monotonic_shadowed():
+            excluded = "test_local_clock"
+        if excluded is None and self._seam_replaced():
+            excluded = "patched_library_seam"
         call = EntryCallCapture(
             index=len(capture.entry_calls),
             entry=entry,
