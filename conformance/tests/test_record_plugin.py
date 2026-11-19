@@ -9,6 +9,7 @@ frozen monotonic clock.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -1104,3 +1105,219 @@ def test_rebuilt_alike_sequences() -> None:
     assert _rebuilt_alike(
         Formula("A / B", metrics=operands), Formula("A / B", metrics=tuple(operands))
     )
+
+
+def _classified_property_handler(request: httpx.Request) -> httpx.Response:
+    """Serve one classified property so the discovery call warns.
+
+    Args:
+        request: The incoming request (ignored).
+
+    Returns:
+        A 200 JSON response holding one property marked sensitive.
+    """
+    del request
+    return httpx.Response(
+        200,
+        json={"email": {"count": 0, "type": "string", "sensitive": True}},
+    )
+
+
+def test_seam_wrapper_keeps_warning_provenance(
+    record_session: RecordSession,
+) -> None:
+    """A warning from a wrapped seam still names the caller, not the plugin.
+
+    ``DiscoveryService.list_properties`` warns with a fixed ``stacklevel``
+    counted for the chain ``caller -> Workspace.properties ->
+    list_properties``. The record plugin wraps ``Workspace.properties``, so
+    an unadjusted wrapper adds a frame and the warning names
+    ``conformance/record/plugin.py``. The recorder must not change what the
+    library reports.
+
+    Args:
+        record_session: The activated record session.
+
+    Raises:
+        AssertionError: If the warning does not name this test file.
+    """
+    import warnings
+
+    from mixpanel_headless._internal.api_client import MixpanelAPIClient
+    from mixpanel_headless.workspace import Workspace
+
+    nodeid = "tests/unit/test_fake.py::test_warning_provenance"
+    record_session.begin_test(nodeid, None)
+    client = MixpanelAPIClient(
+        session=_make_session(),
+        _transport=httpx.MockTransport(_classified_property_handler),
+    )
+    workspace = Workspace(session=_make_session(), _api_client=client)
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        workspace.properties("Purchase")  # the caller's line
+    record_session.finish_test(nodeid)
+
+    assert [w.filename for w in captured] == [__file__]
+
+
+def _warn_at_stacklevel(stacklevel: int) -> None:
+    """Raise one warning from this helper at the given stacklevel.
+
+    Args:
+        stacklevel: Frames to count, as ``warnings.warn`` means them.
+    """
+    import warnings
+
+    warnings.warn("probe", UserWarning, stacklevel=stacklevel)
+
+
+@pytest.mark.parametrize("stacklevel", [-1, 0, 1])
+def test_warning_shim_blames_the_warn_line_for_a_low_stacklevel(
+    record_session: RecordSession, stacklevel: int
+) -> None:
+    """Every level below 2 blames the line that called ``warnings.warn``.
+
+    This pins the frame arithmetic for the case the shim must not touch:
+    the shim adds one frame of its own, so an uncorrected chain has to
+    come out exactly as it would without the shim. ``warnings.warn``
+    treats 0 and any negative value as 1, so all three blame the helper.
+
+    Args:
+        record_session: The activated record session, which installs the
+            shim on ``warnings.warn``.
+        stacklevel: The level the helper passes.
+
+    Raises:
+        AssertionError: If the warning names the wrong file or line.
+    """
+    import warnings
+
+    del record_session
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        _warn_at_stacklevel(stacklevel)
+
+    assert len(captured) == 1
+    assert captured[0].filename == __file__
+    assert "warnings.warn(" in _test_source_line(captured[0].lineno)
+
+
+def test_warning_shim_blames_the_caller_at_stacklevel_two(
+    record_session: RecordSession,
+) -> None:
+    """``stacklevel=2`` still blames this test, not the helper.
+
+    Args:
+        record_session: The activated record session, which installs the
+            shim on ``warnings.warn``.
+
+    Raises:
+        AssertionError: If the warning names the wrong file or line.
+    """
+    import warnings
+
+    del record_session
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        _warn_at_stacklevel(2)
+
+    assert len(captured) == 1
+    assert captured[0].filename == __file__
+    assert "_warn_at_stacklevel(2)" in _test_source_line(captured[0].lineno)
+
+
+def _prefix_provenance(helper_name: str, *, use_shim: bool) -> tuple[str, int]:
+    """Capture where one prefix helper's warning points.
+
+    Args:
+        helper_name: The helper in ``_warn_helper`` to call.
+        use_shim: True to run under the recorder's provenance shim, False
+            to run under the unpatched ``warnings.warn``.
+
+    Returns:
+        The file and line the warning names.
+    """
+    import warnings
+
+    from conformance.record.plugin import _ORIGINAL_WARN, _warn_past_seam_wrappers
+    from conformance.tests import _warn_helper
+
+    helper = getattr(_warn_helper, helper_name)
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        saved = warnings.warn
+        warnings.warn = _warn_past_seam_wrappers if use_shim else _ORIGINAL_WARN
+        try:
+            helper()
+        finally:
+            warnings.warn = saved
+    assert len(captured) == 1
+    return captured[0].filename, captured[0].lineno
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="warnings.warn gained skip_file_prefixes in Python 3.12",
+)
+@pytest.mark.parametrize(
+    "helper_name",
+    ["warn_with_empty_prefixes", "warn_with_nonmatching_prefix"],
+)
+def test_warning_shim_matches_native_when_prefixes_skip_nothing(
+    helper_name: str,
+) -> None:
+    """Prefixes that pass over no frame give the provenance of plain warn.
+
+    When the prefixes match nothing, the frame count alone decides, and
+    the shim's correction holds. The comparison is against the unpatched
+    ``warnings.warn`` on the same call chain, so it does not depend on
+    how the helper nests its frames.
+
+    Args:
+        helper_name: The helper to call.
+
+    Raises:
+        AssertionError: If the shim moves the provenance.
+    """
+    assert _prefix_provenance(helper_name, use_shim=True) == _prefix_provenance(
+        helper_name, use_shim=False
+    )
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="warnings.warn gained skip_file_prefixes in Python 3.12",
+)
+def test_warning_shim_overshoots_a_prefix_that_skips_a_frame() -> None:
+    """A prefix that does pass over a frame lands one frame too far up.
+
+    This records a known limit, not a wanted behavior. CPython composes
+    ``stacklevel`` and the prefix search in a way the shim's frame count
+    cannot mirror. No code in this repository, and no installed
+    dependency, passes ``skip_file_prefixes``, so a record run never
+    reaches this case.
+
+    A failure here is good news: it means the composition is understood
+    well enough to correct, and the note in
+    ``conformance.record.plugin._warn_past_seam_wrappers`` should go.
+
+    Raises:
+        AssertionError: If the provenance stops matching the recorded
+            limit.
+    """
+    shim = _prefix_provenance("warn_with_matching_prefix", use_shim=True)
+    native = _prefix_provenance("warn_with_matching_prefix", use_shim=False)
+    assert shim != native
+
+
+def _test_source_line(lineno: int) -> str:
+    """Read one line of this test file.
+
+    Args:
+        lineno: The 1-based line number to read.
+
+    Returns:
+        The text of that line.
+    """
+    return Path(__file__).read_text(encoding="utf-8").splitlines()[lineno - 1]

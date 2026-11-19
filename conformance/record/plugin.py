@@ -23,6 +23,11 @@ Responsibilities (design section in parentheses):
   leakage and fails the run (D5.2 session-relative abort rule).
 - Key captures by pytest nodeid; per-capture classification happens in
   ``conformance/record/emit.py`` at session finish (D1.3/D10).
+- Keep the provenance of a library warning. A wrapped seam adds a frame,
+  which would shift the frame that ``stacklevel`` blames, so
+  :func:`_warn_past_seam_wrappers` replaces ``warnings.warn`` for the
+  session and skips those frames. The recorder must not change what the
+  library reports.
 """
 
 from __future__ import annotations
@@ -33,11 +38,14 @@ import dataclasses
 import functools
 import inspect
 import os
+import sys
 import threading
 import unittest.mock as umock
+import warnings
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import CodeType, FrameType
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -100,6 +108,97 @@ class RecordOptions:
     out_dir: Path
     extraction_date: str
     source_commit: str
+
+
+_SEAM_WRAPPER_CODE: set[CodeType] = set()
+"""Code objects of the seam wrappers, for the warning-provenance shim.
+
+Every wrapper that :meth:`RecordSession._build_wrapper` returns shares one
+code object, so this set holds one entry however many seams are wrapped.
+"""
+
+_ORIGINAL_WARN = warnings.warn
+"""The unpatched ``warnings.warn``, captured at import time."""
+
+
+def _register_seam_wrapper(wrapper: Callable[..., Any]) -> None:
+    """Record a seam wrapper's code object for the provenance shim.
+
+    ``functools.wraps`` hides ``__code__`` from the static type, so the
+    lookup goes through ``getattr`` and the result is checked.
+
+    Args:
+        wrapper: The replacement callable installed on a seam.
+    """
+    code = getattr(wrapper, "__code__", None)
+    if isinstance(code, CodeType):
+        _SEAM_WRAPPER_CODE.add(code)
+
+
+def _warn_past_seam_wrappers(
+    message: Warning | str,
+    category: type[Warning] | None = None,
+    stacklevel: int = 1,
+    source: Any = None,
+    **kwargs: Any,
+) -> None:
+    """Raise a warning as if no seam wrapper sat in the call chain.
+
+    A library warning picks the frame to blame by counting ``stacklevel``
+    frames, and the count assumes the unwrapped call chain. A wrapped seam
+    adds one frame per wrapper, so an unadjusted count blames
+    ``conformance/record/plugin.py`` and the recorder changes what the
+    library reports. This shim counts the wrapper frames inside the span
+    that ``stacklevel`` covers and skips past them.
+
+    Installed on ``warnings.warn`` for the life of the record session, so
+    the correction applies at warn time. A correction at display time would
+    not work: a caller that uses ``warnings.catch_warnings(record=True)``
+    replaces the display hook and reads the provenance that warn recorded.
+
+    The shim reads only its arguments and the live stack of its own thread,
+    so parallel seam calls do not interfere.
+
+    Known limit: a caller that passes ``skip_file_prefixes`` (Python 3.12
+    and later) and whose prefixes match at least one frame gets a warning
+    one frame too far up. CPython composes ``stacklevel`` and the prefix
+    search in a way that the frame count here cannot mirror. Empty
+    prefixes and prefixes that match nothing are correct. No code in this
+    repository, and no installed dependency, passes the argument, so the
+    record run does not reach this case.
+
+    Args:
+        message: The warning message or a warning instance.
+        category: The warning class; ``None`` means ``UserWarning``, as in
+            ``warnings.warn``. Ignored when ``message`` is an instance.
+        stacklevel: Frames to count, as the caller means them without any
+            wrapper in the chain. Zero and negative values count as 1,
+            which is what ``warnings.warn`` does with them.
+        source: The destroyed object, for ``ResourceWarning``.
+        **kwargs: Later keyword-only arguments of ``warnings.warn``, such
+            as ``skip_file_prefixes`` on Python 3.12 and later.
+    """
+    # warnings.warn blames the caller of warn for any value below 1, so
+    # clamp before the arithmetic. Adding to a raw 0 or -1 would blame the
+    # line below instead, even with no wrapper in the chain.
+    level = max(stacklevel, 1)
+    extra = 0
+    frame: FrameType | None = sys._getframe(1)
+    steps = level - 1
+    while steps > 0 and frame is not None:
+        frame = frame.f_back
+        while frame is not None and frame.f_code in _SEAM_WRAPPER_CODE:
+            extra += 1
+            frame = frame.f_back
+        steps -= 1
+    # +1 for this shim's own frame, which the real warn also counts.
+    _ORIGINAL_WARN(
+        message,
+        category if category is not None else UserWarning,
+        level + extra + 1,
+        source,
+        **kwargs,
+    )
 
 
 class _ThreadState(threading.local):
@@ -621,6 +720,7 @@ class RecordSession:
             self._wrap_registry()
             self._patch_transport()
             self._patch_cli_runner()
+            self._patch_warnings()
         except Exception:
             self.deactivate()
             raise
@@ -635,6 +735,18 @@ class RecordSession:
         if self.clock.active:
             self.clock.stop()
         self._active = False
+
+    def _patch_warnings(self) -> None:
+        """Install the warning-provenance shim for the session.
+
+        A wrapped seam adds a frame, which shifts the frame that a library
+        warning blames. :func:`_warn_past_seam_wrappers` skips those
+        frames, so a test reads the same provenance under the recorder as
+        it does without it. ``deactivate`` restores the original.
+        """
+        patcher = umock.patch.object(warnings, "warn", _warn_past_seam_wrappers)
+        patcher.start()
+        self._patchers.append(patcher)
 
     def _wrap_registry(self) -> None:
         """Wrap every registry entry once per session (design D1.2).
@@ -867,6 +979,8 @@ class RecordSession:
             self._record_result(call, result)
             return result
 
+        # The warning-provenance shim skips these frames when it counts.
+        _register_seam_wrapper(wrapper)
         return wrapper
 
     def _open_entry_call(
