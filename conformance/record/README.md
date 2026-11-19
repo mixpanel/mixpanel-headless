@@ -172,6 +172,21 @@ Runtime-detected buckets that are NOT in the D10 design list:
   population). Added at the 2026-09-11 `0dde506` re-pin, where the
   unfiltered extraction produced 30 loopback-host `wire` vectors that
   failed 26/30 under the runner.
+- `patched_library_seam` — captures taken while a test stood a mock in
+  for a seam the recorder wrapped. The mock suppresses traffic the real
+  method would send, so the recorded interactions are short and the
+  replay runs past the end of them. At every entry-call open the plugin
+  sweeps the wrapped targets and compares each against the replacement
+  it installed; one sweep costs about 170 microseconds, about two
+  seconds over a full run. Added at the 2026-11-18 `3ac8544` re-pin,
+  where two such vectors failed under the runner.
+
+`test_local_clock` also grew at that re-pin. It used to cover only a
+module whose `date` attribute a test had mocked, and only for
+module-level builder entries. It now also covers a test that replaces
+the `time.monotonic` the freeze installed. Such a test usually moves its
+clock from inside its own transport handler, which never runs at replay,
+so the library sends a different number of requests.
 
 ## Drift check
 

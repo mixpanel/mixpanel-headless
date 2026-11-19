@@ -10,6 +10,7 @@ frozen monotonic clock.
 from __future__ import annotations
 
 import sys
+import unittest.mock as umock
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -1321,3 +1322,70 @@ def _test_source_line(lineno: int) -> str:
         The text of that line.
     """
     return Path(__file__).read_text(encoding="utf-8").splitlines()[lineno - 1]
+
+
+def test_capture_excluded_when_a_test_shadows_the_monotonic_clock(
+    record_session: RecordSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A test-owned ``time.monotonic`` makes the capture unreplayable.
+
+    The record clock freezes ``time.monotonic`` for the whole run. A test
+    that replaces it drives library timing the runner cannot reproduce:
+    the test moves the clock from inside its own transport handler, which
+    never runs at replay, so the library makes a different number of
+    requests.
+
+    Args:
+        record_session: The activated record session.
+        monkeypatch: pytest env patcher, which restores the clock.
+
+    Raises:
+        AssertionError: If the capture is not excluded.
+    """
+    from mixpanel_headless._internal.api_client import MixpanelAPIClient
+
+    nodeid = "tests/unit/test_fake.py::test_shadowed_clock"
+    record_session.begin_test(nodeid, None)
+    monkeypatch.setattr("time.monotonic", lambda: 1000.0)
+    client = MixpanelAPIClient(
+        session=_make_session(), _transport=httpx.MockTransport(_annotation_handler)
+    )
+    client.list_annotations()
+    record_session.finish_test(nodeid)
+
+    capture = record_session.captures[-1]
+    assert capture.entry_calls
+    assert capture.entry_calls[0].excluded_reason == "test_local_clock"
+
+
+def test_capture_excluded_when_a_test_patches_a_wrapped_seam(
+    record_session: RecordSession,
+) -> None:
+    """A mock standing in for a seam makes the capture unreplayable.
+
+    The replacement suppresses traffic the real method would send, so a
+    replay of the recorded interactions runs past the end of the
+    sequence.
+
+    Args:
+        record_session: The activated record session.
+
+    Raises:
+        AssertionError: If the capture is not excluded.
+    """
+    from mixpanel_headless._internal.api_client import MixpanelAPIClient
+
+    nodeid = "tests/unit/test_fake.py::test_patched_seam"
+    record_session.begin_test(nodeid, None)
+    client = MixpanelAPIClient(
+        session=_make_session(), _transport=httpx.MockTransport(_annotation_handler)
+    )
+    with umock.patch.object(
+        MixpanelAPIClient, "get_metric", side_effect=RuntimeError("boom")
+    ):
+        client.list_annotations()
+    record_session.finish_test(nodeid)
+
+    capture = record_session.captures[-1]
+    assert capture.entry_calls
+    assert capture.entry_calls[0].excluded_reason == "patched_library_seam"
