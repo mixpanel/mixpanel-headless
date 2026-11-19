@@ -148,11 +148,30 @@ not change.
     `bookmarks/test_api_client_crud.jsonl` +8 −1, and 17 smaller
     bundles: the rest of the 429 and filter work.
 - **`api-index.json`** moves by one line.
-- **Contract:** every file changes only its `generated_from` stamp. The
-  release adds no coded guard, model, tag, literal alias, or Workspace
-  domain, so `error-codes.json`, `model-coverage.json`,
-  `tag-universe.json`, `literal-aliases.json`, and `help-registry.json`
-  keep their contents.
+- **Contract:** three of the six files change in content, and three
+  change only their `generated_from` stamp. The release adds no coded
+  guard, model, literal alias, or Workspace domain, so `error-codes.json`
+  (164 codes), `literal-aliases.json` (41 aliases), and
+  `coverage_overrides.json` are stamp-only.
+  - `help-registry.json`: 711 → 709 signatures. The two that go are
+    `accounts.export_bridge` and `accounts.remove_bridge`, removed by
+    #285. **This is the contract change the TypeScript port must
+    follow.** The domain, method, and hint counts do not move.
+  - `tag-universe.json`: 107 tags as before, with three occurrence
+    counts higher — `BulkUpdateMetricEntry` 6 → 50,
+    `UpdateMetricParams` 23 → 49, `UpdateBehaviorParams` 5 → 10. These
+    are corpus-derived counts, not new API: the edit-refusal vectors of
+    #287 carry those three types far more often.
+  - `model-coverage.json`: 135 models as before. The same three
+    occurrence counts move, and two golden-vector references shift with
+    the renumbered corpus — `Bookmark` 21 → 22, `Cohort` 20 → 21.
+
+  Measure the contract structurally, by parsing each file and dropping
+  the stamp keys. Every contract file is a single line of JSON, so a
+  line-based diff that filters out lines holding `generated_from`
+  discards the whole file and reports every one as stamp-only. That
+  mistake reached the first revision of this entry and of PR #293, and
+  both automated reviewers caught it.
 - **Smoke patch S12** moves to the new location of the 429 retry
   boundary. #286 moved the `attempt >= self._max_retries` test out of the
   retry loop and into `_rate_limit_stop_reason`, so `git apply` refused
