@@ -192,6 +192,18 @@ what the TypeScript port must match.
   CLEAN (byte-identical within D8 scope)`.
 - `uv run mypy conformance/`, `ruff check`, `ruff format --check`, and
   `interrogate` pass.
+- `just conformance-smoke` → **PASS**: control clean (0 failing), and
+  all 14 sabotage patches caught, S12 among them at its new location.
+  This refreshes the committed `conformance/smoke/last-run.json`, which
+  a full run writes and a partial one does not. The two previous
+  re-pins left it alone because their runs stopped on a patch that no
+  longer applied.
+
+Note on the first smoke run of this re-pin: it reported the control as
+dirty with 105 failing. That was an artifact, not a finding. The harness
+builds its worktrees at `HEAD`, and the re-extracted corpus was not
+committed yet, so the run replayed the `496fc50` corpus against 0.5.0
+code. Run the smoke suite after the re-pin commit, never before it.
 
 After this PR merges, the TypeScript port sets
 `conformance-runner/corpus.config.json` `sourceCommit` to
