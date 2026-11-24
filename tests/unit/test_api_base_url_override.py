@@ -41,6 +41,7 @@ _EXPECTED: dict[str, str] = {
     "export": f"{_BASE}/api/2.0",
     "engage": f"{_BASE}/api/query/engage",
     "app": f"{_BASE}/api/app",
+    "platform": f"{_BASE}/api/app/v1",
 }
 """The prefix table from the work order, anchored at ``_BASE``."""
 
@@ -397,6 +398,7 @@ class TestEndpointsForResolver:
         assert table["export"] == "https://proxy.example/mp/api/2.0"
         assert table["engage"] == "https://proxy.example/mp/api/query/engage"
         assert table["app"] == "https://proxy.example/mp/api/app"
+        assert table["platform"] == "https://proxy.example/mp/api/app/v1"
 
     def test_live_table_is_never_mutated(self, override_env: None) -> None:
         """Resolving the override must not write into ``ENDPOINTS``.
@@ -422,6 +424,7 @@ class TestEndpointsForResolver:
         monkeypatch.setenv("MP_APP_BASE_URL", "http://app.internal:9000/")
         table = _endpoints_for("eu")
         assert table["app"] == "http://app.internal:9000/api/app"
+        assert table["platform"] == "http://app.internal:9000/api/app/v1"
         for family in ("query", "export", "engage"):
             assert table[family] == ENDPOINTS["eu"][family]
         # The live table itself is untouched.
@@ -439,6 +442,7 @@ class TestEndpointsForResolver:
         monkeypatch.setenv("MP_APP_BASE_URL", "http://app.internal:9000")
         table = _endpoints_for("us")
         assert table["app"] == "http://app.internal:9000/api/app"
+        assert table["platform"] == "http://app.internal:9000/api/app/v1"
         assert table["query"] == _EXPECTED["query"]
         assert table["export"] == _EXPECTED["export"]
         assert table["engage"] == _EXPECTED["engage"]
@@ -452,7 +456,9 @@ class TestEndpointsForResolver:
 class TestBuildUrlUnderOverride:
     """``_build_url`` honours the override for every family, lazily."""
 
-    @pytest.mark.parametrize("api_type", ["query", "export", "engage", "app"])
+    @pytest.mark.parametrize(
+        "api_type", ["query", "export", "engage", "app", "platform"]
+    )
     def test_each_family_uses_prefix(
         self, api_type: str, us_session: Session, override_env: None
     ) -> None:
@@ -590,6 +596,62 @@ class TestClientRequestsHitOverride:
         assert recorder.urls() == [f"{_BASE}/api/app/projects/12345/dashboards"]
         _no_mixpanel_hosts(recorder)
 
+    def test_platform_request_hits_internal_v1_mount(
+        self, us_session: Session, override_env: None
+    ) -> None:
+        """``platform_request`` → ``{base}/api/app/v1/...``.
+
+        Args:
+            us_session: US session fixture.
+            override_env: Exports ``MP_API_BASE_URL``.
+        """
+        del override_env
+        recorder = _Recorder()
+        with MixpanelAPIClient(
+            session=us_session, _transport=httpx.MockTransport(recorder)
+        ) as client:
+            client.platform_request("GET", "/projects/12345/business-context")
+        assert recorder.urls() == [
+            f"{_BASE}/api/app/v1/projects/12345/business-context"
+        ]
+        _no_mixpanel_hosts(recorder)
+
+    def test_platform_request_follows_app_base_override(
+        self, us_session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``MP_APP_BASE_URL`` alone re-homes ``platform_request`` too.
+
+        Args:
+            us_session: US session fixture.
+            monkeypatch: pytest monkeypatch fixture.
+        """
+        monkeypatch.setenv("MP_APP_BASE_URL", "http://app.internal:9000")
+        recorder = _Recorder()
+        with MixpanelAPIClient(
+            session=us_session, _transport=httpx.MockTransport(recorder)
+        ) as client:
+            client.platform_request("GET", "/projects/12345/business-context")
+        assert recorder.urls() == [
+            "http://app.internal:9000/api/app/v1/projects/12345/business-context"
+        ]
+
+    def test_platform_request_has_no_query_origin(
+        self, us_session: Session, override_env: None
+    ) -> None:
+        """Platform requests carry no ``query_origin`` parameter.
+
+        Args:
+            us_session: US session fixture.
+            override_env: Exports ``MP_API_BASE_URL``.
+        """
+        del override_env
+        recorder = _Recorder()
+        with MixpanelAPIClient(
+            session=us_session, _transport=httpx.MockTransport(recorder)
+        ) as client:
+            client.platform_request("GET", "/projects/12345/business-context")
+        assert "query_origin" not in str(recorder.requests[0].url)
+
     def test_trailing_slash_base_yields_clean_urls(
         self, us_session: Session, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -663,6 +725,21 @@ class TestTimeoutSelectionUnderOverride:
         seen: dict[str, Any] = {}
         with self._capture_client(us_session, seen) as client:
             client.app_request("GET", "/projects/12345/dashboards")
+        assert seen["timeout"]["read"] == DEFAULT_APP_TIMEOUT_S
+
+    def test_platform_request_gets_app_timeout(
+        self, us_session: Session, override_env: None
+    ) -> None:
+        """Platform requests get the App read timeout.
+
+        Args:
+            us_session: US session fixture.
+            override_env: Exports ``MP_API_BASE_URL``.
+        """
+        del override_env
+        seen: dict[str, Any] = {}
+        with self._capture_client(us_session, seen) as client:
+            client.platform_request("GET", "/projects/12345/business-context")
         assert seen["timeout"]["read"] == DEFAULT_APP_TIMEOUT_S
 
     def test_query_request_keeps_query_timeout(
@@ -773,6 +850,10 @@ class TestApiFamilyFor:
             ("https://mixpanel.com/api/query/engage/stats", "engage"),
             ("https://data.mixpanel.com/api/2.0/export", "export"),
             ("https://mixpanel.com/api/app/projects/1/dashboards", "app"),
+            (
+                "https://platform-us.mixpanel.com/v1/projects/1/business-context",
+                "platform",
+            ),
             ("https://example.com/api/query/insights", None),
         ],
     )

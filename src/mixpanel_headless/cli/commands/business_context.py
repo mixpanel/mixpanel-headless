@@ -10,9 +10,9 @@ Subcommands:
 - ``set``:   Replace context at a given scope. Accepts content from
   ``--content``, ``--file``, or stdin (mutually exclusive). Empty
   stdin is rejected — use ``clear`` to deliberately clear.
-- ``clear``: Convenience for ``set`` with empty content.
+- ``clear``: Delete the context at the chosen scope.
 - ``chain``: Read both org-level and project-level context together
-  in a single round-trip via the ``/business-context/chain`` endpoint.
+  in a single round-trip from the project's business context.
 """
 
 from __future__ import annotations
@@ -231,9 +231,9 @@ def business_context_clear(
 ) -> None:
     """Clear business context at the given scope.
 
-    Equivalent to ``mp business-context set --content ""``. Documents
-    intent and avoids accidental clearing when stdin is unexpectedly
-    empty.
+    Deletes the context at the scope, so the next read returns empty
+    content. Unlike ``set``, it never depends on stdin, which avoids
+    accidental clearing when input is unexpectedly empty.
 
     Args:
         ctx: Typer context with global options.
@@ -261,11 +261,11 @@ def business_context_chain(
 ) -> None:
     """Read both org-level and project-level context in one call.
 
-    Calls the project-scoped ``/business-context/chain`` endpoint and
-    returns a ``BusinessContextChain`` JSON document with both scopes
-    populated. ``organization.organization_id`` is populated only when
-    a cached ``/me`` response is available — this preserves the chain
-    endpoint's single-network-round-trip guarantee.
+    Reads the project's business context, which nests the organization
+    context, and returns a ``BusinessContextChain`` JSON document with
+    both scopes populated. ``organization.organization_id`` is populated
+    only when a cached ``/me`` response is available — this preserves
+    the single-network-round-trip guarantee.
 
     Args:
         ctx: Typer context with global options.

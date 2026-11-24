@@ -28,6 +28,7 @@ _PREFIXES: dict[str, str] = {
     "export": "/api/2.0",
     "engage": "/api/query/engage",
     "app": "/api/app",
+    "platform": "/api/app/v1",
 }
 """The documented per-family path prefixes."""
 

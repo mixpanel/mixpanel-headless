@@ -206,7 +206,7 @@ Raised when an auth-axis identifier (workspace or organization) cannot be resolv
 
 ## Business Context Exceptions
 
-Raised by `Workspace.set_business_context()` when content exceeds the 50,000-character cap. The check runs **before** the HTTP call, so callers fail fast and don't waste a round-trip; the server enforces the same limit and would otherwise return `QueryError` (HTTP 400). See the [Business Context guide](../guide/business-context.md) for usage.
+Raised by `Workspace.set_business_context()` when content exceeds the 50,000-character cap. The check runs **before** the HTTP call, so callers fail fast and don't waste a round-trip; the server enforces the same limit and would otherwise return `QueryError` (HTTP 422). See the [Business Context guide](../guide/business-context.md) for usage.
 
 | Error Code | Raised When |
 |------------|-------------|

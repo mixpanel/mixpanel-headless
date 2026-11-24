@@ -14444,9 +14444,8 @@ class UserQueryResult(ResultWithDataFrame):
 BUSINESS_CONTEXT_MAX_CHARS: int = 50_000
 """Maximum allowed content length for business context, in characters.
 
-Mirrors the server's ``MAX_CONTENT_LENGTH`` constant — the API returns
-HTTP 400 with ``"content exceeds maximum length of 50000 characters"``
-above this threshold."""
+Mirrors the server's limit — the v1 Platform API rejects longer content
+with HTTP 422."""
 
 
 class BusinessContext(BaseModel):
@@ -14467,6 +14466,8 @@ class BusinessContext(BaseModel):
             ``level="organization"``, ``None`` otherwise.
         project_id: Owning project ID — populated when ``level="project"``,
             ``None`` otherwise.
+        updated_at: When the content was last saved, or ``None`` when no
+            context is set (or after a clear).
         is_empty: Computed — ``True`` when ``content == ""``. Visible
             in ``model_dump()`` output so JSON consumers can use it
             directly (no need to recompute).
@@ -14497,6 +14498,9 @@ class BusinessContext(BaseModel):
 
     project_id: str | None = None
     """Owning project ID (set when ``level="project"``)."""
+
+    updated_at: datetime | None = None
+    """Last-saved timestamp; ``None`` when unset."""
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -14529,9 +14533,9 @@ class BusinessContext(BaseModel):
 class BusinessContextChain(BaseModel):
     """Both organization and project business context returned together.
 
-    Returned by ``Workspace.get_business_context_chain()``, which calls
-    the project-scoped ``/business-context/chain`` endpoint and resolves
-    both scopes in a single round-trip.
+    Returned by ``Workspace.get_business_context_chain()``, which reads the
+    project's business context and its nested organization context in a
+    single round-trip.
 
     Attributes:
         organization: Organization-level context (shared across projects).

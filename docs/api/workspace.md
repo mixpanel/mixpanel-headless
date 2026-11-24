@@ -166,7 +166,7 @@ org_ctx = ws.get_business_context(level="organization")     # auto-resolves org_
 # Read both in one round-trip
 chain = ws.get_business_context_chain()
 
-# Write (full-replace; pass "" to clear)
+# Write (full-replace); clear deletes the stored context
 ws.set_business_context("# About Acme\n…", level="project")
 ws.clear_business_context(level="organization")
 ```

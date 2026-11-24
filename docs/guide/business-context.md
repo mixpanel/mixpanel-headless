@@ -30,14 +30,14 @@ Read and write the markdown documentation that grounds AI assistants in your org
     project_ctx = ws.get_business_context(level="project")
     org_ctx = ws.get_business_context(level="organization")
 
-    # Read both at once (single round-trip via /business-context/chain)
+    # Read both at once (single round-trip)
     chain = ws.get_business_context_chain()
 
     # Write
     ws.set_business_context("# About Acme\n…", level="project")
     ws.set_business_context("# Org-wide context", level="organization")
 
-    # Clear (equivalent to set_business_context(""))
+    # Clear (deletes the stored context)
     ws.clear_business_context(level="project")
     ```
 
@@ -117,9 +117,9 @@ If auto-resolution can't determine the org (e.g. the active project isn't in the
 
 ### Both scopes in one call
 
-The server exposes a `/business-context/chain` endpoint that returns both org and project context together, scoped to the active project. Use `get_business_context_chain()` (Python) or `mp business-context chain` (CLI) to avoid two round-trips.
+The project's business context response nests the owning organization's context, so one request returns both scopes for the active project. Use `get_business_context_chain()` (Python) or `mp business-context chain` (CLI) to avoid two round-trips.
 
-`organization.organization_id` on the returned chain is populated **best-effort** from the cached `/me` response (in-memory or disk). When the cache is cold the field is left as `None` — the chain endpoint deliberately does *not* trigger an extra `/me` fetch, preserving its single-network-round-trip property. Callers that need a guaranteed org ID should call `get_business_context(level="organization")`, which performs full resolution.
+`organization.organization_id` on the returned chain is populated **best-effort** from the cached `/me` response (in-memory or disk). When the cache is cold the field is left as `None` — the chain read deliberately does *not* trigger an extra `/me` fetch, preserving its single-network-round-trip property. Callers that need a guaranteed org ID should call `get_business_context(level="organization")`, which performs full resolution.
 
 === "Python"
 
@@ -138,7 +138,7 @@ The server exposes a `/business-context/chain` endpoint that returns both org an
 
 ## Writing context
 
-`set_business_context` is **full-replace** semantics — what you pass becomes the entire stored content for that scope. There is no append, no patch, no diff. Pass the empty string to clear, or use `clear_business_context` for clarity.
+`set_business_context` is **full-replace** semantics — what you pass becomes the entire stored content for that scope. There is no append, no patch, no diff. Use `clear_business_context` to remove the context entirely.
 
 === "Python"
 
@@ -162,8 +162,7 @@ The server exposes a `/business-context/chain` endpoint that returns both org an
 
     ws.set_business_context(new_content, level="project")
     ws.set_business_context("# Org-wide standards…", level="organization")
-    ws.set_business_context("", level="project")  # clear
-    ws.clear_business_context(level="project")    # same thing, more explicit
+    ws.clear_business_context(level="project")    # delete the stored context
     ```
 
 === "CLI"
@@ -196,7 +195,7 @@ The server exposes a `/business-context/chain` endpoint that returns both org an
 
 ### Validation
 
-`set_business_context` validates `len(content) <= 50_000` **client-side, before** making any HTTP call. Oversize input raises `BusinessContextValidationError` with `details={"length": N, "max": 50_000}` so you fail fast and don't waste a round-trip. The server enforces the same cap and would otherwise return HTTP 400.
+`set_business_context` validates `len(content) <= 50_000` **client-side, before** making any HTTP call. Oversize input raises `BusinessContextValidationError` with `details={"length": N, "max": 50_000}` so you fail fast and don't waste a round-trip. The server enforces the same cap and would otherwise return HTTP 422.
 
 === "Python"
 
@@ -221,7 +220,7 @@ The server exposes a `/business-context/chain` endpoint that returns both org an
 
 ### Clearing
 
-`clear_business_context()` is a thin convenience over `set_business_context("")`. Use whichever reads better at the call site.
+`clear_business_context()` issues a `DELETE` for the scope and returns an empty `BusinessContext` (`content=""`, `updated_at=None`). The delete succeeds even when nothing was set.
 
 === "Python"
 
@@ -287,6 +286,7 @@ for project in ws.projects():
 | `content` | markdown body (or `""`) | markdown body (or `""`) |
 | `project_id` | active project ID | `None` |
 | `organization_id` | `None` | resolved org ID |
+| `updated_at` | last-saved time, or `None` | last-saved time, or `None` |
 
 Two computed fields are also exposed and **appear in `model_dump()`** (so `--jq '.is_empty'` and `--jq '.character_count'` work directly from the CLI):
 
@@ -300,7 +300,7 @@ Two computed fields are also exposed and **appear in `model_dump()`** (so `--jq 
 | Exception | Raised when |
 |---|---|
 | [`BusinessContextValidationError`](../api/exceptions.md#mixpanel_headless.BusinessContextValidationError) | Client-side: content > 50,000 chars (no HTTP call made) |
-| [`QueryError`](../api/exceptions.md#mixpanel_headless.QueryError) | Server-side 400 (malformed body, server-side oversize), 403 (missing `edit_project_info`), 404 (org/project not visible) |
+| [`QueryError`](../api/exceptions.md#mixpanel_headless.QueryError) | Server-side 400, 422 (unknown field, oversize content), 403 (missing permission), 404 (org/project not visible). The message is the problem `detail` (or `title`); the full RFC 9457 problem object is on `response_body` |
 | [`AuthenticationError`](../api/exceptions.md#mixpanel_headless.AuthenticationError) | 401 — credentials are invalid |
 | [`WorkspaceScopeError`](../api/exceptions.md#mixpanel_headless.WorkspaceScopeError) | `level="organization"` and the org ID could not be auto-resolved (`code="ORGANIZATION_AMBIGUOUS"`) |
 | [`ServerError`](../api/exceptions.md#mixpanel_headless.ServerError) | 5xx |
