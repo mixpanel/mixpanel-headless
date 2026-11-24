@@ -12301,16 +12301,17 @@ class Workspace:
         value = raw.get("updated_at")
         if value is None:
             return None
-        if isinstance(value, str):
-            try:
-                return datetime.fromisoformat(value.replace("Z", "+00:00"))
-            except ValueError:
-                pass
-        raise MixpanelHeadlessError(
+        message = (
             f"Unexpected response from {method}: field 'updated_at' "
-            f"is not an ISO-8601 timestamp: {value!r}",
-            details={"field": "updated_at", "response": raw},
+            f"is not an ISO-8601 timestamp: {value!r}"
         )
+        details = {"field": "updated_at", "response": raw}
+        if not isinstance(value, str):
+            raise MixpanelHeadlessError(message, details=details)
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise MixpanelHeadlessError(message, details=details) from exc
 
     def get_business_context(
         self,

@@ -718,6 +718,19 @@ class TestPlatformHostAndErrors:
         with pytest.raises(MixpanelHeadlessError, match="updated_at"):
             ws.get_business_context()
 
+    def test_bad_updated_at_chains_value_error(self) -> None:
+        """A malformed ``updated_at`` string keeps the parse error as its cause."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a malformed timestamp."""
+            del request
+            return _ok({"content": "x", "updated_at": "not-a-date"})
+
+        ws = _make_workspace(handler)
+        with pytest.raises(MixpanelHeadlessError) as exc_info:
+            ws.get_business_context()
+        assert isinstance(exc_info.value.__cause__, ValueError)
+
     def test_422_surfaces_detail_and_errors(self) -> None:
         """A 422 problem maps to QueryError with detail, errors and error_id."""
         errors = [{"type": "string_too_long", "loc": ["body", "content"], "msg": "x"}]
