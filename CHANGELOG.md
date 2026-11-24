@@ -5,6 +5,34 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project follows semver but is currently pre-1.0, so minor versions
 may include API changes.
 
+## Unreleased
+
+### Changed
+
+- Business context moves to the v1 Platform API
+  (`https://platform-{us,eu,in}.mixpanel.com/v1`), because Mixpanel is
+  removing the legacy App API routes. Public signatures are unchanged.
+  `MP_API_BASE_URL` and `MP_APP_BASE_URL` re-home it under `/api/app/v1`.
+- `Workspace.clear_business_context()` now deletes the context and returns an
+  empty `BusinessContext`, instead of writing an empty string.
+- `Workspace.get_business_context_chain()` reads the project's business
+  context, which nests the organization context, in one request.
+- Oversize business context content is rejected with HTTP 422 rather than 400.
+  Platform API errors (RFC 9457) surface the problem `detail` or `title` as
+  the exception message and keep the full problem object, including 422
+  `errors`, on `response_body`.
+
+### Added
+
+- `BusinessContext.updated_at`, the last-saved time (`None` when unset).
+- `MixpanelAPIClient.platform_request()` and
+  `MixpanelAPIClient.delete_business_context()`.
+
+### Removed
+
+- `MixpanelAPIClient.get_business_context_chain()`; the project read carries
+  the organization context.
+
 ## 0.5.0 — 2026-11-18
 
 Minor release with one breaking removal: the credential bridge is gone.

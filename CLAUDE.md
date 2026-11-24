@@ -205,8 +205,8 @@ just mutate-check        # Check score meets 80% threshold
 | `MP_REGION` | Data residency (us, eu, in); when unset, `mp login` probes us → eu → in for SA / oauth_token paths and defaults to us for the browser PKCE path |
 | `MP_WORKSPACE_ID` | Workspace ID for App API operations |
 | `MP_CONFIG_PATH` | Override config file location |
-| `MP_API_BASE_URL` | Route every API family at one alternate host (read per request; trailing slash tolerated). Bypasses the per-region `ENDPOINTS` table: `query` → `{base}/api/query`, `export` → `{base}/api/2.0`, `engage` → `{base}/api/query/engage`, `app` → `{base}/api/app`. Plain `http://` bases are accepted (local / headless deployments only). `mp login`'s region probe collapses to a single probe at the base (`MP_REGION` when valid, else `us`). `MP_REGION` stays required for non-URL uses. |
-| `MP_APP_BASE_URL` | Optional: re-home only the App API family at `{app_base}/api/app` (works alone or on top of `MP_API_BASE_URL`). Alone it does not collapse the `mp login` region probe — the persisted region still routes the live Query/Export/Engage families |
+| `MP_API_BASE_URL` | Route every API family at one alternate host (read per request; trailing slash tolerated). Bypasses the per-region `ENDPOINTS` table: `query` → `{base}/api/query`, `export` → `{base}/api/2.0`, `engage` → `{base}/api/query/engage`, `app` → `{base}/api/app`, `platform` → `{base}/api/app/v1`. Plain `http://` bases are accepted (local / headless deployments only). `mp login`'s region probe collapses to a single probe at the base (`MP_REGION` when valid, else `us`). `MP_REGION` stays required for non-URL uses. |
+| `MP_APP_BASE_URL` | Optional: re-home only the App API and Platform API families at `{app_base}/api/app` and `{app_base}/api/app/v1` (works alone or on top of `MP_API_BASE_URL`). Alone it does not collapse the `mp login` region probe — the persisted region still routes the live Query/Export/Engage families |
 
 Recommended starter command: `mp login` (one-shot orchestrator covering region probe, `/me`-driven project pick, and account-name derivation; backed by `mp.accounts.login_unified()` in Python).
 

@@ -12112,10 +12112,10 @@ class Workspace:
     # organization's structure and goals. Two scopes:
     #   - "organization": shared across all projects
     #   - "project":      specific to the active project
-    # Backed by /api/app/projects/{pid}/business-context and
-    # /api/app/organizations/{org_id}/business-context. The /chain
-    # endpoint returns both at once. Server enforces a 50,000-char limit
-    # (mirrored client-side as BUSINESS_CONTEXT_MAX_CHARS).
+    # Backed by the v1 Platform API: /v1/projects/{pid}/business-context
+    # (whose response nests the owning organization's context) and
+    # /v1/organizations/{org_id}/business-context. Server enforces a
+    # 50,000-char limit (mirrored client-side as BUSINESS_CONTEXT_MAX_CHARS).
 
     @staticmethod
     def _validate_level(level: str) -> None:
@@ -12195,8 +12195,8 @@ class Workspace:
         """Return ``organization_id`` from cached ``/me``, never fetching.
 
         Used by ``get_business_context_chain()`` to enrich the response
-        with ``organization_id`` *only when free* — preserving the
-        chain endpoint's single-network-round-trip guarantee. If the
+        with ``organization_id`` *only when free* — preserving its
+        single-network-round-trip guarantee. If the
         cache is cold (neither in-memory nor on-disk), returns ``None``
         rather than triggering a ``/me`` API call. Callers that need a
         guaranteed org ID should use ``get_business_context(level=
@@ -12257,6 +12257,62 @@ class Workspace:
             )
         return value
 
+    @staticmethod
+    def _require_dict_field(
+        raw: dict[str, Any], key: str, *, method: str
+    ) -> dict[str, Any]:
+        """Read a required nested object from a Platform API response.
+
+        Args:
+            raw: The JSON object returned by the Platform API.
+            key: Field name expected in ``raw``.
+            method: Caller method name, embedded in the error message.
+
+        Returns:
+            The nested dict at ``raw[key]``.
+
+        Raises:
+            MixpanelHeadlessError: ``key`` is absent from ``raw`` or its
+                value is not an object.
+        """
+        value = raw.get(key)
+        if not isinstance(value, dict):
+            raise MixpanelHeadlessError(
+                f"Unexpected response from {method}: missing required "
+                f"object field {key!r}",
+                details={"field": key, "response": raw},
+            )
+        return value
+
+    @staticmethod
+    def _parse_updated_at(raw: dict[str, Any], *, method: str) -> datetime | None:
+        """Read the optional ``updated_at`` timestamp from a response object.
+
+        Args:
+            raw: A Platform API business-context object.
+            method: Caller method name, embedded in the error message.
+
+        Returns:
+            The parsed timestamp, or ``None`` when absent or null.
+
+        Raises:
+            MixpanelHeadlessError: The value is not an ISO-8601 string.
+        """
+        value = raw.get("updated_at")
+        if value is None:
+            return None
+        message = (
+            f"Unexpected response from {method}: field 'updated_at' "
+            f"is not an ISO-8601 timestamp: {value!r}"
+        )
+        details = {"field": "updated_at", "response": raw}
+        if not isinstance(value, str):
+            raise MixpanelHeadlessError(message, details=details)
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise MixpanelHeadlessError(message, details=details) from exc
+
     def get_business_context(
         self,
         *,
@@ -12265,11 +12321,12 @@ class Workspace:
     ) -> BusinessContext:
         """Read business context content at the given scope.
 
-        Calls ``GET /api/app/projects/{pid}/business-context`` (when
+        Calls ``GET /v1/projects/{pid}/business-context`` (when
         ``level="project"``) or
-        ``GET /api/app/organizations/{org_id}/business-context``
-        (when ``level="organization"``). Returns a populated
-        ``BusinessContext`` with ``content=""`` when no context is set.
+        ``GET /v1/organizations/{org_id}/business-context``
+        (when ``level="organization"``) on the Platform API. Returns a
+        populated ``BusinessContext`` with ``content=""`` when no context
+        is set.
 
         Args:
             level: ``"project"`` (default) reads the project-level
@@ -12284,8 +12341,9 @@ class Workspace:
 
         Returns:
             ``BusinessContext`` whose ``content`` reflects the server's
-            current state. ``organization_id`` is populated for
-            org-level returns; ``project_id`` for project-level.
+            current state and ``updated_at`` its last-saved time.
+            ``organization_id`` is populated for org-level returns;
+            ``project_id`` for project-level.
 
         Raises:
             ValueError: ``level`` is not ``"organization"`` or ``"project"``.
@@ -12296,7 +12354,7 @@ class Workspace:
             WorkspaceScopeError: ``level="organization"`` and the org
                 ID could not be auto-resolved.
             MixpanelHeadlessError: API response is missing the ``content``
-                field.
+                field or carries a malformed ``updated_at``.
 
         Example:
             ```python
@@ -12320,6 +12378,7 @@ class Workspace:
                     "content",
                     method="get_business_context",
                 ),
+                updated_at=self._parse_updated_at(raw, method="get_business_context"),
                 organization_id=org_id,
             )
         raw = client.get_business_context()
@@ -12330,6 +12389,7 @@ class Workspace:
                 "content",
                 method="get_business_context",
             ),
+            updated_at=self._parse_updated_at(raw, method="get_business_context"),
             project_id=self._session.project.id,
         )
 
@@ -12345,16 +12405,15 @@ class Workspace:
         Validates ``len(content) <= BUSINESS_CONTEXT_MAX_CHARS`` (50,000)
         client-side BEFORE the HTTP call so callers fail fast and avoid
         a wasted round-trip to the server (which enforces the same limit
-        and returns 400 above it). Then calls
-        ``PUT /api/app/projects/{pid}/business-context`` (project) or
-        ``PUT /api/app/organizations/{org_id}/business-context`` (org).
+        and returns 422 above it). Then calls
+        ``PUT /v1/projects/{pid}/business-context`` (project) or
+        ``PUT /v1/organizations/{org_id}/business-context`` (org).
 
-        The PUT is full-replace — pass an empty string to clear (or use
-        ``clear_business_context`` for clarity).
+        The PUT is full-replace. Use ``clear_business_context`` to remove
+        the context entirely.
 
         Args:
-            content: New markdown content. Empty string clears the
-                context at this scope.
+            content: New markdown content.
             level: ``"project"`` (default) or ``"organization"``.
             organization_id: Optional explicit org ID, only honored
                 when ``level="organization"``. Auto-resolved from
@@ -12369,13 +12428,13 @@ class Workspace:
                 (client-side check, no HTTP call made).
             ConfigError: Credentials are not available.
             AuthenticationError: Invalid credentials (401).
-            QueryError: Caller lacks ``edit_project_info`` permission
-                (403) or other API error (400).
+            QueryError: Caller lacks permission (403) or other API error
+                (400, 422).
             ServerError: Server-side errors (5xx).
             WorkspaceScopeError: ``level="organization"`` and the org
                 ID could not be auto-resolved.
             MixpanelHeadlessError: API response is missing the ``content``
-                field.
+                field or carries a malformed ``updated_at``.
 
         Example:
             ```python
@@ -12407,6 +12466,7 @@ class Workspace:
                     "content",
                     method="set_business_context",
                 ),
+                updated_at=self._parse_updated_at(raw, method="set_business_context"),
                 organization_id=org_id,
             )
         raw = client.set_business_context(content)
@@ -12417,6 +12477,7 @@ class Workspace:
                 "content",
                 method="set_business_context",
             ),
+            updated_at=self._parse_updated_at(raw, method="set_business_context"),
             project_id=self._session.project.id,
         )
 
@@ -12428,10 +12489,9 @@ class Workspace:
     ) -> BusinessContext:
         """Clear business context at the given scope.
 
-        Convenience wrapper that calls
-        ``set_business_context("", level=..., organization_id=...)``.
-        Useful for documenting intent — equivalent to passing an empty
-        string explicitly.
+        Calls ``DELETE /v1/projects/{pid}/business-context`` (project) or
+        ``DELETE /v1/organizations/{org_id}/business-context`` (org). The
+        server succeeds whether or not a context was set.
 
         Args:
             level: ``"project"`` (default) or ``"organization"``.
@@ -12439,15 +12499,15 @@ class Workspace:
                 ``level="organization"``.
 
         Returns:
-            ``BusinessContext`` with ``content=""`` (the cleared state
-            echoed back from the server).
+            An empty ``BusinessContext`` for the scope (``content=""``,
+            ``updated_at=None``).
 
         Raises:
             ValueError: ``level`` is not ``"organization"`` or ``"project"``.
             ConfigError: Credentials are not available.
             AuthenticationError: Invalid credentials (401).
-            QueryError: Caller lacks ``edit_project_info`` permission
-                (403) or other API error (400).
+            QueryError: Caller lacks permission (403) or other API error
+                (400, 404).
             ServerError: Server-side errors (5xx).
             WorkspaceScopeError: ``level="organization"`` and the org
                 ID could not be auto-resolved.
@@ -12458,23 +12518,29 @@ class Workspace:
             ws.clear_business_context(level="project")
             ```
         """
-        return self.set_business_context(
-            "",
-            level=level,
-            organization_id=organization_id,
+        self._validate_level(level)
+        client = self._require_api_client()
+        if level == "organization":
+            org_id = self._resolve_organization_id(organization_id)
+            client.delete_business_context(organization_id=org_id)
+            return BusinessContext(
+                level="organization", content="", organization_id=org_id
+            )
+        client.delete_business_context()
+        return BusinessContext(
+            level="project", content="", project_id=self._session.project.id
         )
 
     def get_business_context_chain(self) -> BusinessContextChain:
         """Read both organization and project business context together.
 
-        Issues exactly one App API request to
-        ``GET /api/app/projects/{pid}/business-context/chain`` —
-        a server-side convenience that returns both scopes for the
-        active project. ``organization.organization_id`` is populated
-        on a best-effort basis from the cached ``/me`` response (in-memory
-        or disk); when the cache is cold it is left as ``None`` rather
-        than triggering an extra ``/me`` round-trip. Callers that need a
-        guaranteed org ID should use ``get_business_context(level=
+        Issues exactly one Platform API request,
+        ``GET /v1/projects/{pid}/business-context``, whose response nests
+        the owning organization's context. ``organization.organization_id``
+        is populated on a best-effort basis from the cached ``/me`` response
+        (in-memory or disk); when the cache is cold it is left as ``None``
+        rather than triggering an extra ``/me`` round-trip. Callers that
+        need a guaranteed org ID should use ``get_business_context(level=
         "organization")``, which performs full resolution.
 
         Returns:
@@ -12490,8 +12556,9 @@ class Workspace:
             QueryError: Caller lacks project access (403, 404) or
                 other API error (400).
             ServerError: Server-side errors (5xx).
-            MixpanelHeadlessError: API response is missing ``org_context``
-                or ``project_context``.
+            MixpanelHeadlessError: API response is missing ``content``,
+                ``organization_business_context``, or the nested
+                ``content``, or carries a malformed ``updated_at``.
 
         Example:
             ```python
@@ -12502,27 +12569,25 @@ class Workspace:
             ```
         """
         client = self._require_api_client()
-        raw = client.get_business_context_chain()
-        org_content = self._require_str_field(
-            raw,
-            "org_context",
-            method="get_business_context_chain",
+        method = "get_business_context_chain"
+        raw = client.get_business_context()
+        project_content = self._require_str_field(raw, "content", method=method)
+        org_raw = self._require_dict_field(
+            raw, "organization_business_context", method=method
         )
-        project_content = self._require_str_field(
-            raw,
-            "project_context",
-            method="get_business_context_chain",
-        )
+        org_content = self._require_str_field(org_raw, "content", method=method)
         org_id = self._cached_organization_id()
         return BusinessContextChain(
             organization=BusinessContext(
                 level="organization",
                 content=org_content,
+                updated_at=self._parse_updated_at(org_raw, method=method),
                 organization_id=org_id,
             ),
             project=BusinessContext(
                 level="project",
                 content=project_content,
+                updated_at=self._parse_updated_at(raw, method=method),
                 project_id=self._session.project.id,
             ),
         )

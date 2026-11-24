@@ -63,7 +63,7 @@ Service accounts are the right default for unattended automation. OAuth browser 
 | `MP_CONFIG_PATH` | Override config file path (`~/.mp/config.toml`) |
 | `MP_STORAGE_DIR` | Override storage root (`~/.mp`); `MP_OAUTH_STORAGE_DIR` is a deprecated alias |
 | `MP_API_BASE_URL` | Route every API family at one alternate host — see [Alternate API host](#alternate-api-host-mp_api_base_url) |
-| `MP_APP_BASE_URL` | Optional: re-home only the App API family (`{app_base}/api/app`) |
+| `MP_APP_BASE_URL` | Optional: re-home only the App API (`{app_base}/api/app`) and Platform API (`{app_base}/api/app/v1`) families |
 
 These map onto the [credential resolution chain](#credential-resolution-chain) below.
 
@@ -75,7 +75,7 @@ These map onto the [credential resolution chain](#credential-resolution-chain) b
 
 ## Alternate API host (`MP_API_BASE_URL`)
 
-By default the client picks its hosts per region (`mixpanel.com`, `eu.mixpanel.com`, `in.mixpanel.com`, plus the `data*.mixpanel.com` export hosts). Set `MP_API_BASE_URL` to point **every** API family at one alternate host instead — a headless Mixpanel pod behind a single nginx front door, a local proxy, or an in-sandbox fake server:
+By default the client picks its hosts per region (`mixpanel.com`, `eu.mixpanel.com`, `in.mixpanel.com`, plus the `data*.mixpanel.com` export hosts and the `platform-{us,eu,in}.mixpanel.com` Platform API hosts). Set `MP_API_BASE_URL` to point **every** API family at one alternate host instead — a headless Mixpanel pod behind a single nginx front door, a local proxy, or an in-sandbox fake server:
 
 ```bash
 export MP_API_BASE_URL=http://devbox:8080
@@ -92,6 +92,7 @@ When set (a trailing slash is tolerated), the region lookup is bypassed and the 
 | Export (`stream_events`) | `{base}/api/2.0` | `https://data.mixpanel.com/api/2.0` |
 | Engage (`query_user`, `stream_profiles`) | `{base}/api/query/engage` | `https://mixpanel.com/api/query/engage` |
 | App API (dashboards, cohorts, Lexicon, `/me`, …) | `{base}/api/app` | `https://mixpanel.com/api/app` |
+| Platform API (business context) | `{base}/api/app/v1` | `https://platform-us.mixpanel.com/v1` |
 
 Details:
 
@@ -101,7 +102,7 @@ Details:
 - **`MP_REGION` is still required** and still meaningful for everything that is not a URL (account records, `/me` domain cross-checks, report-link hostnames). Report links (`create_report_link` / `saved_report_link`) keep producing real `*.mixpanel.com` URLs.
 - **`mp login` region probe.** Probing `us → eu → in` against one host is pointless, so under the override the probe runs once against the base and labels the account with `MP_REGION` (when it is `us`/`eu`/`in`) or `us`.
 - **Plain `http://` bases are accepted** with no extra flag. They are intended for local or headless deployments only — never send real credentials over cleartext to a remote host.
-- **`MP_APP_BASE_URL`** (optional) re-homes just the App API family at `{app_base}/api/app`. It works on its own (the other three families stay live) or on top of `MP_API_BASE_URL` (App API moves to the second host). With only `MP_APP_BASE_URL` set, `mp login` still walks `us → eu → in` (each `/me` probe hits the App override base) because the region it persists still decides which live cluster the Query, Export and Engage families use.
+- **`MP_APP_BASE_URL`** (optional) re-homes just the App API and Platform API families at `{app_base}/api/app` and `{app_base}/api/app/v1`. It works on its own (the other three families stay live) or on top of `MP_API_BASE_URL` (both move to the second host). With only `MP_APP_BASE_URL` set, `mp login` still walks `us → eu → in` (each `/me` probe hits the App override base) because the region it persists still decides which live cluster the Query, Export and Engage families use.
 - **Family detection is longest-prefix.** The App-vs-Query timeout and the `workspace_id` injection classify a URL by the family whose base is its longest prefix, so split configs where one base sits under the other (for example `MP_API_BASE_URL=https://proxy` with `MP_APP_BASE_URL=https://proxy/api/query`) still classify every request correctly.
 
 With neither variable set, behaviour is byte-identical to the per-region defaults.

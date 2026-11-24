@@ -1,6 +1,6 @@
-"""Property-based tests for business context (AIE-147).
+"""Property-based tests for business context.
 
-Locks down three invariants that must hold for arbitrary inputs:
+Locks down these invariants that must hold for arbitrary inputs:
 
 1. ``Workspace.set_business_context(content)`` sends exactly
    ``{"content": content}`` to the project endpoint for any text
@@ -10,6 +10,8 @@ Locks down three invariants that must hold for arbitrary inputs:
 3. ``set_business_context`` rejects any content with
    ``len(content) > BUSINESS_CONTEXT_MAX_CHARS`` BEFORE making any
    HTTP call (the mock transport's request count stays at zero).
+4. ``clear_business_context`` issues exactly one DELETE and returns an
+   empty context, for either level and any organization ID.
 """
 
 # ruff: noqa: ARG001, ARG005
@@ -65,7 +67,7 @@ def test_set_sends_exact_content_body(content: str) -> None:
         body: dict[str, Any] = json.loads(request.content)
         captured.append(body)
         return httpx.Response(
-            200, json={"status": "ok", "results": {"content": body["content"]}}
+            200, json={"content": body["content"], "updated_at": None}
         )
 
     ws = _build_workspace(handler)
@@ -90,7 +92,7 @@ def test_round_trip_preserves_content(content: str) -> None:
             body: dict[str, Any] = json.loads(request.content)
             storage["content"] = body["content"]
         return httpx.Response(
-            200, json={"status": "ok", "results": {"content": storage["content"]}}
+            200, json={"content": storage["content"], "updated_at": None}
         )
 
     ws = _build_workspace(handler)
@@ -118,7 +120,7 @@ def test_oversize_content_blocks_http_call(overflow: int) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         """Bump counter; should never run when validation rejects."""
         request_count["n"] += 1
-        return httpx.Response(200, json={"status": "ok", "results": {"content": ""}})
+        return httpx.Response(200, json={"content": "", "updated_at": None})
 
     ws = _build_workspace(handler)
     payload = "x" * (BUSINESS_CONTEXT_MAX_CHARS + overflow)
@@ -129,3 +131,33 @@ def test_oversize_content_blocks_http_call(overflow: int) -> None:
     assert request_count["n"] == 0
     assert exc_info.value.details["length"] == len(payload)
     assert exc_info.value.details["max"] == BUSINESS_CONTEXT_MAX_CHARS
+
+
+@given(
+    level=st.sampled_from(["project", "organization"]),
+    org_id=st.integers(min_value=1, max_value=10**9),
+)
+@settings(max_examples=20, deadline=None)
+def test_clear_issues_single_delete_and_returns_empty(level: str, org_id: int) -> None:
+    """Clear sends one DELETE to the level's path and returns an empty context."""
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Record method and path; answer 204."""
+        seen.append((request.method, request.url.path))
+        return httpx.Response(204)
+
+    ws = _build_workspace(handler)
+    ctx = ws.clear_business_context(
+        level=level,  # type: ignore[arg-type]
+        organization_id=org_id,
+    )
+
+    expected = (
+        f"/v1/organizations/{org_id}/business-context"
+        if level == "organization"
+        else "/v1/projects/12345/business-context"
+    )
+    assert seen == [("DELETE", expected)]
+    assert ctx.is_empty
+    assert ctx.updated_at is None

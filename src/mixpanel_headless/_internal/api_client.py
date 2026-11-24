@@ -211,8 +211,9 @@ def _error_message(response_body: str | dict[str, Any] | None, default: str) -> 
     """Extract a human-readable error message from a parsed error body.
 
     Mixpanel error bodies are either a JSON object with an ``error`` key, a
-    JSON object with a ``message`` key (some App API 500s), a plain-text
-    blob, or nothing at all. Any of those can be empty or blank, which must
+    JSON object with a ``message`` key (some App API 500s), an RFC 9457
+    problem object with ``detail`` / ``title`` keys (v1 Platform API), a
+    plain-text blob, or nothing at all. Any of those can be empty or blank, which must
     not produce a blank exception message.
 
     Args:
@@ -220,8 +221,9 @@ def _error_message(response_body: str | dict[str, Any] | None, default: str) -> 
         default: Message to use when the body carries no usable error text.
 
     Returns:
-        The ``error`` text when it is not blank, else the ``message`` text
-        when it is a non-blank string, else ``default``. Non-string
+        The ``error`` text when it is not blank, else the ``message`` text,
+        else the problem ``detail``, else the problem ``title`` (each when a
+        non-blank string), else ``default``. Non-string
         ``error`` values (lists, nested objects) are stringified rather than
         returned as-is.
 
@@ -233,6 +235,8 @@ def _error_message(response_body: str | dict[str, Any] | None, default: str) -> 
         # "['bad steps', 'bad dates']"
         _error_message({"message": "Error ID: 7f73"}, "Request failed")
         # "Error ID: 7f73"
+        _error_message({"title": "Bad Request", "detail": None}, "Request failed")
+        # "Bad Request"
         _error_message("   ", "Request failed")
         # "Request failed"  (blank text falls back to the default)
         _error_message(None, "Request failed")
@@ -242,9 +246,11 @@ def _error_message(response_body: str | dict[str, Any] | None, default: str) -> 
     if isinstance(response_body, dict):
         raw = response_body.get("error")
         text = "" if raw is None else str(raw)
-        if not text.strip():
-            message = response_body.get("message")
-            text = message if isinstance(message, str) else ""
+        for key in ("message", "detail", "title"):
+            if text.strip():
+                break
+            candidate = response_body.get(key)
+            text = candidate if isinstance(candidate, str) else ""
     elif isinstance(response_body, str):
         text = response_body[:200]
     else:
@@ -486,18 +492,21 @@ ENDPOINTS: dict[str, dict[str, str]] = {
         "export": "https://data.mixpanel.com/api/2.0",
         "engage": "https://mixpanel.com/api/query/engage",
         "app": "https://mixpanel.com/api/app",
+        "platform": "https://platform-us.mixpanel.com/v1",
     },
     "eu": {
         "query": "https://eu.mixpanel.com/api/query",
         "export": "https://data-eu.mixpanel.com/api/2.0",
         "engage": "https://eu.mixpanel.com/api/query/engage",
         "app": "https://eu.mixpanel.com/api/app",
+        "platform": "https://platform-eu.mixpanel.com/v1",
     },
     "in": {
         "query": "https://in.mixpanel.com/api/query",
         "export": "https://data-in.mixpanel.com/api/2.0",
         "engage": "https://in.mixpanel.com/api/query/engage",
         "app": "https://in.mixpanel.com/api/app",
+        "platform": "https://platform-in.mixpanel.com/v1",
     },
 }
 
@@ -516,7 +525,8 @@ DEFAULT_QUERY_TIMEOUT_S: float = QUERY_API_SERVER_DEADLINE_S + _SERVER_DEADLINE_
 # Alternate-host override. When ``MP_API_BASE_URL`` is set, the per-region
 # table above is bypassed and every API family resolves to a fixed path
 # prefix on that one base (the prefixes a headless Mixpanel pod's nginx
-# routes on). ``MP_APP_BASE_URL`` optionally re-homes just the App API.
+# routes on). ``MP_APP_BASE_URL`` optionally re-homes just the App API and the
+# v1 Platform API, which is served by the same app under ``/api/app/v1``.
 API_BASE_URL_ENV = "MP_API_BASE_URL"
 APP_BASE_URL_ENV = "MP_APP_BASE_URL"
 _OVERRIDE_PATH_PREFIXES: dict[str, str] = {
@@ -524,6 +534,7 @@ _OVERRIDE_PATH_PREFIXES: dict[str, str] = {
     "export": "/api/2.0",
     "engage": "/api/query/engage",
     "app": "/api/app",
+    "platform": "/api/app/v1",
 }
 
 
@@ -565,9 +576,11 @@ def _endpoints_for(region: str) -> dict[str, str]:
         itself (byte-identical behaviour). With ``MP_API_BASE_URL`` set: a
         fresh table mapping ``query`` → ``{base}/api/query``, ``export`` →
         ``{base}/api/2.0``, ``engage`` → ``{base}/api/query/engage`` and
-        ``app`` → ``{base}/api/app``. With ``MP_APP_BASE_URL`` set: the
-        ``app`` entry becomes ``{app_base}/api/app`` on top of whichever
-        table applies. The live table is never mutated.
+        ``app`` → ``{base}/api/app`` and ``platform`` →
+        ``{base}/api/app/v1``. With ``MP_APP_BASE_URL`` set: the ``app``
+        entry becomes ``{app_base}/api/app`` and the ``platform`` entry
+        ``{app_base}/api/app/v1`` on top of whichever table applies. The
+        live table is never mutated.
 
     Raises:
         KeyError: ``region`` is not a key of :data:`ENDPOINTS` (only reachable
@@ -593,6 +606,7 @@ def _endpoints_for(region: str) -> dict[str, str]:
         table = dict(ENDPOINTS[region])
     if app_base:
         table["app"] = f"{app_base}{_OVERRIDE_PATH_PREFIXES['app']}"
+        table["platform"] = f"{app_base}{_OVERRIDE_PATH_PREFIXES['platform']}"
     return table
 
 
@@ -632,7 +646,7 @@ def _api_family_for(url: str, endpoints: Mapping[str, str]) -> str | None:
 
     Returns:
         The matching family name (``"query"`` / ``"export"`` / ``"engage"`` /
-        ``"app"``), or ``None`` when no base is a prefix of ``url`` (for
+        ``"app"`` / ``"platform"``), or ``None`` when no base is a prefix of ``url`` (for
         example a foreign host passed to ``request``).
 
     Example:
@@ -1048,7 +1062,7 @@ class MixpanelAPIClient:
         """Build full URL for the given API type and path.
 
         Args:
-            api_type: One of "query", "export", "engage", or "app".
+            api_type: One of "query", "export", "engage", "app", or "platform".
             path: API endpoint path (e.g., "/segmentation").
 
         Returns:
@@ -1104,7 +1118,7 @@ class MixpanelAPIClient:
         if self._timeout is not None:
             return self._timeout
         family = _api_family_for(url, _endpoints_for(self._session.account.region))
-        if family == "app":
+        if family in ("app", "platform"):
             return DEFAULT_APP_TIMEOUT_S
         return DEFAULT_QUERY_TIMEOUT_S
 
@@ -1974,6 +1988,187 @@ class MixpanelAPIClient:
     # App API - OAuth/Bearer requests with workspace scoping
     # =========================================================================
 
+    def _family_request(
+        self,
+        api_type: str,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, str | list[str]] | None = None,
+        json_body: dict[str, Any] | None = None,
+        form_body: dict[str, str] | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> tuple[int, Any]:
+        """Send an authenticated request to the ``api_type`` family and parse it.
+
+        Shared by :meth:`app_request` and :meth:`platform_request`. Handles
+        auth, route-aware timeouts, 429 retries, and error mapping; callers
+        decide how to unwrap the parsed body.
+
+        Args:
+            api_type: ``"app"`` or ``"platform"``.
+            method: HTTP method.
+            path: API path under the family base.
+            params: Optional query parameters (a list value repeats the key).
+            json_body: Optional JSON body. Mutually exclusive with
+                ``form_body``.
+            form_body: Optional form-encoded body. Mutually exclusive with
+                ``json_body``.
+            timeout: Read timeout override in seconds.
+            max_retries: Most retries after a 429 for this request.
+
+        Returns:
+            ``(status_code, body)``. ``body`` is the parsed JSON, or ``None``
+            for 204 No Content.
+
+        Raises:
+            ParamValidationError: Both ``json_body`` and ``form_body`` were
+                provided (``AC1_BODY_MUTUALLY_EXCLUSIVE``).
+            AuthenticationError: Invalid credentials (401).
+            RateLimitError: Rate limit exceeded (429).
+            QueryError: Invalid parameters or resource not found (4xx).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: Network/connection errors.
+        """
+        if json_body is not None and form_body is not None:
+            raise ParamValidationError(
+                f"{api_type}_request: json_body and form_body are mutually exclusive",
+                code="AC1_BODY_MUTUALLY_EXCLUSIVE",
+            )
+
+        url = self._build_url(api_type, path)
+        # Re-resolve per request via _get_auth_header() so refreshed
+        # OAuth tokens (browser refresh / static-token rotation) reach
+        # App API calls without rebuilding the client. Service-account
+        # Basic Auth has no analogous freshness concern; the helper
+        # falls through to the cached credentials in that case.
+        auth_header = self._get_auth_header()
+        headers = self._request_headers({"Authorization": auth_header})
+
+        client = self._ensure_client()
+
+        # Pass through caller-supplied params only (no query_origin —
+        # some App API endpoints reject unknown query parameters).
+        request_params: dict[str, str | list[str]] = {}
+        if params:
+            request_params.update(params)
+
+        request_body: dict[str, Any] | dict[str, str] | None = (
+            form_body if form_body is not None else json_body
+        )
+        request_timeout = timeout if timeout is not None else self._default_timeout(url)
+        retries = self._max_retries if max_retries is None else max(0, max_retries)
+
+        for attempt in range(retries + 1):
+            try:
+                if form_body is not None:
+                    response = client.request(
+                        method,
+                        url,
+                        params=request_params,
+                        data=form_body,
+                        headers=headers,
+                        timeout=request_timeout,
+                    )
+                else:
+                    response = client.request(
+                        method,
+                        url,
+                        params=request_params,
+                        json=json_body,
+                        headers=headers,
+                        timeout=request_timeout,
+                    )
+
+                # Handle 204 No Content
+                if response.status_code == 204:
+                    return 204, None
+
+                # Handle 429 rate limiting with retry
+                if response.status_code == 429:
+                    retry_after = self._parse_retry_after(response)
+                    stop_reason = self._rate_limit_stop_reason(
+                        retry_after, attempt, max_retries=retries
+                    )
+                    if stop_reason is not None:
+                        response_body: str | dict[str, Any] | None = None
+                        try:
+                            response_body = response.json()
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            response_body = (
+                                response.text[:500] if response.text else None
+                            )
+                        raise RateLimitError(
+                            stop_reason,
+                            retry_after=retry_after,
+                            status_code=response.status_code,
+                            response_body=response_body,
+                            request_method=method,
+                            request_url=url,
+                            request_params=request_params,
+                            project_id=self.project_id,
+                        )
+                    wait_time = self._retry_wait_seconds(retry_after, attempt)
+                    logger.warning(
+                        "Rate limited, retrying in %.1f seconds (attempt %d/%d)",
+                        wait_time,
+                        attempt + 1,
+                        retries,
+                    )
+                    time.sleep(wait_time)
+                    continue
+
+                # Handle 422 as QueryError
+                if response.status_code == 422:
+                    err_body: str | dict[str, Any] | None = None
+                    try:
+                        err_body = response.json()
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        err_body = response.text[:500] if response.text else None
+                    error_msg = _error_message(err_body, "Unprocessable entity")
+                    raise QueryError(
+                        error_msg,
+                        status_code=422,
+                        response_body=err_body,
+                        request_method=method,
+                        request_url=url,
+                        request_params=request_params,
+                        request_body=request_body,
+                    )
+
+                # Delegate other error codes to _handle_response
+                result = self._handle_response(
+                    response,
+                    request_method=method,
+                    request_url=url,
+                    request_params=request_params,
+                    request_body=request_body,
+                )
+
+                return response.status_code, result
+
+            except httpx.HTTPError as e:
+                raise MixpanelHeadlessError(
+                    f"HTTP error: {e}",
+                    code="HTTP_ERROR",
+                    details={
+                        "error": str(e),
+                        "request_method": method,
+                        "request_url": url,
+                        "request_params": request_params,
+                    },
+                ) from e
+
+        # Should not reach here, but satisfy type checker
+        raise RateLimitError(
+            "Rate limit exceeded after max retries",
+            request_method=method,
+            request_url=url,
+            request_params=request_params,
+            project_id=self.project_id,
+        )
+
     def app_request(
         self,
         method: str,
@@ -2045,146 +2240,87 @@ class MixpanelAPIClient:
                 )
             ```
         """
-        if json_body is not None and form_body is not None:
-            raise ParamValidationError(
-                "app_request: json_body and form_body are mutually exclusive",
-                code="AC1_BODY_MUTUALLY_EXCLUSIVE",
-            )
-
-        url = self._build_url("app", path)
-        # Re-resolve per request via _get_auth_header() so refreshed
-        # OAuth tokens (browser refresh / static-token rotation) reach
-        # App API calls without rebuilding the client. Service-account
-        # Basic Auth has no analogous freshness concern; the helper
-        # falls through to the cached credentials in that case.
-        auth_header = self._get_auth_header()
-        headers = self._request_headers({"Authorization": auth_header})
-
-        client = self._ensure_client()
-
-        # Pass through caller-supplied params only (no query_origin —
-        # some App API endpoints reject unknown query parameters).
-        request_params: dict[str, str | list[str]] = {}
-        if params:
-            request_params.update(params)
-
-        request_body: dict[str, Any] | dict[str, str] | None = (
-            form_body if form_body is not None else json_body
+        status, result = self._family_request(
+            "app",
+            method,
+            path,
+            params=params,
+            json_body=json_body,
+            form_body=form_body,
+            timeout=timeout,
+            max_retries=max_retries,
         )
-        request_timeout = timeout if timeout is not None else self._default_timeout(url)
-        retries = self._max_retries if max_retries is None else max(0, max_retries)
+        if status == 204:
+            return {"status": "ok"}
+        if not _raw and isinstance(result, dict) and "results" in result:
+            return result["results"]
+        return result
 
-        for attempt in range(retries + 1):
-            try:
-                if form_body is not None:
-                    response = client.request(
-                        method,
-                        url,
-                        params=request_params,
-                        data=form_body,
-                        headers=headers,
-                        timeout=request_timeout,
-                    )
-                else:
-                    response = client.request(
-                        method,
-                        url,
-                        params=request_params,
-                        json=json_body,
-                        headers=headers,
-                        timeout=request_timeout,
-                    )
+    def platform_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, str | list[str]] | None = None,
+        json_body: dict[str, Any] | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+    ) -> Any:
+        """Make an authenticated request to the Mixpanel v1 Platform API.
 
-                # Handle 204 No Content
-                if response.status_code == 204:
-                    return {"status": "ok"}
+        Uses the same Bearer / Basic auth as :meth:`app_request` against the
+        regional ``platform`` host (for example
+        ``https://platform-us.mixpanel.com/v1``). Responses are bare JSON
+        (no ``results`` envelope) and errors are RFC 9457 problem objects
+        (``type``, ``title``, ``status``, ``detail``, ``instance``,
+        ``error_id``, plus ``errors`` on 422); the exception message prefers
+        ``detail`` over ``title`` and the full problem object is kept on the
+        exception's ``response_body``.
 
-                # Handle 429 rate limiting with retry
-                if response.status_code == 429:
-                    retry_after = self._parse_retry_after(response)
-                    stop_reason = self._rate_limit_stop_reason(
-                        retry_after, attempt, max_retries=retries
-                    )
-                    if stop_reason is not None:
-                        response_body: str | dict[str, Any] | None = None
-                        try:
-                            response_body = response.json()
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            response_body = (
-                                response.text[:500] if response.text else None
-                            )
-                        raise RateLimitError(
-                            stop_reason,
-                            retry_after=retry_after,
-                            status_code=response.status_code,
-                            response_body=response_body,
-                            request_method=method,
-                            request_url=url,
-                            request_params=request_params,
-                            project_id=self.project_id,
-                        )
-                    wait_time = self._retry_wait_seconds(retry_after, attempt)
-                    logger.warning(
-                        "Rate limited, retrying in %.1f seconds (attempt %d/%d)",
-                        wait_time,
-                        attempt + 1,
-                        retries,
-                    )
-                    time.sleep(wait_time)
-                    continue
+        Args:
+            method: HTTP method (GET, PUT, DELETE, ...).
+            path: Path under the ``/v1`` base
+                (e.g. ``/projects/12345/business-context``).
+            params: Optional query parameters.
+            json_body: Optional JSON request body.
+            timeout: Read timeout in seconds for this request. Replaces the
+                route-aware default and the constructor ``timeout``.
+            max_retries: Most retries after a 429 for this request. Replaces
+                the constructor ``max_retries``.
 
-                # Handle 422 as QueryError
-                if response.status_code == 422:
-                    err_body: str | dict[str, Any] | None = None
-                    try:
-                        err_body = response.json()
-                    except (json.JSONDecodeError, UnicodeDecodeError):
-                        err_body = response.text[:500] if response.text else None
-                    error_msg = _error_message(err_body, "Unprocessable entity")
-                    raise QueryError(
-                        error_msg,
-                        status_code=422,
-                        response_body=err_body,
-                        request_method=method,
-                        request_url=url,
-                        request_params=request_params,
-                        request_body=request_body,
-                    )
+        Returns:
+            The parsed JSON body, or ``None`` for 204 No Content.
 
-                # Delegate other error codes to _handle_response
-                result = self._handle_response(
-                    response,
-                    request_method=method,
-                    request_url=url,
-                    request_params=request_params,
-                    request_body=request_body,
+        Raises:
+            AuthenticationError: Invalid credentials (401).
+            RateLimitError: Rate limit exceeded (429), when the retries run out
+                or at once when ``Retry-After`` is longer than 60 seconds.
+            QueryError: Invalid parameters, permission denied, not found, or
+                validation failure (400, 403, 404, 422).
+            ServerError: Server-side errors (5xx).
+            MixpanelHeadlessError: Network/connection errors.
+
+        Example:
+            ```python
+            with MixpanelAPIClient(session=session) as client:
+                body = client.platform_request(
+                    "GET", "/projects/12345/business-context"
                 )
-
-                # Unwrap results field if present (unless _raw requested)
-                if not _raw and isinstance(result, dict) and "results" in result:
-                    return result["results"]
-                return result
-
-            except httpx.HTTPError as e:
-                raise MixpanelHeadlessError(
-                    f"HTTP error: {e}",
-                    code="HTTP_ERROR",
-                    details={
-                        "error": str(e),
-                        "request_method": method,
-                        "request_url": url,
-                        "request_params": request_params,
-                    },
-                ) from e
-
-        # Should not reach here, but satisfy type checker
-        raise RateLimitError(
-            "Rate limit exceeded after max retries",
-            request_method=method,
-            request_url=url,
-            request_params=request_params,
-            project_id=self.project_id,
+                client.platform_request(
+                    "DELETE", "/projects/12345/business-context"
+                )  # None
+            ```
+        """
+        _, result = self._family_request(
+            "platform",
+            method,
+            path,
+            params=params,
+            json_body=json_body,
+            timeout=timeout,
+            max_retries=max_retries,
         )
+        return result
 
     @property
     def workspace_id(self) -> int | None:
@@ -10358,32 +10494,44 @@ class MixpanelAPIClient:
         return result
 
     # =========================================================================
-    # Business Context (AIE-147)
+    # Business Context (v1 Platform API)
     # =========================================================================
+
+    def _business_context_path(self, organization_id: int | None) -> str:
+        """Build the v1 business-context path for an organization or project.
+
+        Args:
+            organization_id: Organization ID for the organization scope, or
+                ``None`` for the current session's project.
+
+        Returns:
+            ``/organizations/{organization_id}/business-context`` or
+            ``/projects/{pid}/business-context``.
+        """
+        if organization_id is not None:
+            return f"/organizations/{organization_id}/business-context"
+        return f"/projects/{self._session.project.id}/business-context"
 
     def get_business_context(
         self, *, organization_id: int | None = None
     ) -> dict[str, Any]:
         """Fetch business context content for an organization or project.
 
-        Calls ``GET /api/app/projects/{pid}/business-context`` (project
-        scope) or ``GET /api/app/organizations/{org_id}/business-context``
-        (organization scope). The endpoint always returns 200 with
-        ``{"content": ""}`` when no context has been set.
-
-        Path is constructed directly (NOT via ``maybe_scoped_path``)
-        because the endpoint is project-scoped, not workspace-scoped.
+        Calls ``GET /v1/projects/{pid}/business-context`` (project scope) or
+        ``GET /v1/organizations/{org_id}/business-context`` (organization
+        scope) on the Platform API. The endpoint returns 200 with
+        ``content == ""`` when no context has been set.
 
         Args:
-            organization_id: When provided, fetches the org-level context
-                under ``/organizations/{organization_id}/business-context``.
-                When omitted, fetches the project-level context under
-                ``/projects/{pid}/business-context`` for the current
-                session's project.
+            organization_id: When provided, fetches the org-level context.
+                When omitted, fetches the project-level context for the
+                current session's project.
 
         Returns:
-            Dictionary of the form ``{"content": "<markdown>"}``. The
-            ``content`` field is the empty string when no context is set.
+            Dictionary with ``content`` and ``updated_at`` (ISO-8601 string
+            or ``None``). The project scope also carries
+            ``organization_business_context`` (``{"content", "updated_at"}``)
+            for the owning organization.
 
         Raises:
             AuthenticationError: Invalid credentials (401).
@@ -10396,20 +10544,17 @@ class MixpanelAPIClient:
         Example:
             ```python
             with MixpanelAPIClient(session=sess) as client:
-                # Project-level context for the active project.
                 project = client.get_business_context()
                 print(project["content"])
+                print(project["organization_business_context"]["content"])
 
-                # Org-level context for org id 100.
                 org = client.get_business_context(organization_id=100)
                 print(org["content"])
             ```
         """
-        if organization_id is not None:
-            path = f"/organizations/{organization_id}/business-context"
-        else:
-            path = f"/projects/{self._session.project.id}/business-context"
-        result = self.app_request("GET", path)
+        result = self.platform_request(
+            "GET", self._business_context_path(organization_id)
+        )
         if not isinstance(result, dict):
             raise MixpanelHeadlessError(
                 f"Unexpected response from get_business_context: "
@@ -10422,36 +10567,25 @@ class MixpanelAPIClient:
     ) -> dict[str, Any]:
         """Replace business context content at the given scope.
 
-        Calls ``PUT /api/app/projects/{pid}/business-context`` (project
-        scope) or ``PUT /api/app/organizations/{org_id}/business-context``
-        (organization scope). The PUT is full-replace — pass an empty
-        string to clear.
-
-        The Mixpanel server enforces a 50,000-character limit and
-        returns HTTP 400 ``"content exceeds maximum length of 50000
-        characters"`` above that threshold; callers should validate
-        client-side first to avoid the wasted round-trip (the
-        ``Workspace`` facade does this automatically).
-
-        Path is constructed directly (NOT via ``maybe_scoped_path``)
-        because the endpoint is project-scoped, not workspace-scoped.
+        Calls ``PUT /v1/projects/{pid}/business-context`` (project scope) or
+        ``PUT /v1/organizations/{org_id}/business-context`` (organization
+        scope). The PUT is full-replace. The server rejects content over
+        50,000 characters with a 422; callers should validate client-side
+        first (the ``Workspace`` facade does).
 
         Args:
-            content: New markdown content. Empty string clears the
-                context at this scope.
+            content: New markdown content.
             organization_id: When provided, writes the org-level context.
                 When omitted, writes the project-level context for the
                 current session's project.
 
         Returns:
-            Dictionary of the form ``{"content": "<saved markdown>"}``
-            echoing what the server stored.
+            Dictionary in the same shape as :meth:`get_business_context`.
 
         Raises:
             AuthenticationError: Invalid credentials (401).
-            QueryError: Content exceeds 50,000 chars (400), caller lacks
-                ``edit_project_info`` permission (403), or invalid JSON
-                body (400).
+            QueryError: Caller lacks permission (403) or the body is
+                rejected (400, 422).
             ServerError: Server-side errors (5xx).
             MixpanelHeadlessError: Network/connection errors or unexpected
                 response shape.
@@ -10460,14 +10594,14 @@ class MixpanelAPIClient:
             ```python
             with MixpanelAPIClient(session=sess) as client:
                 client.set_business_context("# About Acme\\n...")
-                client.set_business_context("", organization_id=100)  # clear org
+                client.set_business_context("# Org", organization_id=100)
             ```
         """
-        if organization_id is not None:
-            path = f"/organizations/{organization_id}/business-context"
-        else:
-            path = f"/projects/{self._session.project.id}/business-context"
-        result = self.app_request("PUT", path, json_body={"content": content})
+        result = self.platform_request(
+            "PUT",
+            self._business_context_path(organization_id),
+            json_body={"content": content},
+        )
         if not isinstance(result, dict):
             raise MixpanelHeadlessError(
                 f"Unexpected response from set_business_context: "
@@ -10475,43 +10609,32 @@ class MixpanelAPIClient:
             )
         return result
 
-    def get_business_context_chain(self) -> dict[str, Any]:
-        """Fetch both organization and project business context together.
+    def delete_business_context(self, *, organization_id: int | None = None) -> None:
+        """Delete business context at the given scope.
 
-        Calls ``GET /api/app/projects/{pid}/business-context/chain`` —
-        a server-side convenience that returns both scopes in a single
-        round-trip, scoped to the current session's project. The org
-        context returned is the one that owns the project.
+        Calls ``DELETE /v1/projects/{pid}/business-context`` or
+        ``DELETE /v1/organizations/{org_id}/business-context``. The server
+        answers 204 whether or not a context was set.
 
-        Returns:
-            Dictionary of the form
-            ``{"org_context": "<markdown>", "project_context": "<markdown>"}``.
-            Either field may be the empty string when no context is set
-            at that scope.
+        Args:
+            organization_id: When provided, deletes the org-level context.
+                When omitted, deletes the project-level context for the
+                current session's project.
 
         Raises:
             AuthenticationError: Invalid credentials (401).
-            QueryError: Caller lacks project access (403, 404).
+            QueryError: Caller lacks permission (403, 404).
             ServerError: Server-side errors (5xx).
-            MixpanelHeadlessError: Network/connection errors or unexpected
-                response shape.
+            MixpanelHeadlessError: Network/connection errors.
 
         Example:
             ```python
             with MixpanelAPIClient(session=sess) as client:
-                chain = client.get_business_context_chain()
-                print("ORG:", chain["org_context"])
-                print("PROJECT:", chain["project_context"])
+                client.delete_business_context()
+                client.delete_business_context(organization_id=100)
             ```
         """
-        path = f"/projects/{self._session.project.id}/business-context/chain"
-        result = self.app_request("GET", path)
-        if not isinstance(result, dict):
-            raise MixpanelHeadlessError(
-                f"Unexpected response from get_business_context_chain: "
-                f"expected dict, got {type(result).__name__}",
-            )
-        return result
+        self.platform_request("DELETE", self._business_context_path(organization_id))
 
     # =========================================================================
     # Session Replay (044-session-replay)

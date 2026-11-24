@@ -9,7 +9,7 @@ Look up the methods with `mp help Workspace --domain "business context"` and the
 - There are two scopes. `level="organization"` is shared across the whole organization. `level="project"` (the default) is per project.
 - The limit is 50,000 characters (`mp.BUSINESS_CONTEXT_MAX_CHARS`). The library checks it before the HTTP call and raises `BusinessContextValidationError`. Use this to detect oversize input without a wasted request.
 - Organization-level calls resolve `organization_id` from the cached `/me` response. Pass `organization_id=N` to override. If the ID cannot be resolved, the call raises `WorkspaceScopeError`.
-- A write replaces the whole content. Pass `""` to clear, or use `clear_business_context()` for clarity.
+- A write replaces the whole content. Use `clear_business_context()` to delete the content. Each result carries `updated_at`, the last-saved time or `None`.
 
 ```python
 import mixpanel_headless as mp

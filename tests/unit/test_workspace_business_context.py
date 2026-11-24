@@ -13,17 +13,20 @@ Verifies:
 - Ambiguous-org raises WorkspaceScopeError
 - Invalid ``level`` raises ValueError before any HTTP call
 - 50,000-character boundary on set (client-side validation)
-- Chain endpoint truly single-round-trip — no /me fetch
+- Clear issues DELETE and returns an empty context
+- Chain is built from one project GET (nested organization context), no /me fetch
 - Chain populates org_id from cached /me on a best-effort basis
 - Cold-cache chain leaves organization_id=None
-- Server-side 400 surfaces as QueryError
-- Missing ``content`` / ``org_context`` / ``project_context`` raises
+- Per-region platform hosts and ``updated_at`` parsing
+- RFC 9457 problem responses map onto the exception hierarchy
+- Missing ``content`` / ``organization_business_context`` raises
   MixpanelHeadlessError instead of being silently treated as empty
 """
 
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -33,9 +36,11 @@ from mixpanel_headless._internal.api_client import MixpanelAPIClient
 from mixpanel_headless._internal.auth.session import Session
 from mixpanel_headless._internal.me import MeOrgInfo, MeProjectInfo, MeResponse
 from mixpanel_headless.exceptions import (
+    AuthenticationError,
     BusinessContextValidationError,
     MixpanelHeadlessError,
     QueryError,
+    RateLimitError,
     WorkspaceScopeError,
 )
 from mixpanel_headless.types import (
@@ -133,9 +138,32 @@ def _stub_me(
     ws._me_service = _StubMeSvc(response)  # type: ignore[assignment]
 
 
-def _ok(results: dict[str, Any]) -> httpx.Response:
-    """Build a 200 OK App-API response wrapping ``results``."""
-    return httpx.Response(200, json={"status": "ok", "results": results})
+def _ok(body: dict[str, Any]) -> httpx.Response:
+    """Build a 200 OK v1 Platform API response with a bare JSON ``body``."""
+    return httpx.Response(200, json=body)
+
+
+def _problem(status: int, title: str, **extra: Any) -> httpx.Response:
+    """Build an RFC 9457 problem-details error response.
+
+    Args:
+        status: HTTP status code.
+        title: Short problem title.
+        **extra: Additional problem fields (``detail``, ``errors``, ...).
+
+    Returns:
+        An ``httpx.Response`` with the problem JSON body.
+    """
+    body: dict[str, Any] = {
+        "type": None,
+        "title": title,
+        "status": status,
+        "detail": None,
+        "instance": None,
+        "error_id": "err-1",
+    }
+    body.update(extra)
+    return httpx.Response(status, json=body)
 
 
 # =============================================================================
@@ -165,7 +193,7 @@ class TestGetBusinessContextProject:
         assert ctx.content == "# Project context\n\nHello."
         assert ctx.is_empty is False
         assert ctx.character_count == len("# Project context\n\nHello.")
-        assert seen == ["GET /api/app/projects/12345/business-context"]
+        assert seen == ["GET /v1/projects/12345/business-context"]
 
     def test_default_level_is_project(self) -> None:
         """Calling without ``level`` defaults to 'project'."""
@@ -249,7 +277,7 @@ class TestSetBusinessContextProject:
         assert seen == [
             (
                 "PUT",
-                "/api/app/projects/12345/business-context",
+                "/v1/projects/12345/business-context",
                 {"content": "# New content"},
             ),
         ]
@@ -294,12 +322,10 @@ class TestSetBusinessContextProject:
         def handler(request: httpx.Request) -> httpx.Response:
             """Return the server-side rejection shape."""
             del request
-            return httpx.Response(
+            return _problem(
                 400,
-                json={
-                    "status": "error",
-                    "error": "content exceeds maximum length of 50000 characters",
-                },
+                "Bad Request",
+                detail="content exceeds maximum length of 50000 characters",
             )
 
         ws = _make_workspace(handler)
@@ -322,24 +348,48 @@ class TestSetBusinessContextProject:
 
 
 class TestClearBusinessContextProject:
-    """clear_business_context delegates to set with empty content."""
+    """clear_business_context issues DELETE."""
 
-    def test_clear_sends_empty_content_put(self) -> None:
-        """CLEAR issues PUT with ``{"content": ""}``."""
-        seen: list[dict[str, Any]] = []
+    def test_clear_sends_delete_and_returns_empty(self) -> None:
+        """CLEAR issues DELETE (204) and returns an empty project context."""
+        seen: list[tuple[str, str, str]] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Capture body, echo cleared state."""
-            body: dict[str, Any] = json.loads(request.content)
-            seen.append(body)
-            return _ok({"content": body["content"]})
+            """Capture method, host and path; return 204."""
+            seen.append((request.method, request.url.host, request.url.path))
+            return httpx.Response(204)
 
         ws = _make_workspace(handler)
         ctx = ws.clear_business_context(level="project")
 
         assert ctx.level == "project"
+        assert ctx.project_id == "12345"
         assert ctx.is_empty is True
-        assert seen == [{"content": ""}]
+        assert ctx.updated_at is None
+        assert seen == [
+            (
+                "DELETE",
+                "platform-us.mixpanel.com",
+                "/v1/projects/12345/business-context",
+            )
+        ]
+
+    def test_clear_org_sends_delete(self) -> None:
+        """Org CLEAR issues DELETE on the organization path."""
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture method and path; return 204."""
+            seen.append(f"{request.method} {request.url.path}")
+            return httpx.Response(204)
+
+        ws = _make_workspace(handler)
+        ctx = ws.clear_business_context(level="organization", organization_id=100)
+
+        assert ctx.level == "organization"
+        assert ctx.organization_id == 100
+        assert ctx.is_empty is True
+        assert seen == ["DELETE /v1/organizations/100/business-context"]
 
 
 # =============================================================================
@@ -380,7 +430,7 @@ class TestGetBusinessContextOrganization:
         assert ctx.organization_id == 42
         assert ctx.project_id is None
         assert ctx.content == "# Org content"
-        assert seen == ["GET /api/app/organizations/42/business-context"]
+        assert seen == ["GET /v1/organizations/42/business-context"]
 
     def test_auto_resolve_from_active_project(self) -> None:
         """Without explicit org_id, derives it from /me.projects[pid]."""
@@ -396,7 +446,7 @@ class TestGetBusinessContextOrganization:
 
         ctx = ws.get_business_context(level="organization")
         assert ctx.organization_id == 100
-        assert seen == ["/api/app/organizations/100/business-context"]
+        assert seen == ["/v1/organizations/100/business-context"]
 
     def test_auto_resolve_falls_through_to_sole_org(self) -> None:
         """When project missing from /me but only one org exists, use it."""
@@ -417,7 +467,7 @@ class TestGetBusinessContextOrganization:
 
         ctx = ws.get_business_context(level="organization")
         assert ctx.organization_id == 77
-        assert seen == ["/api/app/organizations/77/business-context"]
+        assert seen == ["/v1/organizations/77/business-context"]
 
     def test_ambiguous_org_raises_workspace_scope_error(self) -> None:
         """Multiple orgs + project not in /me → WorkspaceScopeError."""
@@ -469,7 +519,7 @@ class TestSetBusinessContextOrganization:
         assert seen == [
             (
                 "PUT",
-                "/api/app/organizations/100/business-context",
+                "/v1/organizations/100/business-context",
                 {"content": "# Org-wide"},
             ),
         ]
@@ -483,19 +533,36 @@ class TestSetBusinessContextOrganization:
 class TestGetBusinessContextChain:
     """get_business_context_chain() behavior."""
 
+    @staticmethod
+    def _project_body(
+        project: str = "# Project info", org: str = "# Org info"
+    ) -> dict[str, Any]:
+        """Build a project GET body with a nested organization context.
+
+        Args:
+            project: Project-level content.
+            org: Organization-level content.
+
+        Returns:
+            The bare v1 project GET response.
+        """
+        return {
+            "content": project,
+            "updated_at": "2026-01-02T03:04:05Z",
+            "organization_business_context": {
+                "content": org,
+                "updated_at": None,
+            },
+        }
+
     def test_chain_parses_both_scopes(self) -> None:
-        """Chain returns BusinessContextChain with org + project content."""
+        """Chain is built from one project GET with nested org context."""
         seen: list[str] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Capture URL, return both fields."""
+            """Capture URL, return both scopes."""
             seen.append(f"{request.method} {request.url.path}")
-            return _ok(
-                {
-                    "org_context": "# Org info",
-                    "project_context": "# Project info",
-                }
-            )
+            return _ok(self._project_body())
 
         ws = _make_workspace(handler)
         _stub_me(ws, project_org=100)
@@ -506,19 +573,22 @@ class TestGetBusinessContextChain:
         assert chain.organization.level == "organization"
         assert chain.organization.organization_id == 100
         assert chain.organization.content == "# Org info"
+        assert chain.organization.updated_at is None
         assert chain.project.level == "project"
         assert chain.project.project_id == "12345"
         assert chain.project.content == "# Project info"
-        # Single round-trip — the chain endpoint is the only HTTP call.
-        assert seen == ["GET /api/app/projects/12345/business-context/chain"]
+        assert chain.project.updated_at == datetime(
+            2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc
+        )
+        assert seen == ["GET /v1/projects/12345/business-context"]
 
     def test_chain_with_empty_scopes(self) -> None:
-        """Empty strings in chain response yield is_empty BusinessContexts."""
+        """Empty strings yield is_empty BusinessContexts."""
 
         def handler(request: httpx.Request) -> httpx.Response:
             """Return the unset state for both scopes."""
             del request
-            return _ok({"org_context": "", "project_context": ""})
+            return _ok(self._project_body("", ""))
 
         ws = _make_workspace(handler)
         _stub_me(ws, project_org=100)
@@ -528,56 +598,243 @@ class TestGetBusinessContextChain:
         assert chain.project.is_empty is True
 
     def test_chain_does_not_fetch_me_when_cache_cold(self) -> None:
-        """Chain leaves organization_id=None when /me cache is cold.
-
-        Regression guard for the "single round-trip" guarantee — the
-        chain endpoint must not call ``_resolve_organization_id`` (which
-        would trigger a /me fetch). Best-effort enrichment via
-        ``peek()`` returns None on cold cache, so org_id stays None.
-        """
+        """Chain leaves organization_id=None when the /me cache is cold."""
         seen: list[str] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Capture method+path; would 404 a /me call if reached."""
+            """Capture method+path; fail if /me is reached."""
             seen.append(f"{request.method} {request.url.path}")
             if request.url.path.endswith("/me"):
-                raise AssertionError("Chain endpoint must not trigger /me fetch")
-            return _ok({"org_context": "# Org", "project_context": "# Project"})
+                raise AssertionError("Chain must not trigger /me fetch")
+            return _ok(self._project_body("# Project", "# Org"))
 
         ws = _make_workspace(handler)
-        # Do NOT call _stub_me — leaves the real MeService with cold cache.
-        # The real MeService.peek() will check disk; in tests temp HOME isn't
-        # set so it would miss too. Either way: org_id should be None.
 
         chain = ws.get_business_context_chain()
         assert chain.organization.organization_id is None
         assert chain.organization.content == "# Org"
         assert chain.project.content == "# Project"
-        # Only the chain endpoint was hit — no /me.
-        assert seen == ["GET /api/app/projects/12345/business-context/chain"]
+        assert seen == ["GET /v1/projects/12345/business-context"]
 
-    def test_chain_missing_org_context_raises(self) -> None:
-        """API response without ``org_context`` → MixpanelHeadlessError."""
+    def test_chain_missing_nested_org_raises(self) -> None:
+        """Response without ``organization_business_context`` raises."""
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Return a malformed chain response."""
+            """Return a malformed response."""
             del request
-            return _ok({"project_context": "# Project"})
+            return _ok({"content": "# Project"})
 
         ws = _make_workspace(handler)
         with pytest.raises(MixpanelHeadlessError) as exc_info:
             ws.get_business_context_chain()
-        assert "missing required field 'org_context'" in str(exc_info.value)
+        assert "organization_business_context" in str(exc_info.value)
 
-    def test_chain_missing_project_context_raises(self) -> None:
-        """API response without ``project_context`` → MixpanelHeadlessError."""
+    def test_chain_missing_project_content_raises(self) -> None:
+        """Response without ``content`` raises."""
 
         def handler(request: httpx.Request) -> httpx.Response:
-            """Return a malformed chain response."""
+            """Return a malformed response."""
             del request
-            return _ok({"org_context": "# Org"})
+            return _ok({"organization_business_context": {"content": "# Org"}})
 
         ws = _make_workspace(handler)
         with pytest.raises(MixpanelHeadlessError) as exc_info:
             ws.get_business_context_chain()
-        assert "missing required field 'project_context'" in str(exc_info.value)
+        assert "missing required field 'content'" in str(exc_info.value)
+
+    def test_chain_missing_nested_org_content_raises(self) -> None:
+        """Nested org context without ``content`` raises."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a malformed nested org object."""
+            del request
+            return _ok({"content": "# P", "organization_business_context": {}})
+
+        ws = _make_workspace(handler)
+        with pytest.raises(MixpanelHeadlessError) as exc_info:
+            ws.get_business_context_chain()
+        assert "missing required field 'content'" in str(exc_info.value)
+
+
+# =============================================================================
+# Platform host, updated_at, and RFC 9457 errors
+# =============================================================================
+
+
+class TestPlatformHostAndErrors:
+    """The v1 Platform API host per region, ``updated_at``, and problem errors."""
+
+    @pytest.mark.parametrize(
+        ("region", "host"),
+        [
+            ("us", "platform-us.mixpanel.com"),
+            ("eu", "platform-eu.mixpanel.com"),
+            ("in", "platform-in.mixpanel.com"),
+        ],
+    )
+    def test_region_host(self, region: str, host: str) -> None:
+        """Each region routes to its own platform host.
+
+        Args:
+            region: Account region.
+            host: Expected request host.
+        """
+        seen: list[tuple[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Capture scheme and host."""
+            seen.append((request.url.scheme, request.url.host))
+            return _ok({"content": "", "updated_at": None})
+
+        sess = make_session(project_id="12345", region=region, oauth_token="t")
+        client = MixpanelAPIClient(
+            session=sess, _transport=httpx.MockTransport(handler)
+        )
+        ws = Workspace(session=sess, _api_client=client)
+        ws.get_business_context()
+        assert seen == [("https", host)]
+
+    def test_updated_at_parsed(self) -> None:
+        """An ISO-8601 ``updated_at`` becomes a timezone-aware datetime."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return content with a timestamp."""
+            del request
+            return _ok({"content": "x", "updated_at": "2026-03-04T05:06:07+00:00"})
+
+        ws = _make_workspace(handler)
+        ctx = ws.get_business_context(level="organization", organization_id=1)
+        assert ctx.updated_at == datetime(2026, 3, 4, 5, 6, 7, tzinfo=timezone.utc)
+
+    def test_bad_updated_at_raises(self) -> None:
+        """An unparseable ``updated_at`` raises MixpanelHeadlessError."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a malformed timestamp."""
+            del request
+            return _ok({"content": "x", "updated_at": "not-a-date"})
+
+        ws = _make_workspace(handler)
+        with pytest.raises(MixpanelHeadlessError, match="updated_at"):
+            ws.get_business_context()
+
+    def test_bad_updated_at_chains_value_error(self) -> None:
+        """A malformed ``updated_at`` string keeps the parse error as its cause."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a malformed timestamp."""
+            del request
+            return _ok({"content": "x", "updated_at": "not-a-date"})
+
+        ws = _make_workspace(handler)
+        with pytest.raises(MixpanelHeadlessError) as exc_info:
+            ws.get_business_context()
+        assert isinstance(exc_info.value.__cause__, ValueError)
+
+    def test_422_surfaces_detail_and_errors(self) -> None:
+        """A 422 problem maps to QueryError with detail, errors and error_id."""
+        errors = [{"type": "string_too_long", "loc": ["body", "content"], "msg": "x"}]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a 422 problem."""
+            del request
+            return _problem(
+                422, "Unprocessable Entity", detail="content too long", errors=errors
+            )
+
+        ws = _make_workspace(handler)
+        with pytest.raises(QueryError) as exc_info:
+            ws.set_business_context("ok")
+        assert "content too long" in str(exc_info.value)
+        assert exc_info.value.status_code == 422
+        body = exc_info.value.response_body
+        assert isinstance(body, dict)
+        assert body["errors"] == errors
+        assert body["error_id"] == "err-1"
+
+    def test_400_falls_back_to_title(self) -> None:
+        """A 400 problem without ``detail`` uses ``title`` as the message."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a 400 problem with no detail."""
+            del request
+            return _problem(400, "Bad Request")
+
+        ws = _make_workspace(handler)
+        with pytest.raises(QueryError, match="Bad Request"):
+            ws.get_business_context()
+
+    def test_404_maps_to_query_error(self) -> None:
+        """A 404 problem maps to QueryError."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a 404 problem."""
+            del request
+            return _problem(404, "Not Found", detail="no such project")
+
+        ws = _make_workspace(handler)
+        with pytest.raises(QueryError, match="no such project") as exc_info:
+            ws.get_business_context()
+        assert exc_info.value.status_code == 404
+
+    def test_401_maps_to_authentication_error(self) -> None:
+        """A 401 problem maps to AuthenticationError."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a 401 problem."""
+            del request
+            return _problem(401, "Unauthorized")
+
+        ws = _make_workspace(handler)
+        with pytest.raises(AuthenticationError):
+            ws.get_business_context()
+
+    def test_429_maps_to_rate_limit_error(self) -> None:
+        """A 429 with a long Retry-After raises RateLimitError without sleeping."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a 429 problem."""
+            del request
+            resp = _problem(429, "Too Many Requests")
+            resp.headers["Retry-After"] = "3600"
+            return resp
+
+        ws = _make_workspace(handler)
+        with pytest.raises(RateLimitError):
+            ws.get_business_context()
+
+    def test_delete_error_maps_to_query_error(self) -> None:
+        """A 403 problem on DELETE maps to QueryError."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a 403 problem."""
+            del request
+            return _problem(403, "Forbidden", detail="needs edit permission")
+
+        ws = _make_workspace(handler)
+        with pytest.raises(QueryError, match="needs edit permission"):
+            ws.clear_business_context()
+
+    def test_non_object_get_body_raises(self) -> None:
+        """A GET body that is not a JSON object raises MixpanelHeadlessError."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a JSON array."""
+            del request
+            return httpx.Response(200, json=["unexpected"])
+
+        ws = _make_workspace(handler)
+        with pytest.raises(MixpanelHeadlessError, match="expected dict"):
+            ws.get_business_context()
+
+    def test_non_object_put_body_raises(self) -> None:
+        """A PUT body that is not a JSON object raises MixpanelHeadlessError."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            """Return a JSON array."""
+            del request
+            return httpx.Response(200, json=["unexpected"])
+
+        ws = _make_workspace(handler)
+        with pytest.raises(MixpanelHeadlessError, match="expected dict"):
+            ws.set_business_context("x")
